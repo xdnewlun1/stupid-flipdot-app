@@ -1,5 +1,5 @@
 // Import page: convert images, GIFs, video files and the webcam to dots.
-import { $, api, ask, board, bus, renderDots, gridToRows, safe, toast, refreshScenes, loadDrawings, wsSend } from "./common.js";
+import { $, api, ask, board, bus, renderDots, gridToRows, safe, toast, refreshScenes, loadDrawings, wsSend, wsBacklog } from "./common.js";
 
 const MAX_FRAMES = 500;
 const preview = $("preview"), pctx = preview.getContext("2d");
@@ -234,8 +234,10 @@ async function toggleLive() {
     const rows = gridToRows(convertFrame(video));
     try {
       const stream = streamInfo();
-      if (!layerId) { if ((await api("/api/frame", { rows, stream })).stopped) stopLive(); }
-      else if (!wsSend({ type: "drawing_rows", drawing: layerId, rows, stream })) {
+      if (wsBacklog() > 32768) { /* the connection is behind: drop this frame */ }
+      else if (!layerId) {
+        if (!wsSend({ type: "frame", rows, stream }) && (await api("/api/frame", { rows, stream })).stopped) stopLive();
+      } else if (!wsSend({ type: "drawing_rows", drawing: layerId, rows, stream })) {
         if ((await api(`/api/drawings/${layerId}`, { rows, stream })).stopped) stopLive();
       }
     } catch (e) { toast(e.message, true); stopLive(); }

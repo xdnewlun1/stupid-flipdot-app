@@ -341,6 +341,12 @@ def ws_message(msg):
     """Messages from browsers over the WebSocket (low-latency drawing and game input)."""
     if msg.get("type") == "input":
         runner.input(msg["key"], msg.get("action", "down"), int(msg.get("player", 1)))
+    elif msg.get("type") == "frame":
+        # a frame of a browser's live stream to the whole board (Import, Stream live): no HTTP round trip per frame
+        board.check_frame(msg["rows"])
+        if not runner.stream_frame(msg.get("stream"), "board"):
+            return  # that stream was stopped here; frames still on their way are dropped
+        board.set_frame(msg["rows"])
     elif msg.get("type") == "drawing_rows":
         # a whole picture for a drawing layer, e.g. live video streamed into a composition
         if msg.get("stream") and not runner.stream_frame(msg["stream"], "layer"):

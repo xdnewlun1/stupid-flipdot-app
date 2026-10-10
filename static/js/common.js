@@ -284,6 +284,9 @@ export function wsSend(msg) {
   return true;
 }
 
+// Bytes queued on the socket but not sent yet: streams skip a frame rather than pile up lag.
+export const wsBacklog = () => (wsOpen ? ws.bufferedAmount : 0);
+
 function applyPacked(buf) {
   const dv = new DataView(buf);
   const version = dv.getUint32(0), W = dv.getUint16(4), H = dv.getUint16(6);

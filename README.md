@@ -79,6 +79,10 @@ checked every 10 minutes), `event`, `idle` (`minutes`). Actions: `app` (`app`, `
 waits `cooldown` seconds (default 60) before it can fire again.
 
 A panel mounted upside down can be fixed with `rotate: "180"` in its `config.yaml` entry.
+Each bus (ip:port) is sent to on its own thread, so one that is unreachable doesn't hold up the others. Set `baud:` in
+`config.yaml` to the converter's RS485 speed and sends are paced to it, so fast animations show the newest picture
+instead of queuing up lag; `sync_refresh: true` writes every panel first and then flips them all at once.
+`python3 tests/bench_core.py` times the per-frame paths (worth running on the Pi).
 Flip counts are saved to `data/wear.json` every two minutes and on shutdown.
 
 Live updates: connect a WebSocket to `/ws`. The server pushes a binary message whenever the dots
@@ -87,7 +91,8 @@ and a text message `{"type":"status","runner":{...}}` when the status changes. Y
 `{"type":"input","key":"up","action":"down","player":1}` or `{"type":"dots","dots":[...]}`.
 The web pages use this and fall back to polling `/api/board` if the socket drops. Sending
 `{"type":"drawing_rows","drawing":ID,"rows":[...]}` replaces a drawing layer's picture (that's how live
-video streams into a layer without stopping the rest of the composition).
+video streams into a layer without stopping the rest of the composition), and
+`{"type":"frame","rows":[...],"stream":{"id":ID,"name":NAME}}` shows a frame of a live stream on the whole board.
 
 MQTT (Settings → Smart home & API): `flipdot/notify`, `flipdot/run`, `flipdot/command` (stop, schedule, next,
 black, white, invert), `flipdot/event` (an automation event name); status is published retained on `flipdot/status`,

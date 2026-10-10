@@ -471,6 +471,7 @@ class Runner:
     def _loop(self):
         while True:
             delay = 0.5
+            ticked = False
             with self.lock:
                 now = time.time()
                 try:
@@ -522,8 +523,7 @@ class Runner:
                     tick = getattr(app, "status_tick", None) if app is self.app else None
                     if tick is not None and tick != self._tick:
                         self._tick = tick
-                        for fn in self.ticks:
-                            fn()
+                        ticked = True
                     if getattr(app, "restore", False) and not self.transition:
                         self.app = None  # restore finished; back to plain manual mode
                     delay = min(app.interval, 1 / self.transition_fps()) if self.transition else app.interval
@@ -538,6 +538,9 @@ class Runner:
                             self.item_until = 0
                         delay = 0.01
                 self._check_problem()
+            if ticked:  # outside the lock: listeners may ask for status()
+                for fn in self.ticks:
+                    fn()
             # time the next tick from when this frame started, so rendering time doesn't slow the frame rate
             self.wake.wait(max(0.0, now + delay - time.time()) if delay > 0.011 else delay)
             self.wake.clear()

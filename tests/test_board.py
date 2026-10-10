@@ -112,7 +112,11 @@ class Collector:
         threading.Thread(target=self._run, daemon=True).start()
 
     def _run(self):
-        conn, _ = self.srv.accept()
+        while True:  # the board reconnects after a panel remap
+            conn, _ = self.srv.accept()
+            threading.Thread(target=self._serve, args=(conn,), daemon=True).start()
+
+    def _serve(self, conn):
         buf = b""
         while True:
             data = conn.recv(4096)
@@ -173,6 +177,17 @@ class SendTest(unittest.TestCase):
         live = [p for p in b.panels if p.col < 2]
         self.assertTrue(self.wait_for(lambda: all(
             buses[p.col].latest.get(p.address) == expected_frame(b, p, px) for p in live)))
+
+    def test_panel_remap(self):
+        b, buses = self.run_board()
+        b.set_canvas(random_canvas(b.width, b.height, 9))
+        self.assertTrue(self.wait_for(lambda: self.board_matches(b, buses)))
+        # columns 1 and 3 swap buses, and one panel turns upside down
+        b.set_panels(config(ports=[buses[2].port, buses[1].port, buses[0].port], rotate=180)["panels"])
+        _, px = b.dots()
+        port_of = {c.port: c for c in buses}
+        self.assertTrue(self.wait_for(lambda: all(
+            port_of[p.port].latest.get(p.address) == expected_frame(b, p, px) for p in b.panels)))
 
     def test_baud_pacing_coalesces(self):
         # 6 panels x 32 bytes at 1920 baud = 1 s per full picture: 20 quick pictures can't all go out
