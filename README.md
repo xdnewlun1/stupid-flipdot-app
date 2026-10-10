@@ -2,6 +2,7 @@
 
 Web UI + HTTP API for an 84×42 AlfaZeta flipdot board (18 panels of 28×7, driven over the
 RS485-to-Ethernet box at 192.168.11.100, ports 5000–5002, panel addresses 0–5 — see `config.yaml`).
+How it's built, how pictures get to the discs, and the performance and timing work: [ARCHITECTURE.md](ARCHITECTURE.md).
 
 Needs Python 3.10+ and Pillow (`sudo dnf install python3-pillow` or `pip install pillow`). Nothing else.
 
