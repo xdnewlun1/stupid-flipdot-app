@@ -237,6 +237,8 @@ input[type=range]::-moz-range-thumb { width: 12px; height: 12px; border-radius: 
 
 .form { display: grid; grid-template-columns: minmax(150px, 34%) minmax(0, 1fr); gap: var(--s3) var(--s4); align-items: center; margin: var(--s4) 0; }
 .form > label { color: var(--text-2); font-size: var(--fs-sm); }
+.checklist { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: var(--s2) var(--s4); }
+.checklist > label { font-size: var(--fs-sm); }
 .form input[type=text], .form input[type=password], .form input[type=number], .form input[type=datetime-local], .form select, .form input[type=range] { width: 100%; }
 .ssSettings { grid-template-columns: minmax(130px, auto) minmax(0, 1fr) minmax(130px, auto) minmax(0, 1fr); }
 
@@ -613,3 +615,25 @@ body[data-tab=draw] .device { max-width: max(520px, calc((100vh - 480px) * 2)); 
 .scene.justAdded, #ssSelect.justAdded { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
 .scene.justAdded .name small { color: var(--text); }
 .ssItems.justAdded .ssItem { border-color: var(--accent); }
+
+/* Slideshows → React to music */
+.reactStatus { margin: var(--s2) 0; color: var(--text-2); font-size: var(--fs-sm); }
+.reactStatus .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: var(--s2); background: var(--text-3); vertical-align: 1px; }
+.reactStatus.on .dot { background: var(--ok); }
+.reactRows { display: grid; gap: var(--s2); margin: var(--s3) 0 var(--s2); }
+.reactRow { display: grid; grid-template-columns: minmax(170px, 32%) minmax(0, 1fr); gap: var(--s2) var(--s4); align-items: center;
+  padding: var(--s2) var(--s3); background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--r2); }
+.reactRow .sig { display: grid; gap: 2px; min-width: 0; }
+.reactRow .sig b { font-weight: 500; font-size: var(--fs-sm); }
+.reactRow .sig small { color: var(--text-3); font-size: var(--fs-xs); }
+.reactMeter { height: 6px; margin-top: var(--s1); border-radius: 999px; background: var(--surface-3); overflow: hidden; }
+.reactMeter span { display: block; height: 100%; width: 0; background: var(--accent); transition: width .18s linear; }
+.reactRow .ctl { display: flex; flex-wrap: wrap; gap: var(--s2) var(--s3); align-items: center; min-width: 0; }
+.reactRow .ctl select { min-width: 0; max-width: 100%; }
+.reactRow .ctl .amt { display: flex; align-items: center; gap: var(--s2); flex: 1 1 180px; min-width: 0; font-size: var(--fs-sm); color: var(--text-2); }
+.reactRow .ctl .amt input { flex: 1; min-width: 60px; }
+.reactRow.off .ctl .amt, .reactRow.off .ctl .sens { opacity: .45; }
+@media (max-width: 600px) {
+  .reactRow { grid-template-columns: minmax(0, 1fr); }
+  .reactRow .ctl select { flex: 1 1 100%; }
+}

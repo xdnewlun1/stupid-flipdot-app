@@ -12,6 +12,9 @@ import math
 import queue
 import random
 import threading
+import time
+
+import audio_signal
 
 from canvas import Canvas
 from fonts import NORMAL
@@ -103,10 +106,13 @@ def gif_speed(item, settings):
 
 
 class Player:
-    """Plays one item's frames from a start time; the frame is computed from the clock, so it never drifts."""
+    """Plays one item's frames from a start time. The play position is computed from the clock, so it never
+    drifts: position = pos + (now - base) * rate. A rate change (music-driven speed) folds the position so
+    far into `pos`, so playback stays continuous; skip_frame() jumps to the start of the next frame."""
 
     def __init__(self, item, frames, started, speed=1.0):
         self.item, self.frames, self.started = item, frames, started
+        self.pos, self.base, self.rate = 0.0, started, 1.0
         self.cum = []
         t = 0.0
         for _, d in frames:  # GIF speed shortens/stretches every delay; frames faster than the board are skipped
@@ -116,10 +122,31 @@ class Player:
 
     EPS = 1e-6  # so a tick that lands exactly on a frame boundary counts as the new frame
 
+    def position(self, now):
+        """Seconds of play (at the GIF's own speed) since the item started."""
+        return self.pos + max(0.0, now - self.base) * self.rate
+
+    def set_rate(self, now, rate):
+        """Play faster/slower from now on (1 = normal), without a jump."""
+        if rate != self.rate:
+            self.pos, self.base, self.rate = self.position(now), max(now, self.base), max(0.05, rate)
+
+    def skip_frame(self, now):
+        """Jump to the start of the next frame (exactly one frame ahead)."""
+        if self.length <= 0:
+            return
+        t = self.position(now)
+        i = self.index(now)
+        self.pos, self.base = t - t % self.length + self.cum[i], max(now, self.base)
+
+    def _phase(self, now):
+        t = self.position(now) % self.length + self.EPS
+        return t - self.length if t >= self.length else t  # float % can land a hair short of a whole loop
+
     def index(self, now):
         if self.length <= 0:
             return 0
-        t = (now - self.started) % self.length + self.EPS
+        t = self._phase(now)
         return min(bisect.bisect_right(self.cum, t), len(self.frames) - 1)
 
     def frame(self, now):
@@ -129,16 +156,16 @@ class Player:
         """Seconds until this item shows a different frame."""
         if self.length <= 0:
             return 1.0
-        t = (now - self.started) % self.length + self.EPS
+        t = self._phase(now)
         i = self.index(now)
-        return max(0.005, self.cum[i] - t + self.EPS)
+        return max(0.005, (self.cum[i] - t + self.EPS) / self.rate)
 
     def end_time(self, settings):
         if self.length > 0:  # GIF: whole loops, at least `loops` of them and at least the minimum time
             loops = int(self.item.get("loops") or settings["gif_loops"] or 1)
             min_secs = float(settings.get("gif_min_seconds") or 0)
             loops = max(loops, math.ceil(min_secs / self.length - 1e-9))
-            return self.started + loops * self.length
+            return self.base + (loops * self.length - self.pos) / self.rate
         return self.started + float(self.item.get("seconds") or settings["image_seconds"] or 10)
 
 
@@ -165,7 +192,13 @@ class Slideshow(App):
         self.request_transition = None
         self.jump_to = self.p.get("start")
         self.fx = None
-        self.fx_rng = random.Random()  # file name to play next, right away
+        self.fx_rng = random.Random()
+        self.react = slidefx.Reactive(self.fx_rng)  # music-driven effects (React to music)
+        self.react_on = False   # reacting right now (enabled, music or generated beat, not quiet hours)
+        self.react_rate = 1.0   # smoothed loudness-driven GIF speed
+        self.react_beats = None  # beat counter last seen, so each beat skips exactly one frame
+        self.react_t = None
+        self.quiet = (0, False)  # (checked at, quiet hours active)
 
     @property
     def item(self):
@@ -272,6 +305,7 @@ class Slideshow(App):
             c.text_center(17, "Loading...", NORMAL)
             return
 
+        strengths = self._react(settings, now)
         frame = self.cur.frame(now)
         if self.fx is not None:
             frame = self.fx.apply(frame, now)
@@ -280,6 +314,8 @@ class Slideshow(App):
             if self.trans.done(now):
                 self.trans, self.prev = None, None
             frame = out
+        if strengths:  # on top of the random effect and the transition, so it carries on across items
+            frame = self.react.apply(frame, now, strengths)
         if (frame.w, frame.h) == (c.w, c.h):
             c.px[:] = frame.px
         else:
@@ -307,6 +343,43 @@ class Slideshow(App):
                 self.interval = min(self.interval, max(0.005, self.fx.start - now))
             elif self.fx.end is not None and now < self.fx.end:
                 self.interval = min(self.interval, max(0.005, self.fx.end - now))
+        if settings.get("react_enabled"):
+            # reacting: every board frame; otherwise check twice a second for music starting
+            self.interval = min(self.interval, 1 / self._fps() if self.react_on else 0.5)
+
+    def _quiet(self):
+        t = time.time()
+        if t - self.quiet[0] > 1:
+            from boardcare import quiet_active
+            import datetime as dt
+            self.quiet = (t, quiet_active(self.ctx.store.settings.get("quiet_hours") or {}, dt.datetime.now()))
+        return self.quiet[1]
+
+    def _react(self, settings, now):
+        """Music → GIF speed / beat skips on the current item; returns {effect: strength} to apply."""
+        on = bool(settings.get("react_enabled")) and not self._quiet()
+        r = None
+        if on:
+            r = audio_signal.reading(self.ctx.store, "beat" if settings.get("react_fallback") == "beat" else None)
+            on = r["live"] or r["generated"]
+        self.react_on = on
+        dt = 0.0 if self.react_t is None else max(0.0, min(0.5, now - self.react_t))
+        self.react_t = now
+        target = 1.0
+        if on and settings.get("react_speed"):
+            target = 0.75 + 1.25 * r["level"]  # quiet 0.75x .. loud 2x, on top of the GIF speed
+        self.react_rate += (target - self.react_rate) * (1 - math.exp(-dt / 0.4))  # eases in/out, no jumps
+        if abs(self.react_rate - 1.0) < 0.005 and target == 1.0:
+            self.react_rate = 1.0
+        if self.cur.length > 0:
+            self.cur.set_rate(now, self.react_rate)
+        if not on:
+            self.react_beats = None
+            return None
+        if self.react_beats is not None and r["beat_count"] != self.react_beats and settings.get("react_skip"):
+            self.cur.skip_frame(now)
+        self.react_beats = r["beat_count"]
+        return slidefx.react_strengths(slidefx.clean_react_map(settings.get("react_map")), r)
 
     def describe(self):
         g = self.ctx.store.galleries.get(self.gid)

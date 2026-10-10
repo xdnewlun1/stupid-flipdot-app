@@ -25,7 +25,7 @@ The sidebar (a tab bar at the bottom on phones) has **Now playing**, **Create** 
 | **Pictures** (was Scenes) | one library for still pictures, animations and drawing layers (filter by kind), each with **Show on board**, **Add as layer**, **Edit** (opens it in Draw), Rename, PNG/JSON download and Delete; drawing layers on the board are marked |
 | **Apps** | a search box and category chips (Everyday, Widgets, Generative, Utilities, Used in playlists, Games); everyday apps come first and games last, grouped as on the phone controller; "Used in playlists" holds the apps that show something you made (a picture, drawing layer, layer set or slideshow); the **Show on board** button sits under the app's name, above its options; options of the app you started change it on the board as you edit them (and the form opens with the values that are on the board); fields that don't apply hide (e.g. pixel scale vs size in dots, scroll speed only for the ticker); clocks (digital, analog, countdown), text (static / ticker / typewriter), weather, **calendar** (iCal links: next events with today/tomorrow labels and a countdown; all-day events, time zones, simple repeats), crypto, stocks, sports scores, any JSON URL, now playing from Music Assistant, music visualizer, Game of Life, matrix rain, plasma, bouncing balls, starfield, fireworks, ripples, metaballs, tunnel, spiral, maze, Lissajous, fire, **random effects** (cycles through them all), Snake / Tetris / Pong / Breakout / Space Invaders / Tron light cycles (vs a CPU or a second player) / Flappy / **Platformer** (run, jump, stomp walkers, reach the flag) / Blackjack (dealt from deckofcardsapi.com), **Doom** (the real game; see below), **NES** (your own ROMs; see below), **arcade**: Asteroids, Galaxian, Missile Command, Centipede, Lunar Lander; **maze & action**: Pac-Man, Frogger, Qix, Bomberman (up to 4 players), Tank Combat; **runners & racing**: Dino Run, Road Racer (pseudo-3D road), Cave Copter, Stacker, Sky Jump, Pitfall Run; **two players** (or vs the computer): Connect Four, Tic-tac-toe, Artillery, Checkers, Battleship, Quick Draw, Air Hockey; **puzzles**: 2048, Minesweeper, Sokoban, Lights Out, Simon, Columns, Mastermind (every game plays a demo of itself when idle and keeps a best score), disc exerciser, **Guest wall** (a QR code to `/guest`, where guests leave a name and message from their phone, alternating with the approved messages as scrolling text; moderate on the Guest wall page, or approve automatically), **Wi-Fi QR code** (guests scan it to join; very long names/passwords switch to a full-height inverted code) |
 | **Layers** | stack apps with blend modes (On top, Add (light up), Halo, Invert where overlapping, Mask, Cut out), drawing layers you can keep editing live, position/size, scrolling, density, speed, Negative (swap a layer's lit and dark dots); saved **layer sets** (the API calls them compositions; usable in playlists) save themselves as you edit, and when the set you're editing is on the board, changes show there right away; picking a set only opens it, **Show on board** shows it; the editor follows the stack that's on the board |
-| **Slideshows** | a playlist of your own images and GIFs: drop files or a .zip, which is unpacked automatically, any time; the pictures come first and **Display options** explain sizing, dithering and the brightness cutoff; while it plays, Previous / Pause / Next work and the picture on the board is highlighted; option changes apply to the playing slideshow right away; images show for 10 s by default, GIFs play through, then it moves on and loops; **GIF speed** (0.5×–4×) for the whole slideshow or per GIF, where fast GIFs at high speed skip frames the board can't flip in time; optional **random effects** give some items an effect such as glitch, wave or Game of Life, for a short burst or the whole item, with a chance, effect list and strength per slideshow |
+| **Slideshows** | a playlist of your own images and GIFs: drop files or a .zip, which is unpacked automatically, any time; the pictures come first and **Display options** explain sizing, dithering and the brightness cutoff; while it plays, Previous / Pause / Next work and the picture on the board is highlighted; option changes apply to the playing slideshow right away; images show for 10 s by default, GIFs play through, then it moves on and loops; **GIF speed** (0.5×–4×) for the whole slideshow or per GIF, where fast GIFs at high speed skip frames the board can't flip in time; optional **random effects** give some items an effect such as glitch, wave or Game of Life, for a short burst or the whole item, with a chance, effect list and strength per slideshow; **React to music** lets the bass, beats and other parts of live music drive effects and GIF speed (see below) |
 | **Playlists** | playlists of apps with durations and transitions (dissolve, wipe, slide); items that need setup (Weather without a location, Now playing without Music Assistant) are flagged and skipped; removing an item, rule, layer or slideshow image can be undone from the toast; renaming a playlist or composition updates the schedule, playlists and automations that use it, and deleting something lists what uses it first, then removes those items (automations are turned off); the **transitions** gallery (preview each one on the board) |
 | **Schedule** | time-of-day/day-of-week rules choosing a playlist or "off", the default playlist, and **quiet hours** (cap on dots flipped per second + slower transitions during a time window) |
 | **Automations** | when music starts/stops (Music Assistant), the weather turns rainy/snowy/clear, an event arrives, or the board has been idle N minutes → run an app or composition, play a playlist, show a notification, resume the schedule or go all black |
@@ -174,6 +174,59 @@ GET  /api/videos/<id>/frame?t=12.5      that frame as dots (scrub preview)
 POST /api/videos/<id>/delete | /restore (deleted for good after 30 s) | /convert {"mode"}
 ```
 
+## Music visualizer
+
+Apps → Music visualizer moves with the frequencies of the music, continuously; it doesn't wait for beats.
+Styles: **rain** (each column rains with its part of the spectrum, the bass fills a puddle), **spectrum
+bars** (16, 21 or 42 full-height bars with falling peak caps; from the bottom, mirrored up and down, or
+bass in the middle), **spectrum mountain** (the spectrum as a filled ridge, same layouts), **sunburst**
+(rays from the middle), **waterfall** (a spectrogram scrolling out from the middle), **rings** (the bass
+sizes a disc, each other band moves its own ring), **blob** (metaballs pulsing with the bass), **waveform**
+(filled, thick line or mirrored), **warp** starfield, **sparkle**, and five pattern styles: **tunnel** (a
+kaleidoscope rushing towards you), **vortex** (spiral arms turning into the middle), **moire** (two sets
+of rings crossing), **lissajous** (a turning figure with an echo) and **plasma** (flowing stripes). In
+those, the bass gives size and pulse, the mids bend the shape, the highs add sparkle.
+
+Nothing stands still: every style runs on a clock that ticks slowly in silence and faster with the
+music, and a low ripple runs under the spectrum, so quiet passages show slow, calm movement. The bass
+disc in the middle (rings, sunburst, warp, tunnel, vortex) inverts what's under it and keeps a lit
+edge, so it reads over everything else.
+
+- **Scale** (0.5–4, default 1.5) multiplies how far it moves: bar height, ray and ring size, wave height,
+  amount of rain, warp speed, sparkle density. At 1.5 loud parts reach the edges; 3 pins more of it there.
+- **Sensitivity** (default 1) shows quiet parts bigger (higher) or smaller (lower).
+- **Smoothing** (0 = snappy, 1 = slow fall; default 0.3) sets how fast things fall back.
+- **Beat effects**: off (default), subtle (a ring from the middle on each beat) or big (a thick
+  shockwave, and the board flashes every 4th beat).
+
+**Mix** (a style) changes between styles while the music plays, with a transition at each change.
+Both styles keep following the music during the transition, and each keeps its own state (rain drops,
+peak caps, waterfall history).
+
+- **When**: every 4/8/16/32 bars (default 16), counted from the first beat of the song and realigned on
+  downbeats, so changes land on phrase boundaries. This needs a steady beat from live audio; with the
+  generated beat, or a beat too irregular to count, it changes every N seconds instead (default 20).
+  Also on each new song (on by default) and, optionally, on a drop or break (the last ~1.5 s getting
+  much louder or quieter than the last ~10 s). **At least … seconds between changes** (default 8)
+  holds a song change back until it has passed.
+- **Styles in the mix**: a checklist, all by default; random order (never the same twice in a row) or
+  in list order. **Random look** gives each new style a random layout, bar count, wave look and scale.
+- **Transition**: random, one of the list, or none. Random picks *swirl* or *zoom-through* half the time:
+  the old picture turns and grows past you while the new one turns in from small. Morph, migrate,
+  scatter, life, ghost, flash, glitch and zoom-in/out aren't offered: they're too slow live, are built from a
+  single frame, or flicker. **Length** (default 1.5 s) is rounded to whole beats when the beat is steady.
+- The *Now showing* line names the current style: "Music visualizer · Mix (now: sunburst, …)". Mix
+  works in layers and playlists too.
+
+Levels come from `audio_signal.py`'s display reading: per band and spectrum bin a running peak and
+floor, so quiet and loud songs both use the full height, and a held note stays up rather than sinking
+back. Without live audio it follows a generated beat. Flips per update (of 3528 dots) on music-like
+input at the defaults, then in silence: rain ~590/70, bars ~270/3, mountain ~270/6, sunburst ~290/50,
+waterfall ~520/35, rings ~500/20, blob ~270/12, waveform ~220/13, warp ~370/80, sparkle ~230/85,
+tunnel ~470/180, vortex ~590/80, moire ~680/200, lissajous ~760/120, plasma ~540/100. A Mix transition
+flips ~500–750 per update. Render time on a desktop PC: under 1.2 ms per frame for any style, under
+~2.5 ms (95th percentile) during a Mix transition with the two heaviest styles.
+
 ## Music visualizer over Sendspin (optional)
 
 The Music visualizer app follows a generated beat out of the box. To make it follow the actual music,
@@ -262,6 +315,28 @@ Compared with Sendspin:
 `tests/snapcast_e2e.py` runs the link against a local snapserver (127.0.0.1, flac and pcm, a 120 BPM
 test signal, restart and reconnect). It needs `snapserver` and `snapclient` (or `SNAPSERVER` /
 `SNAPCLIENT` pointing at them) and skips otherwise.
+
+## Slideshows that react to music
+
+Slideshows → Display options → **React to music** lets the live audio from Settings → Music (Sendspin or
+Snapcast, the same signal the visualizer uses) drive effects on top of the pictures:
+
+- Each part of the music drives one effect, with an amount and a sensitivity. Defaults: **bass** (kick
+  drum, low notes) → glitch, **mid** → wave, **high** (hi-hats) → static, **beat** → a one-frame invert,
+  **loudness** → tones all of them down in quiet parts. Life and Melt aren't offered: they build up over
+  time and don't suit a strength that changes every frame. Several effects can run at once; they're
+  applied in a fixed order (pixelate, mirror, kaleidoscope, wave, glitch, outline, scanlines, static,
+  flash, invert), after the item's random effect and the transition between items.
+- **Loudness drives GIF speed** (on by default): quiet parts play at 0.75×, loud parts up to 2×, on top of
+  the GIF speed, eased so there are no jumps. **Skip a frame on each beat** jumps GIFs one frame forward.
+- Levels adjust to each song (a running peak and floor per band), so quiet and loud songs both use the
+  whole range. Without live audio the slideshow plays normally, or reacts to a generated 120 BPM beat if
+  you choose. Reacting pauses during quiet hours. It works the same when the slideshow is a layer.
+- The section shows whether audio is arriving and small live meters (`GET /api/audio/levels`).
+
+The audio reading lives in `audio_signal.py`, shared with the visualizer. `tests/test_audio_react.py`
+covers the band mapping, auto-gain, the display reading (held notes stay up, attack and release), beats and
+the variable-rate GIF clock.
 
 ## Doom (optional)
 

@@ -178,6 +178,70 @@ class Effect:
                     px[y * w + x] = src[sy * w + x] if sy >= 0 else 0
 
 
+# ---- reacting to music ---------------------------------------------------------------------
+# Each signal drives one effect with strength = signal above its threshold x amount. Life and Melt are left
+# out: they build up over time from where they started, so a strength that changes every frame breaks them.
+
+SIGNALS = ["bass", "lowmid", "mid", "high", "beat", "level"]
+REACT_ORDER = ["pixelate", "mirror", "kaleidoscope", "wave", "glitch", "outline", "scanlines", "static", "flash", "invert"]
+SWITCHED = {"invert", "mirror", "kaleidoscope", "outline"}  # no strength: on while the strength is past half
+REACT_DEFAULTS = [
+    {"signal": "bass", "effect": "glitch", "amount": 80, "threshold": 35},
+    {"signal": "lowmid", "effect": "none", "amount": 50, "threshold": 35},
+    {"signal": "mid", "effect": "wave", "amount": 50, "threshold": 50},
+    {"signal": "high", "effect": "static", "amount": 40, "threshold": 50},
+    {"signal": "beat", "effect": "invert", "amount": 100, "threshold": 0},
+    {"signal": "level", "effect": "scale", "amount": 50, "threshold": 0},
+]
+
+
+def clean_react_map(rows):
+    """One row per signal, in SIGNALS order, with known effects and amounts/thresholds clamped to 0..100."""
+    given = {r.get("signal"): r for r in rows or [] if isinstance(r, dict)}
+    out = []
+    for d in REACT_DEFAULTS:
+        r = given.get(d["signal"], d)
+        eff = r.get("effect", d["effect"])
+        if eff not in REACT_ORDER and eff != "none" and not (eff == "scale" and d["signal"] == "level"):
+            eff = "none"
+        num = lambda k: max(0, min(100, int(float(r.get(k, d[k]) or 0))))
+        out.append({"signal": d["signal"], "effect": eff, "amount": num("amount"), "threshold": min(90, num("threshold"))})
+    return out
+
+
+def react_strengths(rows, reading):
+    """{effect: strength 0..1} for this music reading. Several signals on one effect: the strongest wins;
+    Loudness set to "scale" turns everything down in quiet parts."""
+    out, scale = {}, 1.0
+    for r in rows:
+        sig = reading["pulse"] if r["signal"] == "beat" else reading.get(r["signal"], 0.0)
+        thr = r["threshold"] / 100
+        v = max(0.0, (sig - thr) / (1 - thr)) * r["amount"] / 100
+        if r["effect"] == "scale":
+            scale = 1 - r["amount"] / 100 + r["amount"] / 100 * sig
+        elif r["effect"] in REACT_ORDER:
+            out[r["effect"]] = max(out.get(r["effect"], 0.0), v)
+    return {k: v * scale for k, v in out.items()}
+
+
+class Reactive:
+    """Applies the music-driven effects to a frame, in REACT_ORDER."""
+
+    def __init__(self, rng=None):
+        self.rng = rng or random.Random()
+        self.fx = {k: Effect(k, 0.0, None, 0.5, self.rng) for k in REACT_ORDER}
+
+    def apply(self, frame, now, strengths):
+        for kind in REACT_ORDER:
+            s = strengths.get(kind, 0.0)
+            if s < (0.5 if kind in SWITCHED else 0.08):
+                continue
+            e = self.fx[kind]
+            e.strength = min(1.0, s)
+            frame = e.apply(frame, now)
+        return frame
+
+
 def describe_settings():
     """For the UI: the effect choices."""
     return [{"id": k, "label": v} for k, v in EFFECTS.items()]
