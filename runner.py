@@ -58,7 +58,7 @@ class Runner:
     # ---- control (called from HTTP/MQTT threads) --------------------------------
 
     def _current_canvas(self):
-        return Canvas.from_rows(self.board.rows())
+        return Canvas.from_dots(self.board.width, self.board.height, self.board.dots()[1])
 
     def _start_transition(self, kind, duration=1.0):
         if kind and kind != "none":

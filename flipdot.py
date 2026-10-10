@@ -3,7 +3,12 @@
 Each 28x7 panel is updated with one frame:
     0x80, 0x83, <address>, <28 column bytes>, 0x8F
 Each column byte holds the 7 dots in that column; bit 0 is the top dot.
-0x83 means "write and refresh immediately".
+0x83 means "write and refresh immediately". With `sync_refresh: true` in config.yaml panels are
+written with 0x84 ("write, don't refresh yet") and then one 0x80 0x82 0x8F per bus flips them all at once.
+
+Each bus (ip, port) has its own sender thread, so a bus that is down or slow never holds up the others.
+With `baud:` set, a bus is never handed data faster than its RS485 line can carry it: changes wait here
+and are coalesced, so the board shows the newest picture instead of working through a backlog.
 """
 
 import logging
@@ -16,6 +21,14 @@ from dataclasses import dataclass
 log = logging.getLogger("flipdot")
 
 CMD_WRITE_REFRESH = 0x83
+CMD_WRITE = 0x84
+REFRESH = bytes([0x80, 0x82, 0x8F])
+COALESCE = 0.02  # updates closer together than this go out as one (e.g. dragging on the web page)
+RETRY = 2.0  # seconds before trying an unreachable bus again
+_BITS = bytes([0] + [1] * 255)  # any non-zero byte is a white dot
+_CHARS = bytes([48, 49] + [48] * 254)  # dot 0/1 -> "0"/"1"
+_ROW = bytes([0] * 49 + [1] + [0] * 206)  # "1" -> 1, anything else -> 0
+_FLIP = bytes([1, 0] + [0] * 254)
 
 
 @dataclass
@@ -71,39 +84,69 @@ def load_config(path):
     return cfg
 
 
+class _Bus:
+    """One RS485 line behind the Ethernet box (one ip:port): its socket and sender thread."""
+
+    def __init__(self, key):
+        self.key = key
+        self.wake = threading.Event()
+        self.sock = None
+        self.reset = False  # close the socket before the next send (the panel mapping changed)
+        self.free_at = 0.0  # when the line will have finished sending what it was given (with baud set)
+        self.last_flush = 0.0
+
+
 class Board:
     def __init__(self, config, dry_run=False):
         self.pw = int(config.get("panel_width", 28))
         self.ph = int(config.get("panel_height", 7))
         self.transport = str(config.get("transport", "tcp")).lower()
         self.invert = bool(config.get("invert", False))
+        self.baud = int(config.get("baud") or 0)  # RS485 speed, to pace sends (0 = don't pace)
+        self.sync_refresh = bool(config.get("sync_refresh", False))
         self.dry_run = dry_run
 
         self.panels = parse_panels(config["panels"])
         self.width = self.pw * (max(p.col for p in self.panels) + 1)
         self.height = self.ph * (max(p.row for p in self.panels) + 1)
 
-        self._panel_lookup = {(p.col, p.row): i for i, p in enumerate(self.panels)}
         # noise budget: dots allowed to flip per second (0 = unlimited); changes over budget wait
         # and are coalesced, so the board always ends up on the latest picture
         self.max_flips_per_sec = 0
         self._tokens = 0.0
         self._tokens_at = time.monotonic()
+        self._token_lock = threading.Lock()
         self._sent = {}  # panel index -> last frame sent (to count real flips)
         self._since = {}  # panel index -> when it first went dirty (oldest gets sent first)
         # flips per disc (board coordinates), counted on the send path, dry-run included
         self.flips = array("I", bytes(4 * self.width * self.height))
         self.flips_changed = False
-        # pixels[y][x]: True = white, False = black
-        self.pixels = [[False] * self.width for _ in range(self.height)]
+        # one byte per dot, row-major: 1 = white, 0 = black (the same layout as Canvas.px)
+        self.px = bytearray(self.width * self.height)
         self.version = 0
+        self._packed = (None, b"")  # (version, packed bits), shared by every WebSocket client
         self.listeners = []  # called (without the lock held) whenever the picture changes
         self._lock = threading.Lock()
+        self._buses = {}
+        self._dirty = set()
+        self._map_panels(self.panels)
         self._dirty = set(range(len(self.panels)))  # push the full (black) frame on startup
-        self._wake = threading.Event()
-        self._sockets = {}
-        self._wake.set()
-        threading.Thread(target=self._flush_loop, daemon=True).start()
+        for bus in self._buses.values():
+            bus.wake.set()
+
+    def _map_panels(self, panels):
+        """Lookups for a panel mapping; starts a sender thread for any bus not seen before. Call with the lock held
+        (or before any thread runs)."""
+        self.panels = panels
+        self._bus_of = [(p.ip, p.port) for p in panels]
+        # per panel row of the board: (panel index, first dot) for each panel in it, to find what changed
+        self._panel_rows = {}
+        for i, p in enumerate(panels):
+            self._panel_rows.setdefault(p.row, []).append((i, p.col * self.pw))
+        for key in self._bus_of:
+            if key not in self._buses:
+                bus = self._buses[key] = _Bus(key)
+                threading.Thread(target=self._bus_loop, args=(bus,), daemon=True, name=f"flipdot-{key[0]}:{key[1]}").start()
 
     # ---- framebuffer -----------------------------------------------------
 
@@ -113,32 +156,62 @@ class Board:
 
     def get(self, x, y):
         self._check(x, y)
-        return self.pixels[y][x]
+        return bool(self.px[y * self.width + x])
+
+    def _show(self, new=None, edit=None):
+        """Make `new` (bytes of 0/1, one per dot) the picture, or `edit(current picture)` (worked out under the lock,
+        so toggles don't race): mark the panels that changed and wake their buses."""
+        W, ph, pw = self.width, self.ph, self.pw
+        with self._lock:
+            old = self.px
+            if edit is not None:
+                new = edit(old)
+            if new == old:
+                return
+            dirty = []
+            for prow, cells in self._panel_rows.items():
+                y0 = prow * ph * W
+                for i, x0 in cells:
+                    for s in range(y0 + x0, y0 + x0 + ph * W, W):
+                        if old[s:s + pw] != new[s:s + pw]:
+                            dirty.append(i)
+                            break
+            self.px[:] = new
+            self.version += 1
+            now = time.monotonic()
+            wake = set()
+            for i in dirty:
+                if i not in self._dirty:
+                    self._dirty.add(i)
+                    self._since.setdefault(i, now)
+                wake.add(self._bus_of[i])
+            buses = [self._buses[k] for k in wake]
+        for bus in buses:
+            bus.wake.set()
+        for fn in self.listeners:
+            fn()
 
     def set_dots(self, dots):
         """dots: iterable of (x, y, value) where value is True (white), False (black) or None (toggle)."""
         dots = list(dots)
         for x, y, _ in dots:
             self._check(x, y)
-        changed = False
-        with self._lock:
+        W = self.width
+
+        def edit(old):
+            new = bytearray(old)
             for x, y, value in dots:
-                new = (not self.pixels[y][x]) if value is None else value
-                if new != self.pixels[y][x]:
-                    self.pixels[y][x] = new
-                    self._mark(x, y)
-                    changed = True
-            if changed:
-                self.version += 1
-        if changed:
-            self._wake.set()
-            for fn in self.listeners:
-                fn()
+                i = y * W + x
+                new[i] = (new[i] ^ 1) if value is None else (1 if value else 0)
+            return new
+        self._show(edit=edit)
 
     def set_canvas(self, canvas):
         """Show a canvas.Canvas (same size as the board)."""
-        w = self.width
-        self.set_dots((i % w, i // w, bool(v)) for i, v in enumerate(canvas.px))
+        px = canvas.px
+        if len(px) != len(self.px):
+            raise ValueError(f"canvas must be {self.width}x{self.height}")
+        self._show(px.translate(_BITS))
 
     def check_frame(self, rows):
         if len(rows) != self.height or any(len(r) != self.width for r in rows):
@@ -147,35 +220,34 @@ class Board:
     def set_frame(self, rows):
         """rows: list of `height` strings of `width` chars, '1' = white, '0' = black."""
         self.check_frame(rows)
-        self.set_dots((x, y, c == "1") for y, r in enumerate(rows) for x, c in enumerate(r))
+        self._show("".join(rows).encode("ascii", "replace").translate(_ROW))
 
     def fill(self, value):
-        self.set_dots((x, y, value) for y in range(self.height) for x in range(self.width))
+        self._show(bytes([1 if value else 0]) * len(self.px))
 
     def invert_all(self):
-        self.set_dots((x, y, None) for y in range(self.height) for x in range(self.width))
+        self._show(edit=lambda old: old.translate(_FLIP))
+
+    def dots(self):
+        """(version, bytes): one byte per dot (0/1), row-major — a snapshot of the picture."""
+        with self._lock:
+            return self.version, bytes(self.px)
 
     def packed(self):
         """(version, bytes): the dots packed 8 per byte, row-major, most significant bit first."""
         with self._lock:
-            out = bytearray((self.width * self.height + 7) // 8)
-            i = 0
-            for row in self.pixels:
-                for v in row:
-                    if v:
-                        out[i >> 3] |= 0x80 >> (i & 7)
-                    i += 1
-            return self.version, bytes(out)
+            version, bits = self._packed
+            if version != self.version:
+                n = len(self.px)
+                bits = (int(self.px.translate(_CHARS), 2) << (-n % 8)).to_bytes((n + 7) // 8, "big")
+                self._packed = (self.version, bits)
+            return self.version, bits
 
     def rows(self):
         with self._lock:
-            return ["".join("1" if v else "0" for v in row) for row in self.pixels]
-
-    def _mark(self, x, y):
-        i = self._panel_lookup.get((x // self.pw, y // self.ph))
-        if i is not None and i not in self._dirty:
-            self._dirty.add(i)
-            self._since.setdefault(i, time.monotonic())
+            s = self.px.translate(_CHARS).decode()
+        W = self.width
+        return [s[y * W:(y + 1) * W] for y in range(self.height)]
 
     def set_panels(self, panels):
         """Swap in a new panel mapping (same board size) and resend everything."""
@@ -183,50 +255,67 @@ class Board:
         if (self.pw * (max(p.col for p in new) + 1), self.ph * (max(p.row for p in new) + 1)) != (self.width, self.height):
             raise ValueError("the new mapping changes the board size; restart the server to apply it")
         with self._lock:
-            self.panels = new
-            self._panel_lookup = {(p.col, p.row): i for i, p in enumerate(new)}
+            self._map_panels(new)
             self._sent = {}
             self._since = {}
             self._dirty = set(range(len(new)))
-            for s in self._sockets.values():
-                s.close()
-            self._sockets = {}
-        self._wake.set()
+            for bus in self._buses.values():
+                bus.reset = True
+        for bus in list(self._buses.values()):
+            bus.wake.set()
 
     # ---- hardware --------------------------------------------------------
 
-    def _frame_for(self, panel):
-        data = bytearray()
-        flip = panel.rotate == 180
-        for cx in range(self.pw):
-            byte = 0
-            for cy in range(self.ph):
-                sx, sy = (self.pw - 1 - cx, self.ph - 1 - cy) if flip else (cx, cy)
-                on = self.pixels[panel.row * self.ph + sy][panel.col * self.pw + sx]
-                if on != self.invert:
-                    byte |= 1 << cy
-            data.append(byte)
-        return bytes([0x80, CMD_WRITE_REFRESH, panel.address]) + bytes(data) + bytes([0x8F])
+    def _frame_for(self, panel, px, cmd=CMD_WRITE_REFRESH):
+        """The protocol frame for one panel from the picture `px`. Column byte bit k is the dot k rows down: with
+        one byte per dot (0/1), a row of the panel read as a big integer and shifted by k sets exactly that bit."""
+        W, pw, ph = self.width, self.pw, self.ph
+        x0, y0 = panel.col * pw, panel.row * ph
+        acc = 0
+        if panel.rotate == 180:
+            for k in range(ph):
+                s = (y0 + ph - 1 - k) * W + x0
+                acc |= int.from_bytes(px[s:s + pw][::-1], "big") << k
+        else:
+            for k in range(ph):
+                s = (y0 + k) * W + x0
+                acc |= int.from_bytes(px[s:s + pw], "big") << k
+        if self.invert:
+            acc ^= int.from_bytes(bytes([(1 << ph) - 1]) * pw, "big")
+        return bytes([0x80, cmd, panel.address]) + acc.to_bytes(pw, "big") + b"\x8f"
 
-    def _send(self, panel, frame):
-        if self.dry_run:
-            log.debug("dry-run %s:%d addr %d: %s", panel.ip, panel.port, panel.address, frame.hex())
-            return
-        key = (panel.ip, panel.port)
-        sock = self._sockets.get(key)
-        if sock is None:
+    def _connect(self, bus):
+        if bus.reset:
+            bus.reset = False
+            if bus.sock is not None:
+                bus.sock.close()
+                bus.sock = None
+        if bus.sock is None:
             if self.transport == "udp":
                 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-                sock.connect(key)
+                sock.connect(bus.key)
             else:
-                sock = socket.create_connection(key, timeout=3)
+                sock = socket.create_connection(bus.key, timeout=3)
                 sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-            log.info("connected to %s:%d", *key)
-            self._sockets[key] = sock
+            log.info("connected to %s:%d", *bus.key)
+            bus.sock = sock
+        return bus.sock
+
+    def _send(self, bus, frames):
+        """Send a bus its frames: in one write over TCP (one packet), one datagram each over UDP."""
+        if self.dry_run:
+            if log.isEnabledFor(logging.DEBUG):
+                log.debug("dry-run %s:%d: %s", *bus.key, b"".join(frames).hex())
+            return
+        sock = self._connect(bus)
         try:
-            sock.sendall(frame)
+            if self.transport == "udp":
+                for f in frames:
+                    sock.send(f)
+            else:
+                sock.sendall(b"".join(frames))
         except OSError:
-            self._sockets.pop(key, None)
+            bus.sock = None
             sock.close()
             raise
 
@@ -234,7 +323,7 @@ class Board:
         old = self._sent.get(i)
         if old is None:
             return self.pw * self.ph // 2  # state unknown: assume half the discs move
-        return sum(bin(a ^ b).count("1") for a, b in zip(old[3:-1], frame[3:-1]))
+        return (int.from_bytes(old[3:-1], "big") ^ int.from_bytes(frame[3:-1], "big")).bit_count()
 
     def _count_flips(self, i, p, frame):
         old = self._sent.get(i)
@@ -252,51 +341,73 @@ class Board:
                     self.flips[(p.row * self.ph + sy) * self.width + p.col * self.pw + sx] += 1
                     self.flips_changed = True
 
-    def _flush_loop(self):
-        while True:
-            self._wake.wait()
-            self._wake.clear()
-            time.sleep(0.02)  # coalesce rapid updates (e.g. dragging on the web page)
-            with self._lock:
-                dirty, self._dirty = self._dirty, set()
-                order = sorted(dirty, key=lambda i: self._since.get(i, 0))
-                panels = self.panels
-                frames = [(i, self._frame_for(panels[i])) for i in order]
-            rate = float(self.max_flips_per_sec or 0)
+    def _take_budget(self, i, frame):
+        """Quiet hours: spend flip tokens on this frame. Returns 0 if it may go now, else the tokens it needs."""
+        rate = float(self.max_flips_per_sec or 0)
+        with self._token_lock:
             now = time.monotonic()
             if rate > 0:
                 self._tokens = min(rate, self._tokens + (now - self._tokens_at) * rate)
             self._tokens_at = now
-            failed, deferred, needed = set(), set(), 0
-            for i, frame in frames:
+            if rate <= 0:
+                return 0
+            cost = self._flip_cost(i, frame)
+            if self._tokens < min(cost, rate):  # over budget: try again with the newest picture later
+                return min(cost, rate)
+            self._tokens -= cost
+            return 0
+
+    def _bus_loop(self, bus):
+        while True:
+            bus.wake.wait()
+            bus.wake.clear()
+            # coalesce bursts, and don't hand the line more than it can carry (later changes merge into one send)
+            wait = max(bus.last_flush + COALESCE, bus.free_at) - time.monotonic()
+            if wait > 0:
+                time.sleep(wait)
+            with self._lock:
+                mine = [i for i in self._dirty if self._bus_of[i] == bus.key]
+                self._dirty.difference_update(mine)
+                order = sorted(mine, key=lambda i: self._since.get(i, 0))
+                panels = self.panels
+                px = bytes(self.px)
+            if not order:
+                continue
+            bus.last_flush = time.monotonic()
+            cmd = CMD_WRITE if self.sync_refresh else CMD_WRITE_REFRESH
+            batch, deferred, needed = [], [], 0
+            for i in order:
+                frame = self._frame_for(panels[i], px, cmd)
                 if frame == self._sent.get(i):
                     self._since.pop(i, None)
                     continue
-                panel = panels[i]
-                if rate > 0:
-                    cost = self._flip_cost(i, frame)
-                    if self._tokens < min(cost, rate):  # over budget: try again with the newest picture later
-                        deferred.add(i)
-                        needed = max(needed, min(cost, rate))
-                        continue
-                    self._tokens -= cost
-                if any((panels[j].ip, panels[j].port) == (panel.ip, panel.port) for j in failed):
-                    failed.add(i)  # bus already unreachable this round; don't wait on another timeout
+                short = self._take_budget(i, frame)
+                if short:
+                    deferred.append(i)
+                    needed = max(needed, short)
                     continue
+                batch.append((i, frame))
+            if batch:
+                frames = [f for _, f in batch] + ([REFRESH] if self.sync_refresh else [])
                 try:
-                    self._send(panel, frame)
+                    self._send(bus, frames)
                 except OSError as e:
-                    log.warning("send to %s:%d (addr %d) failed: %s", panel.ip, panel.port, panel.address, e)
-                    failed.add(i)
+                    log.warning("send to %s:%d failed: %s", *bus.key, e)
+                    with self._lock:
+                        self._dirty.update(i for i, _ in batch)
+                        self._dirty.update(deferred)
+                    time.sleep(RETRY)  # only this bus waits; the others carry on
+                    bus.wake.set()
                     continue
-                self._count_flips(i, panel, frame)
-                self._since.pop(i, None)
-            if failed or deferred:
+                if self.baud:
+                    # 10 bits per byte on the wire (8N1)
+                    bus.free_at = max(time.monotonic(), bus.free_at) + sum(map(len, frames)) * 10 / self.baud
+                for i, frame in batch:
+                    self._count_flips(i, panels[i], frame)
+                    self._since.pop(i, None)
+            if deferred:
                 with self._lock:
-                    self._dirty |= failed | deferred
-            if failed:
-                time.sleep(2)  # retry later
-                self._wake.set()
-            elif deferred:
+                    self._dirty.update(deferred)
+                rate = float(self.max_flips_per_sec or 1)
                 time.sleep(min(1.0, max(0.05, (needed - self._tokens) / rate)))
-                self._wake.set()
+                bus.wake.set()
