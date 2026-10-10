@@ -1,9 +1,10 @@
-import { $, api, board, bus, live, loadCatalog, loadDrawings, loadFonts, refreshScenes, safe, startPolling, toast, wsSend } from "./common.js";
+import { $, api, board, bus, catalog, live, loadCatalog, loadDrawings, loadFonts, refreshScenes, safe, startPolling, toast, wsSend } from "./common.js";
 import { setActive as setDrawActive } from "./draw.js";
 import "./media.js";
 import { loadGalleries } from "./slideshows.js";
 import { renderAppList } from "./apps.js";
 import { loadPlaylists } from "./playlists.js";
+import { loadAutomations } from "./automations.js";
 import { loadCompositions, renderGallery } from "./layers.js";
 import "./scenes.js";
 import { loadSettings } from "./settings.js";
@@ -24,6 +25,7 @@ function showTab(name) {
   document.body.dataset.tab = name;
   if (location.hash !== "#" + name) history.replaceState(null, "", "#" + name);
   if (name === "settings") loadSettings().catch(e => toast(e.message, true));
+  if (name === "playlists" && catalog.apps.length) loadAutomations().catch(e => toast(e.message, true));
 }
 $("tabs").addEventListener("click", e => { const b = e.target.closest("button"); if (b) showTab(b.dataset.tab); });
 bus.addEventListener("tab", e => showTab(e.detail));
@@ -35,24 +37,25 @@ function renderMode() {
   const what = r.description ? `<b>${escapeHtml(r.description)}</b>` : "";
   let text;
   if (r.notification) text = `Notification: ${what}`;
-  else if (r.mode === "manual") text = "<b>Manual</b> — drawing mode" + (r.schedule_target ? " (schedule paused)" : "");
+  else if (r.mode === "manual") text = "<b>Manual</b>: drawing mode" + (r.schedule_target ? " (schedule paused)" : "");
   else if (r.mode === "app") text = `Running ${what}`;
   else if (r.mode === "playlist") text = `Playlist <b>${escapeHtml(r.playlist)}</b> → ${what}`;
   else text = r.playlist === "__off__" ? "Schedule: <b>off</b>" : r.playlist ? `Schedule: <b>${escapeHtml(r.playlist)}</b> → ${what}` : "Schedule: nothing scheduled";
-  if (r.interactive) text += ` · <a href="/play" target="_blank">controller</a>`;
+  if (r.interactive) text += ` · <a href="/play" target="_blank">game controller</a>`;
   const dot = live() ? `<span class="dot live" title="Live updates over WebSocket"></span>` : `<span class="dot poll" title="WebSocket down; polling instead"></span>`;
   $("mode").innerHTML = dot + `<span>${text}</span>`;
-  $("deviceState").textContent = live() ? "live" : "polling";
-  $("sideFoot").textContent = live() ? "connected · live" : "reconnecting…";
+  $("deviceState").textContent = live() ? "Live" : "Polling";
+  $("quietState").hidden = !r.quiet_hours;
+  $("sideFoot").textContent = live() ? "Connected · live" : "Reconnecting…";
   $("btnNext").disabled = !(r.mode === "playlist" || r.mode === "schedule");
   $("btnStop").disabled = r.mode === "manual" && !r.notification;
 }
 const escapeHtml = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 bus.addEventListener("state", renderMode);
 bus.addEventListener("offline", () => {
-  $("mode").innerHTML = `<span class="dot off"></span><span>Server unreachable — retrying…</span>`;
-  $("deviceState").textContent = "offline";
-  $("sideFoot").textContent = "offline";
+  $("mode").innerHTML = `<span class="dot off"></span><span>Can't reach the server. Retrying…</span>`;
+  $("deviceState").textContent = "Offline";
+  $("sideFoot").textContent = "Offline";
 });
 bus.addEventListener("live", renderMode);
 bus.addEventListener("reconnecting", renderMode);
@@ -84,7 +87,11 @@ window.addEventListener("keyup", e => gameKey(e, "up"), true);
 function applyTheme(choice) {
   if (choice === "light" || choice === "dark") document.documentElement.dataset.theme = choice;
   else delete document.documentElement.dataset.theme;
-  document.querySelectorAll("[data-theme-choice]").forEach(b => b.classList.toggle("active", b.dataset.themeChoice === (choice || "auto")));
+  document.querySelectorAll("[data-theme-choice]").forEach(b => {
+    const on = b.dataset.themeChoice === (choice || "auto");
+    b.classList.toggle("active", on);
+    b.setAttribute("aria-pressed", String(on));
+  });
 }
 let savedTheme = "auto";
 try { savedTheme = localStorage.getItem("theme") || "auto"; } catch {}
@@ -108,6 +115,7 @@ document.querySelectorAll("[data-theme-choice]").forEach(b => b.addEventListener
     renderGallery();
     renderAppList();
     await loadPlaylists();
+    await loadAutomations();
   } catch (e) {
     toast(e.message, true);
   }

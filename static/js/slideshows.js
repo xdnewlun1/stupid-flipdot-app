@@ -15,7 +15,7 @@ export async function loadGalleries() {
 function renderSelect() {
   $("ssSelect").replaceChildren(...(galleriesCache.list.length
     ? galleriesCache.list.map(g => el("option", { value: g.id, selected: g.id === current }, `${g.name} (${g.count})`))
-    : [el("option", { value: "" }, "No slideshows yet — press New")]));
+    : [el("option", { value: "" }, "No slideshows yet. Press New.")]));
   $("ssBody").hidden = !current;
   if (!$("ssTransition").options.length)
     $("ssTransition").replaceChildren(...catalog.transitions.map(t => el("option", { value: t }, t)));
@@ -42,10 +42,11 @@ function render() {
   $("ssThreshold").value = st.threshold;
   $("ssThVal").textContent = st.threshold;
   $("ssInvert").checked = !!st.invert;
+  renderFx(st);
   const total = gallery.items.reduce((t, i) => t + (i.kind === "gif" ? (i.length_ms / 1000) * (i.loops || st.gif_loops) : (i.seconds || st.image_seconds)), 0);
   $("ssStatus").textContent = gallery.items.length
     ? `${gallery.items.length} item${gallery.items.length === 1 ? "" : "s"} · about ${Math.round(total)} s per cycle`
-    : "No images yet.";
+    : "No images yet. Drop some above.";
   $("ssItems").replaceChildren(...gallery.items.map((item, i) => itemCard(item, i)));
   loadThumbs();
 }
@@ -149,6 +150,7 @@ async function upload(files) {
 
 const drop = $("ssDrop");
 drop.onclick = () => $("ssFile").click();
+drop.onkeydown = e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); $("ssFile").click(); } };
 $("ssFile").onchange = safe(async e => { await upload(e.target.files); e.target.value = ""; });
 drop.addEventListener("dragover", e => { e.preventDefault(); drop.classList.add("over"); });
 drop.addEventListener("dragleave", () => drop.classList.remove("over"));
@@ -209,6 +211,43 @@ $("ssDither").onchange = safe(() => saveSettings({ dither: $("ssDither").value =
 $("ssThreshold").oninput = () => ($("ssThVal").textContent = $("ssThreshold").value);
 $("ssThreshold").onchange = safe(() => saveSettings({ threshold: num("ssThreshold") }));
 $("ssInvert").onchange = safe(() => saveSettings({ invert: $("ssInvert").checked }));
+
+// ---- random effects ----
+const FX = [["invert", "Invert"], ["flash", "Flash"], ["glitch", "Glitch"], ["mirror", "Mirror"], ["kaleidoscope", "Kaleidoscope"],
+  ["wave", "Wave"], ["scanlines", "Scanlines"], ["pixelate", "Pixelate"], ["outline", "Outline"], ["static", "Static"],
+  ["life", "Game of Life"], ["melt", "Melt"]];
+const pct = v => (+v ? `${v}%` : "Off");
+
+function renderFx(st) {
+  const chosen = new Set(st.fx_effects ?? FX.map(f => f[0]));
+  $("ssFxChance").value = st.fx_chance ?? 0;
+  $("ssFxChanceVal").textContent = pct(st.fx_chance ?? 0);
+  $("ssFxEffects").replaceChildren(...FX.map(([id, label]) => el("button", {
+    "aria-pressed": String(chosen.has(id)), class: chosen.has(id) ? "active" : "",
+    onclick: safe(async () => {
+      const next = FX.map(f => f[0]).filter(f => (f === id) !== chosen.has(f));
+      if (!next.length) return toast("Keep at least one effect selected", true);
+      await saveSettings({ fx_effects: next });
+    }),
+  }, label)));
+  const mode = st.fx_mode || "burst";
+  document.querySelectorAll("#ssFxMode [data-fx-mode]").forEach(b => {
+    b.classList.toggle("active", b.dataset.fxMode === mode);
+    b.setAttribute("aria-pressed", String(b.dataset.fxMode === mode));
+  });
+  $("ssFxSeconds").value = st.fx_seconds ?? 3;
+  $("ssFxSeconds").disabled = mode !== "burst";
+  $("ssFxSecondsNote").textContent = mode === "burst" ? "seconds, at a random moment in the item" : "Not used: the effect lasts the whole item.";
+  $("ssFxStrength").value = st.fx_strength ?? 50;
+  $("ssFxStrengthVal").textContent = `${st.fx_strength ?? 50}%`;
+}
+
+$("ssFxChance").oninput = () => ($("ssFxChanceVal").textContent = pct($("ssFxChance").value));
+$("ssFxChance").onchange = safe(() => saveSettings({ fx_chance: Math.max(0, Math.min(100, num("ssFxChance"))) }));
+$("ssFxStrength").oninput = () => ($("ssFxStrengthVal").textContent = `${$("ssFxStrength").value}%`);
+$("ssFxStrength").onchange = safe(() => saveSettings({ fx_strength: Math.max(0, Math.min(100, num("ssFxStrength"))) }));
+$("ssFxSeconds").onchange = safe(() => saveSettings({ fx_seconds: Math.max(0.3, Math.min(30, num("ssFxSeconds") || 3)) }));
+document.querySelectorAll("#ssFxMode [data-fx-mode]").forEach(b => { b.onclick = safe(() => saveSettings({ fx_mode: b.dataset.fxMode })); });
 
 // highlight the item that's on the board
 let lastDesc = null;

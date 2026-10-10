@@ -2,48 +2,70 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<title>Flipdot Controller</title>
+<meta name="color-scheme" content="dark light">
+<title>Game controller</title>
+<link rel="stylesheet" href="/static/style.css">
+<script>try { const t = localStorage.getItem("theme"); if (t === "light" || t === "dark") document.documentElement.dataset.theme = t; } catch {}</script>
 <style>
-  :root { --bg: #16181c; --panel: #23262c; --text: #e6e6e6; --muted: #8a8f98; --accent: #f2c94c; }
-  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font: 15px system-ui, sans-serif; overscroll-behavior: none; }
-  body { display: flex; flex-direction: column; padding: 12px 16px calc(12px + env(safe-area-inset-bottom)); gap: 12px; user-select: none; -webkit-user-select: none; }
-  .top { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
-  .top a { color: var(--muted); margin-left: auto; font-size: 13px; }
-  button { background: var(--panel); color: var(--text); border: 0; border-radius: 8px; padding: 9px 12px; font: inherit; touch-action: manipulation; }
-  button.active { background: var(--accent); color: #111; }
-  .wrap { background: #000; border-radius: 8px; padding: 6px; }
-  canvas { width: 100%; display: block; }
-  #status { color: var(--muted); font-size: 13px; min-height: 18px; text-align: center; }
-  .pad { flex: 1; display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 220px; }
-  .dpad { display: grid; grid-template-columns: repeat(3, 72px); grid-template-rows: repeat(3, 72px); gap: 6px; }
-  .dpad button, .ab button { font-size: 26px; padding: 0; touch-action: none; }
-  .dpad button:active, .ab button:active, .dpad button.down, .ab button.down { background: var(--accent); color: #111; }
-  .ab { display: flex; flex-direction: column; gap: 14px; align-items: center; }
-  .ab button { width: 84px; height: 84px; border-radius: 50%; font-weight: 700; }
-  .ab small { color: var(--muted); font-size: 11px; display: block; }
+  /* phone game pad: same tokens and controls as the main app, big thumb targets, no text selection while mashing buttons */
+  * { -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; overscroll-behavior: none; }
+  body { display: flex; flex-direction: column; gap: var(--s3); max-width: 560px; margin: 0 auto;
+         padding: var(--s3) var(--s4) calc(var(--s4) + env(safe-area-inset-bottom)); user-select: none; -webkit-user-select: none; }
+  .head { display: flex; align-items: center; gap: var(--s3); }
+  .head h1 { font-size: var(--fs-lg); font-weight: 600; flex: 1; }
+  .head a { font-size: var(--fs-sm); color: var(--text-2); }
+  .pick { display: flex; flex-wrap: wrap; gap: var(--s2); align-items: center; }
+  .pick .group button { min-height: 40px; touch-action: manipulation; }
+  .group button.active { background: var(--surface); }
+  #status { color: var(--text-2); font-size: var(--fs-sm); min-height: 20px; text-align: center; margin: 0; }
+  .pad { flex: 1; display: flex; align-items: center; justify-content: space-between; gap: var(--s4); min-height: 228px; }
+  .dpad { display: grid; grid-template-columns: repeat(3, 72px); grid-template-rows: repeat(3, 72px); gap: var(--s2); }
+  .pad button { height: auto; padding: 0; touch-action: none; background: var(--surface-2); border-color: var(--line-strong); border-radius: var(--r3); }
+  .pad .i { width: 28px; height: 28px; stroke-width: 2.25; }
+  .pad button:active, .pad button.down { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+  .ab { display: flex; flex-direction: column; gap: var(--s4); align-items: center; }
+  .ab button { width: 84px; height: 84px; border-radius: 50%; flex-direction: column; gap: 2px; font: 700 22px/1 var(--font); }
+  .ab small { font: 500 var(--fs-xs)/1 var(--font); color: inherit; opacity: 0.8; min-height: 12px; }
+  @media (max-width: 360px) { .dpad { grid-template-columns: repeat(3, 60px); grid-template-rows: repeat(3, 60px); } .ab button { width: 72px; height: 72px; } }
 </style>
 </head>
 <body>
-  <div class="top">
-    <button data-game="snake">Snake</button>
-    <button data-game="tetris">Tetris</button>
-    <button data-game="pong">Pong</button>
-    <button data-game="blackjack">Blackjack</button>
-    <span style="width:8px"></span>
-    <button data-player="1" class="active">P1</button>
-    <button data-player="2">P2</button>
-    <a href="/">Back to controls</a>
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <symbol id="i-up" viewBox="0 0 24 24"><path d="m6 15 6-6 6 6"/></symbol>
+    <symbol id="i-down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+    <symbol id="i-left" viewBox="0 0 24 24"><path d="m15 6-6 6 6 6"/></symbol>
+    <symbol id="i-right" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></symbol>
+  </svg>
+  <header class="head">
+    <h1>Game controller</h1>
+    <a href="/">Back to the board</a>
+  </header>
+  <div class="pick">
+    <div class="group" role="group" aria-label="Game">
+      <button data-game="snake">Snake</button>
+      <button data-game="tetris">Tetris</button>
+      <button data-game="pong">Pong</button>
+      <button data-game="blackjack">Blackjack</button>
+      <button data-game="breakout">Breakout</button>
+      <button data-game="invaders">Invaders</button>
+      <button data-game="tron">Tron</button>
+      <button data-game="flappy">Flappy</button>
+    </div>
+    <div class="group" role="group" aria-label="Player">
+      <button data-player="1" class="active" aria-pressed="true">Player 1</button>
+      <button data-player="2" aria-pressed="false">Player 2</button>
+    </div>
   </div>
-  <div class="wrap"><canvas id="board"></canvas></div>
-  <div id="status"></div>
+  <div class="wrap"><canvas id="board" aria-label="The board"></canvas></div>
+  <p id="status" role="status" aria-live="polite">Connecting…</p>
   <div class="pad">
     <div class="dpad">
-      <span></span><button data-key="up">▲</button><span></span>
-      <button data-key="left">◀</button><span></span><button data-key="right">▶</button>
-      <span></span><button data-key="down">▼</button><span></span>
+      <span></span><button data-key="up" aria-label="Up"><svg class="i" aria-hidden="true"><use href="#i-up"/></svg></button><span></span>
+      <button data-key="left" aria-label="Left"><svg class="i" aria-hidden="true"><use href="#i-left"/></svg></button><span></span><button data-key="right" aria-label="Right"><svg class="i" aria-hidden="true"><use href="#i-right"/></svg></button>
+      <span></span><button data-key="down" aria-label="Down"><svg class="i" aria-hidden="true"><use href="#i-down"/></svg></button><span></span>
     </div>
     <div class="ab">
       <button data-key="a">A<small id="hintA"></small></button>
@@ -65,7 +87,8 @@ function drawBits(W, H, isOn) {
   for (let y = 0, i = 0; y < H; y++) for (let x = 0; x < W; x++, i++) if (isOn(x, y, i)) ctx.fillRect(x * cell + 1, y * cell + 1, cell - 2, cell - 2);
 }
 
-const HINTS = { tetris: ["rotate", "drop"], blackjack: ["deal / hit", "stand"], snake: ["", ""], pong: ["", ""] };
+const HINTS = { tetris: ["rotate", "drop"], blackjack: ["deal / hit", "stand"], snake: ["", ""], pong: ["", ""],
+  breakout: ["launch", "launch"], invaders: ["fire", "fire"], tron: ["", ""], flappy: ["flap", "flap"] };
 function showStatus() {
   if (!runner) return;
   const game = runner.interactive ? (runner.description || "").toLowerCase() : "";
@@ -73,8 +96,12 @@ function showStatus() {
   const [ha, hb] = HINTS[key] || ["", ""];
   document.getElementById("hintA").textContent = ha;
   document.getElementById("hintB").textContent = hb;
-  statusEl.textContent = (runner.interactive ? runner.description : "No game running — pick one above") + (wsOpen ? "" : " (reconnecting…)");
-  document.querySelectorAll("[data-game]").forEach(b => b.classList.toggle("active", runner.interactive && runner.app === b.dataset.game));
+  statusEl.textContent = (runner.interactive ? runner.description : "No game running. Pick one above.") + (wsOpen ? "" : " (reconnecting…)");
+  document.querySelectorAll("[data-game]").forEach(b => {
+    const on = !!runner.interactive && runner.app === b.dataset.game;
+    b.classList.toggle("active", on);
+    b.setAttribute("aria-pressed", String(on));
+  });
 }
 
 // Live updates over a WebSocket; plain polling while it's down.
@@ -103,7 +130,7 @@ async function poll() {
       runner = s.runner; failures = 0;
       drawBits(s.width, s.height, (x, y) => s.rows[y][x] === "1");
       showStatus();
-    } catch { if (++failures >= 3) statusEl.textContent = "Can't reach the board — retrying…"; }
+    } catch { if (++failures >= 3) statusEl.textContent = "Can't reach the board. Retrying…"; }
   }
   setTimeout(poll, wsOpen ? 1000 : 400);
 }
@@ -123,12 +150,15 @@ document.querySelectorAll("[data-key]").forEach(b => {
   b.addEventListener("pointercancel", up);
   b.addEventListener("contextmenu", e => e.preventDefault());
 });
-document.querySelectorAll("[data-game]").forEach(b => b.onclick = () => fetch("/api/run", {
-  method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ app: b.dataset.game }),
-}));
+document.querySelectorAll("[data-game]").forEach(b => b.onclick = async () => {
+  try {
+    const r = await fetch("/api/run", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ app: b.dataset.game }) });
+    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || `error ${r.status}`);
+  } catch (e) { statusEl.textContent = `Couldn't start ${b.textContent}: ${e.message}`; }
+});
 document.querySelectorAll("[data-player]").forEach(b => b.onclick = () => {
   player = +b.dataset.player;
-  document.querySelectorAll("[data-player]").forEach(x => x.classList.toggle("active", x === b));
+  document.querySelectorAll("[data-player]").forEach(x => { x.classList.toggle("active", x === b); x.setAttribute("aria-pressed", String(x === b)); });
 });
 
 const KEYS = { ArrowUp: "up", ArrowDown: "down", ArrowLeft: "left", ArrowRight: "right", w: "up", s: "down", a: "left", d: "right", " ": "a", Enter: "b" };

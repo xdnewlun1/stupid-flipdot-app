@@ -19,6 +19,7 @@ function render() {
         await api("/api/layers/add", { layer: { app: "scene", params: { scene: s.id } }, position: "top" });
         toast(`Added "${s.name}" as a layer`);
       }) }, "+ Layer"),
+      el("button", { title: "Open in the Draw tab's animation editor", onclick: () => bus.dispatchEvent(new CustomEvent("editScene", { detail: s.id })) }, "Edit"),
       el("button", { onclick: safe(async () => {
         const full = await api(`/api/scenes/${s.id}`);
         const c = document.createElement("canvas");

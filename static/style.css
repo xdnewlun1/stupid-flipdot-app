@@ -1,4 +1,4 @@
-/* Flipdot Control — design system
+/* Flipdot Control: design system
    A calm instrument panel: neutral surfaces, one warm accent (a lit disc) used sparingly,
    hierarchy from type and spacing rather than color. 4px spacing scale; light + dark themes
    follow the OS; visible focus rings; 44px touch targets on touch screens. */
@@ -23,11 +23,12 @@
   --line-strong: #3a3d43;
   --text: #ececee;
   --text-2: #a4a7ae;
-  --text-3: #74787f;
+  --text-3: #8f939a;
+  --field-line: #70747c;        /* input/switch outlines: 3:1 against every surface (WCAG 1.4.11) */
   --accent: #e9b949;
   --accent-ink: #1a1405;
   --accent-soft: rgba(233, 185, 73, 0.14);
-  --focus: rgba(233, 185, 73, 0.6);
+  --focus: #e9b949;
   --ok: #4fbf7a;
   --warn: #e9b949;
   --danger: #ef6b5e;
@@ -47,12 +48,13 @@
     --line-strong: #cdcdc8;
     --text: #18181b;
     --text-2: #54565d;
-    --text-3: #85888f;
-    --accent: #a8770a;
+    --text-3: #686b72;
+    --field-line: #7f838a;
+    --accent: #8a6104;
     --accent-ink: #ffffff;
-    --accent-soft: rgba(168, 119, 10, 0.11);
-    --focus: rgba(168, 119, 10, 0.5);
-    --ok: #2f9a5c;
+    --accent-soft: rgba(138, 97, 4, 0.1);
+    --focus: #8a6104;
+    --ok: #23804a;
     --danger: #c9392b;
     --danger-soft: rgba(201, 57, 43, 0.08);
     --shadow: 0 1px 2px rgba(0, 0, 0, 0.04), 0 4px 16px rgba(0, 0, 0, 0.04);
@@ -69,12 +71,13 @@
     --line-strong: #cdcdc8;
     --text: #18181b;
     --text-2: #54565d;
-    --text-3: #85888f;
-    --accent: #a8770a;
+    --text-3: #686b72;
+    --field-line: #7f838a;
+    --accent: #8a6104;
     --accent-ink: #ffffff;
-    --accent-soft: rgba(168, 119, 10, 0.11);
-    --focus: rgba(168, 119, 10, 0.5);
-    --ok: #2f9a5c;
+    --accent-soft: rgba(138, 97, 4, 0.1);
+    --focus: #8a6104;
+    --ok: #23804a;
     --danger: #c9392b;
     --danger-soft: rgba(201, 57, 43, 0.08);
     --shadow: 0 1px 2px rgba(0, 0, 0, 0.04), 0 4px 16px rgba(0, 0, 0, 0.04);
@@ -160,7 +163,7 @@ main.main { min-width: 0; width: 100%; max-width: 1180px; padding: 0 var(--s6) v
 .boardWrap { box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.04), inset 0 12px 30px rgba(0, 0, 0, 0.6); }
 canvas { width: 100%; display: block; }
 #board { touch-action: none; }
-.device-meta { display: flex; gap: var(--s4); padding: var(--s2) var(--s1) 0; font: 500 11px/1 var(--mono); color: #6e727a; letter-spacing: 0.04em; text-transform: uppercase; }
+.device-meta { display: flex; gap: var(--s4); padding: var(--s2) var(--s1) 0; font: 500 11px/1 var(--mono); color: #8b8f97; letter-spacing: 0.04em; text-transform: uppercase; }
 .device-meta span:last-child { margin-left: auto; }
 /* the board is the hero while drawing; elsewhere it's a compact live preview */
 body:not([data-tab="draw"]) .device { max-width: 600px; }
@@ -208,12 +211,13 @@ button.ghost:hover { background: var(--surface-3); color: var(--text); }
 /* ---------- form controls ---------- */
 input[type=text], input[type=password], input[type=number], input[type=time], input[type=datetime-local], select, textarea {
   height: var(--ctl-h); padding: 0 var(--s3); min-width: 0;
-  background: var(--surface); color: var(--text); border: 1px solid var(--line-strong); border-radius: var(--r2);
+  background: var(--surface); color: var(--text); border: 1px solid var(--field-line); border-radius: var(--r2);
   font: 400 var(--fs-sm)/1.2 var(--font); transition: border-color 120ms, box-shadow 120ms;
 }
 textarea { height: auto; min-height: 72px; padding: var(--s2) var(--s3); width: 100%; resize: vertical; line-height: 1.5; }
 input:hover, select:hover, textarea:hover { border-color: var(--text-3); }
-input:focus, select:focus, textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+/* text-like fields swap the outline for an accent border + halo; switches and sliders keep the :focus-visible outline */
+input:not([type=checkbox]):not([type=range]):focus, select:focus, textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
 input::placeholder, textarea::placeholder { color: var(--text-3); }
 input[type=number] { font-variant-numeric: tabular-nums; }
 select {
@@ -227,7 +231,7 @@ optgroup { font-weight: 600; }
 input[type=checkbox] {
   appearance: none; -webkit-appearance: none; flex: none; cursor: pointer; margin: 0; justify-self: start;
   width: 32px; height: 18px; border-radius: 999px; position: relative; vertical-align: middle;
-  background: var(--surface-3); border: 1px solid var(--line-strong); transition: background-color 150ms, border-color 150ms;
+  background: var(--surface-3); border: 1px solid var(--field-line); transition: background-color 150ms, border-color 150ms;
 }
 input[type=checkbox]::after {
   content: ""; position: absolute; top: 2px; left: 2px; width: 12px; height: 12px; border-radius: 50%;
@@ -339,7 +343,68 @@ input[type=range]::-moz-range-thumb { width: 12px; height: 12px; border-radius: 
 }
 @media (pointer: coarse) {
   :root { --ctl-h: 44px; }
-  .group button, .scene .row button, .ssItem .ctl button, .days button { min-height: 40px; }
-  .ssItem .ctl button { width: 40px; }
+  .group button, .scene .row button, .ssItem .ctl button, .days button, .theme button { min-height: 44px; }
+  .ssItem .ctl button { width: 44px; }
+  .ssItem .ctl input { height: 44px; }
+  input[type=checkbox] { width: 44px; height: 26px; }
+  input[type=checkbox]::after { width: 20px; height: 20px; }
+  input[type=checkbox]:checked::after { transform: translateX(18px); }
 }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+
+/* board care: quiet hours badge, wear heatmap, panel table */
+.device-meta .quiet { color: var(--warn); }
+.wearLegend { display: flex; align-items: center; gap: var(--s2); margin-top: var(--s2); font: 500 var(--fs-xs)/1 var(--mono); color: var(--text-2); }
+.wearLegend .ramp { width: 120px; height: 8px; border-radius: 999px; background: linear-gradient(90deg, #1a1408, #e9b949 60%, #fff3cf); }
+.wearLegend #wearHover { margin-left: auto; }
+#wearSummary { margin-top: var(--s2); }
+.tableWrap { position: relative; overflow-x: auto; margin-top: var(--s3); }
+.panelTable { border-collapse: collapse; font-size: var(--fs-sm); }
+.panelTable th { text-align: left; font-weight: 500; color: var(--text-3); padding: var(--s1) var(--s2); }
+.panelTable td { padding: 2px var(--s1); }
+.panelTable input[type=number] { width: 84px; }
+.panelTable input[type=text] { width: 140px; }
+.panelTable tr.current td:first-child { color: var(--accent); font-weight: 600; }
+
+/* draw tab: animation frame strip, AI prompt */
+.animPanel { border-top: 1px solid var(--line); padding-top: var(--s3); margin-bottom: var(--s3); }
+.animStrip { display: flex; gap: var(--s2); overflow-x: auto; padding: 2px 2px var(--s2); margin-bottom: var(--s3); }
+.animStrip .fr { flex: none; display: flex; flex-direction: column; gap: 2px; padding: var(--s1); border: 1px solid var(--line); border-radius: var(--r2);
+                 background: var(--surface-2); color: var(--text-2); font: 500 var(--fs-xs)/1.2 var(--mono); cursor: pointer; height: auto; }
+.animStrip .fr:hover { border-color: var(--line-strong); }
+.animStrip .fr.active { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); color: var(--text); }
+.animStrip .fr canvas { width: 126px; height: 63px; border-radius: var(--r1); background: var(--board-bg); }
+.aiPrompt { flex: 1; min-width: 200px; }
+
+/* settings: one group at a time, picked from a sub-navigation row */
+.subnav { display: flex; flex-wrap: wrap; gap: var(--s1); padding-bottom: var(--s4); margin-bottom: var(--s5); border-bottom: 1px solid var(--line); }
+.subnav button { background: transparent; border-color: transparent; color: var(--text-2); }
+.subnav button:hover { background: var(--surface-2); color: var(--text); }
+.subnav button[aria-pressed=true] { background: var(--surface-3); border-color: var(--line-strong); color: var(--text); }
+/* waiting guest messages: a real count that needs attention, so it gets the accent */
+.count { display: inline-grid; place-items: center; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px;
+         background: var(--accent); color: var(--accent-ink); font: 600 11px/1 var(--font); font-variant-numeric: tabular-nums; }
+.setGroup > h2:first-child { margin-top: 0; }
+.pickList { display: flex; flex-wrap: wrap; gap: var(--s1); }
+.pickList:not(:empty) { margin-top: var(--s2); }
+.fontWrap { max-width: 504px; }
+.grow { flex: 1; min-width: 0; }
+.row.tight.wrapRow { flex-wrap: wrap; }
+.breakAll { word-break: break-all; }
+.capped { max-width: 688px; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+/* multi-select chips (slideshow effects): a filled box marks "on", not just the color */
+.chips { display: flex; flex-wrap: wrap; gap: var(--s1); }
+.chips button { height: 28px; padding: 0 var(--s2); gap: var(--s2); background: var(--surface); color: var(--text-2); }
+.chips button::before { content: ""; width: 10px; height: 10px; border-radius: 3px; border: 1.5px solid var(--field-line); flex: none; }
+.chips button[aria-pressed=true] { color: var(--text); border-color: var(--text-3); }
+.chips button[aria-pressed=true]::before { background: var(--accent); border-color: var(--accent); }
+.rangeVal { min-width: 3.5em; text-align: right; color: var(--text-2); font-size: var(--fs-sm); font-variant-numeric: tabular-nums; }
+.row.tight input[type=range] { flex: 1; min-width: 0; }
+input:disabled { opacity: 0.5; cursor: not-allowed; }
+@media (pointer: coarse) { .chips button { height: 44px; } }
+
+.wrapRow .grow { min-width: 140px; }
+button[aria-expanded=true] { background: var(--surface-3); border-color: var(--text-3); }
+pre, .tableWrap, .animStrip { scrollbar-color: var(--line-strong) transparent; }

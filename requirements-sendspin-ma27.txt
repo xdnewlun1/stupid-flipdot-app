@@ -1,0 +1,4 @@
+# Optional: Sendspin link for Music Assistant 2.7.x, which pins aiosendspin 2.0.0 (the alpha protocol,
+# no encryption). Install this instead of requirements-sendspin.txt; sendspin_legacy.py is used then.
+# Music Assistant 2.8+ needs requirements-sendspin.txt.
+aiosendspin==2.0.0

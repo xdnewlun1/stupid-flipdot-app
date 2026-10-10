@@ -10,6 +10,7 @@ import logging
 import socket
 import threading
 import time
+from array import array
 from dataclasses import dataclass
 
 log = logging.getLogger("flipdot")
@@ -24,6 +25,13 @@ class Panel:
     ip: str
     port: int
     address: int
+    rotate: int = 0  # 0, or 180 for a panel mounted upside down
+
+
+def parse_panels(panels):
+    return [Panel(int(p["column"]) - 1, int(p["row"]) - 1, str(p["ip"]), int(p["port"]), int(p["address"]),
+                  int(p.get("rotate") or 0) % 360)
+            for p in panels]
 
 
 def load_config(path):
@@ -71,14 +79,21 @@ class Board:
         self.invert = bool(config.get("invert", False))
         self.dry_run = dry_run
 
-        self.panels = [
-            Panel(int(p["column"]) - 1, int(p["row"]) - 1, str(p["ip"]), int(p["port"]), int(p["address"]))
-            for p in config["panels"]
-        ]
+        self.panels = parse_panels(config["panels"])
         self.width = self.pw * (max(p.col for p in self.panels) + 1)
         self.height = self.ph * (max(p.row for p in self.panels) + 1)
 
         self._panel_lookup = {(p.col, p.row): i for i, p in enumerate(self.panels)}
+        # noise budget: dots allowed to flip per second (0 = unlimited); changes over budget wait
+        # and are coalesced, so the board always ends up on the latest picture
+        self.max_flips_per_sec = 0
+        self._tokens = 0.0
+        self._tokens_at = time.monotonic()
+        self._sent = {}  # panel index -> last frame sent (to count real flips)
+        self._since = {}  # panel index -> when it first went dirty (oldest gets sent first)
+        # flips per disc (board coordinates), counted on the send path, dry-run included
+        self.flips = array("I", bytes(4 * self.width * self.height))
+        self.flips_changed = False
         # pixels[y][x]: True = white, False = black
         self.pixels = [[False] * self.width for _ in range(self.height)]
         self.version = 0
@@ -158,17 +173,36 @@ class Board:
 
     def _mark(self, x, y):
         i = self._panel_lookup.get((x // self.pw, y // self.ph))
-        if i is not None:
+        if i is not None and i not in self._dirty:
             self._dirty.add(i)
+            self._since.setdefault(i, time.monotonic())
+
+    def set_panels(self, panels):
+        """Swap in a new panel mapping (same board size) and resend everything."""
+        new = parse_panels(panels)
+        if (self.pw * (max(p.col for p in new) + 1), self.ph * (max(p.row for p in new) + 1)) != (self.width, self.height):
+            raise ValueError("the new mapping changes the board size; restart the server to apply it")
+        with self._lock:
+            self.panels = new
+            self._panel_lookup = {(p.col, p.row): i for i, p in enumerate(new)}
+            self._sent = {}
+            self._since = {}
+            self._dirty = set(range(len(new)))
+            for s in self._sockets.values():
+                s.close()
+            self._sockets = {}
+        self._wake.set()
 
     # ---- hardware --------------------------------------------------------
 
     def _frame_for(self, panel):
         data = bytearray()
+        flip = panel.rotate == 180
         for cx in range(self.pw):
             byte = 0
             for cy in range(self.ph):
-                on = self.pixels[panel.row * self.ph + cy][panel.col * self.pw + cx]
+                sx, sy = (self.pw - 1 - cx, self.ph - 1 - cy) if flip else (cx, cy)
+                on = self.pixels[panel.row * self.ph + sy][panel.col * self.pw + sx]
                 if on != self.invert:
                     byte |= 1 << cy
             data.append(byte)
@@ -196,6 +230,28 @@ class Board:
             sock.close()
             raise
 
+    def _flip_cost(self, i, frame):
+        old = self._sent.get(i)
+        if old is None:
+            return self.pw * self.ph // 2  # state unknown: assume half the discs move
+        return sum(bin(a ^ b).count("1") for a, b in zip(old[3:-1], frame[3:-1]))
+
+    def _count_flips(self, i, p, frame):
+        old = self._sent.get(i)
+        self._sent[i] = frame
+        if old is None:
+            return
+        flip = p.rotate == 180
+        for cx in range(self.pw):
+            d = old[3 + cx] ^ frame[3 + cx]
+            if not d:
+                continue
+            for cy in range(self.ph):
+                if d >> cy & 1:
+                    sx, sy = (self.pw - 1 - cx, self.ph - 1 - cy) if flip else (cx, cy)
+                    self.flips[(p.row * self.ph + sy) * self.width + p.col * self.pw + sx] += 1
+                    self.flips_changed = True
+
     def _flush_loop(self):
         while True:
             self._wake.wait()
@@ -203,11 +259,28 @@ class Board:
             time.sleep(0.02)  # coalesce rapid updates (e.g. dragging on the web page)
             with self._lock:
                 dirty, self._dirty = self._dirty, set()
-                frames = [(i, self._frame_for(self.panels[i])) for i in sorted(dirty)]
-            failed = set()
+                order = sorted(dirty, key=lambda i: self._since.get(i, 0))
+                panels = self.panels
+                frames = [(i, self._frame_for(panels[i])) for i in order]
+            rate = float(self.max_flips_per_sec or 0)
+            now = time.monotonic()
+            if rate > 0:
+                self._tokens = min(rate, self._tokens + (now - self._tokens_at) * rate)
+            self._tokens_at = now
+            failed, deferred, needed = set(), set(), 0
             for i, frame in frames:
-                panel = self.panels[i]
-                if any((self.panels[j].ip, self.panels[j].port) == (panel.ip, panel.port) for j in failed):
+                if frame == self._sent.get(i):
+                    self._since.pop(i, None)
+                    continue
+                panel = panels[i]
+                if rate > 0:
+                    cost = self._flip_cost(i, frame)
+                    if self._tokens < min(cost, rate):  # over budget: try again with the newest picture later
+                        deferred.add(i)
+                        needed = max(needed, min(cost, rate))
+                        continue
+                    self._tokens -= cost
+                if any((panels[j].ip, panels[j].port) == (panel.ip, panel.port) for j in failed):
                     failed.add(i)  # bus already unreachable this round; don't wait on another timeout
                     continue
                 try:
@@ -215,9 +288,15 @@ class Board:
                 except OSError as e:
                     log.warning("send to %s:%d (addr %d) failed: %s", panel.ip, panel.port, panel.address, e)
                     failed.add(i)
-            if failed:
+                    continue
+                self._count_flips(i, panel, frame)
+                self._since.pop(i, None)
+            if failed or deferred:
                 with self._lock:
-                    self._dirty |= failed
+                    self._dirty |= failed | deferred
+            if failed:
                 time.sleep(2)  # retry later
                 self._wake.set()
-
+            elif deferred:
+                time.sleep(min(1.0, max(0.05, (needed - self._tokens) / rate)))
+                self._wake.set()

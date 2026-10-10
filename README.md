@@ -16,13 +16,13 @@ Close Maestro first — the Ethernet box only accepts one connection per port.
 
 | Tab | |
 |---|---|
-| **Draw** | pencil, line, rectangle, circle (outline/filled), flood fill, text stamp, select + copy/cut/paste/flip, undo/redo (Ctrl+Z / Ctrl+Y), save as scene, export PNG |
-| **Image & video** | images and animated GIFs (stretch / cut / fit, threshold or dither), video files (stream live or convert a clip), webcam (works on `http://localhost` or https only); **slideshows** of images/GIFs (upload files or a .zip, which is unpacked automatically; images show for 10 s by default, GIFs play through, then it moves on and loops) |
-| **Apps** | clocks (digital, analog, countdown), text (static / ticker / typewriter), weather, crypto, stocks, sports scores, any JSON URL, now playing from Music Assistant, music visualizer, Game of Life, matrix rain, plasma, bouncing balls, starfield, fireworks, ripples, metaballs, tunnel, spiral, maze, Lissajous, fire, **random effects** (cycles through them all), Snake / Tetris / Pong / Blackjack (dealt from deckofcardsapi.com), disc exerciser |
+| **Draw** | pencil, line, rectangle, circle (outline/filled), flood fill, text stamp, select + copy/cut/paste/flip, undo/redo (Ctrl+Z / Ctrl+Y), save as scene, **animation mode** (frame strip: add / duplicate / delete / reorder frames, per-frame duration, onion skin, play on the board, save as a scene or open a saved one; tools, undo and copy/paste work on the current frame), **Draw me…** (Claude draws a picture or a short animation from a description; needs an Anthropic API key in Settings → AI drawing), export PNG, **export GIF** (timelapse of the last 1–30 minutes, sped up; recorded in memory) |
+| **Image & video** | images and animated GIFs (stretch / cut / fit, threshold or dither), video files (stream live or convert a clip), webcam (works on `http://localhost` or https only); **slideshows** of images/GIFs (upload files or a .zip, which is unpacked automatically; images show for 10 s by default, GIFs play through, then it moves on and loops; optional **random effects** give some items an effect such as glitch, wave or Game of Life, for a short burst or the whole item, with a chance, effect list and strength per slideshow) |
+| **Apps** | clocks (digital, analog, countdown), text (static / ticker / typewriter), weather, **calendar** (iCal links: next events with today/tomorrow labels and a countdown; all-day events, time zones, simple repeats), crypto, stocks, sports scores, any JSON URL, now playing from Music Assistant, music visualizer, Game of Life, matrix rain, plasma, bouncing balls, starfield, fireworks, ripples, metaballs, tunnel, spiral, maze, Lissajous, fire, **random effects** (cycles through them all), Snake / Tetris / Pong / Breakout / Space Invaders / Tron light cycles (vs a CPU or a second player) / Flappy / Blackjack (dealt from deckofcardsapi.com), disc exerciser, **Guest wall** (a QR code to `/guest`, where guests leave a name and message from their phone, alternating with the approved messages as scrolling text; moderate in Settings → Guest wall, or approve automatically), **Wi-Fi QR code** (guests scan it to join; very long names/passwords switch to a full-height inverted code) |
 | **Layers** | stack apps with blend modes (normal, add, halo, invert/XOR, mask, cut), drawing layers you can keep editing live, position/size, scrolling, density, speed; live editing; saved compositions (usable in playlists); transition gallery |
-| **Playlists & schedule** | playlists of apps with durations and transitions (dissolve, wipe, slide); time-of-day/day-of-week rules choosing a playlist or "off" |
+| **Playlists & schedule** | playlists of apps with durations and transitions (dissolve, wipe, slide); time-of-day/day-of-week rules choosing a playlist or "off"; **automations**: when music starts/stops (Music Assistant), the weather turns rainy/snowy/clear, an event arrives, or the board has been idle N minutes → run an app or composition, play a playlist, show a notification, resume the schedule or go all black |
 | **Scenes** | saved drawings, images and animations |
-| **Settings** | weather location, fonts (upload your own), Music Assistant, MQTT, webhook examples |
+| **Settings** | weather location, **quiet hours** (cap on dots flipped per second + slower transitions during a time window), **board health** (flips per disc as a heatmap, exercise rarely flipped discs now or daily), **board setup** (step through panels to check the mapping, edit column/row/ip/port/address/rotate, save to `config.yaml` without a restart), fonts (upload your own), Music Assistant, MQTT (with optional Home Assistant discovery), **storage** (backup / restore of `storage.db`), webhook examples |
 
 `/play` is a phone game controller (D-pad + A/B, player 1 or 2).
 
@@ -37,6 +37,8 @@ POST /api/dots    {"dots":[...]}
 POST /api/frame   {"rows":[42 strings of 84 "0"/"1"]}
 POST /api/fill    {"color":"black"}        POST /api/invert
 POST /api/animation {"frames":[{"rows":[...],"delay":100}], "loop":true}
+POST /api/ai/draw {"prompt":"a cat","frames":1,"style":"outline only"}   → {"frames":[{"rows":[...]}]} (1–8 frames; doesn't touch the board)
+GET  /api/guest                      guest wall queue; POST /api/guest/messages/<id>/approve|reject|delete, POST /api/guest/settings {"auto_approve":true}
 POST /api/run     {"app":"clock","params":{...},"transition":"dissolve"}
 POST /api/notify  {"text":"Hi","duration":10} | {"url":"https://...png"} | {"app":...} | {"scene":id}
 GET  /api/notify?text=Hi&duration=10
@@ -51,7 +53,23 @@ POST /api/layers/add {"layer": {...}, "position": "top"|"bottom"}   (add to what
 GET/POST /api/compositions        GET /api/layers/current
 GET/POST /api/drawings, POST /api/drawings/<id> {rows}, /api/drawings/<id>/dots, /api/drawings/<id>/show
 GET  /api/apps    (every app and its parameters)
+GET  /api/wear                        flips per disc (row-major), total, most/least flipped
+POST /api/wear/exercise               flip the least-used discs a few times, then restore the picture
+GET/POST /api/panels {"panels":[{"column":1,"row":1,"ip":"…","port":5000,"address":0,"rotate":0}]}
+POST /api/panels/identify {"index":0}   (label one panel on the board; no index = all)
+GET  /api/timelapse.gif?minutes=5&speed=10&scale=6
+GET/POST /api/rules {"rules":[{"trigger":{"type":"event","event":"doorbell"},"action":{"type":"notify","text":"Door"}}]}
+POST /api/rules/<id>/run              run an automation's action now
+POST /api/event/<name>                trigger the automations waiting for this event
 ```
+
+Automations live in `data/rules.json`. Triggers: `music_start`, `music_stop`, `weather` (`rain`/`snow`/`clear`,
+checked every 10 minutes), `event`, `idle` (`minutes`). Actions: `app` (`app`, `params`), `composition`, `playlist`,
+`notify` (`text`, `scene` or `url`, `duration`), `schedule`, `black`. Each rule fires when its trigger starts and then
+waits `cooldown` seconds (default 60) before it can fire again.
+
+A panel mounted upside down can be fixed with `rotate: "180"` in its `config.yaml` entry.
+Flip counts are saved to `data/wear.json` every two minutes and on shutdown.
 
 Live updates: connect a WebSocket to `/ws`. The server pushes a binary message whenever the dots
 change (`u32 version, u16 width, u16 height`, then the dots packed 8 per byte, MSB first, row-major)
@@ -62,16 +80,44 @@ The web pages use this and fall back to polling `/api/board` if the socket drops
 video streams into a layer without stopping the rest of the composition).
 
 MQTT (Settings tab): `flipdot/notify`, `flipdot/run`, `flipdot/command` (stop, schedule, next,
-black, white, invert); status is published retained on `flipdot/status`.
+black, white, invert), `flipdot/event` (an automation event name); status is published retained on `flipdot/status`,
+and `flipdot/availability` is `online`/`offline` (offline is also the MQTT Last Will). With **Home Assistant
+discovery** on, the board appears in Home Assistant as a "Flipdot board" device: app and playlist selects, schedule
+and quiet-hours switches, a Message text box (shows a notification), Next/Stop buttons and a "Showing" sensor.
 
-Set `password:` in `config.yaml` to require a password (HTTP basic auth, or `?token=` for webhooks).
+Set `password:` in `config.yaml` to require a password (HTTP basic auth, or `?token=` for webhooks). Only the guest wall page `/guest` and its submit endpoint stay open (3 messages per address per 10 minutes, 2 KB bodies, 24-character names, 140-character messages).
+AI drawing (`aidraw.py`) calls the Anthropic Messages API; set `FLIPDOT_ANTHROPIC_BASE_URL` to point it at a test server.
 
-Saved data (scenes, playlists, schedule, settings) lives in `data/`.
+## Saved data: `storage.db`
+
+Everything you save — settings, playlists, schedule, compositions, scenes, drawings, slideshows (the
+uploaded images/GIFs too), uploaded fonts, automations, flip counts and the Sendspin pairing — is kept in
+one SQLite file, `../storage.db`: next to the app folder, not inside it, so updating or replacing the app
+folder doesn't lose anything. Use `--storage PATH` to put it elsewhere.
+
+`data/` (or `--data PATH`) is now just a working copy. At startup any file missing or out of date there is
+restored from the database (the first time, an existing `data/` folder is imported). Saves and uploads go
+into the database straight away, and anything else written to `data/` is copied in within a few seconds
+and on shutdown. Deleting `data/` while the server is stopped is harmless.
+
+Settings → *Storage* shows where the database is and how big it is. **Download backup** saves a consistent
+copy of it (`GET /api/storage/backup`). **Restore from backup** uploads one
+(`POST /api/storage/restore?confirm=1`, raw `.db` bytes); it's checked, then replaces all saved data when
+the server next restarts (the replaced database is kept as `storage.db.before-restore`). `config.yaml`
+(panel mapping, password) stays in the app folder and isn't part of the database.
 
 ## Music visualizer over Sendspin (optional)
 
 The Music visualizer app follows a generated beat out of the box. To make it follow the actual music,
-let Music Assistant stream visualizer data to the board over Sendspin:
+let Music Assistant stream visualizer data to the board over Sendspin. On the Pi, just run:
+
+```sh
+./scripts/setup-sendspin.sh
+```
+
+It installs the right aiosendspin into `./venv`, enables Sendspin (auto-connects to Music Assistant,
+no pairing needed), switches the systemd service to the venv and prints the connection status.
+To do it by hand instead:
 
 ```sh
 python3 -m venv --system-site-packages venv      # keeps the apt-installed Pillow
@@ -82,6 +128,22 @@ venv/bin/python server.py                        # run the server with the venv'
 Then Settings → *Music Assistant visualizer (Sendspin)* → Enabled. The board advertises itself on
 port 8928; approve or pair it in Music Assistant. When it works the status shows *connected* and
 *receiving visualizer data ✓*, and the visualizer says *live from Music Assistant*.
+
+### Music Assistant 2.7.x
+
+Music Assistant 2.7.x speaks an older Sendspin (aiosendspin 2.0.0) that the default install can't
+talk to. Run `./scripts/setup-sendspin.sh --ma27` (or install `requirements-sendspin-ma27.txt`); the
+board then switches to its 2.7 mode by itself (`sendspin_legacy.py`; the Settings status names the
+protocol in use). Differences:
+
+- There's no pairing or encryption; Music Assistant accepts the board straight away.
+- Music Assistant 2.7 sends no visualizer data. The board joins as a Sendspin *player*, gets the audio
+  (mono, 22 kHz), works out loudness, spectrum and beats itself and plays nothing.
+- Data only flows while the board is playing. Play to *Flipdot board* or group it with the speaker
+  that's playing. If that speaker isn't a Sendspin player, use a Music Assistant player group.
+
+Test: `pip install "aiosendspin==2.0.0" pillow` in a separate venv, then run
+`tests/sendspin_legacy_e2e.py` with it.
 
 ### Testing the Sendspin link
 
@@ -116,5 +178,6 @@ journalctl --user -u flipdot -f       # logs
 - `runner.py` – manual / app / playlist / schedule modes, notifications
 - `transitions.py` – ~40 transitions (reveal maps like wipes/iris/clock/spiral, plus slides, pushes, zoom, melt, glitch…)
 - `apps/layers.py` – the layer compositor
-- `store.py` – JSON persistence; `mqtt.py` – tiny MQTT client; `ws.py` – WebSocket push; `server.py` – HTTP
+- `rules.py` – automations; `qr.py` – QR code encoder (byte mode, ECC L/M/Q/H, versions 1–40)
+- `store.py` – JSON files in `data/`; `storage.py` – the `storage.db` they're kept in; `mqtt.py` – tiny MQTT client + Home Assistant discovery; `ws.py` – WebSocket push; `server.py` – HTTP
 - `static/` – web UI

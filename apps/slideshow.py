@@ -20,6 +20,8 @@ from .base import App, P, register
 from .media import MIN_DELAY, convert_image
 from transitions import Transition
 
+from . import slidefx
+
 log = logging.getLogger("slideshow")
 
 # ---- background conversion with a small cache -------------------------------------
@@ -150,7 +152,9 @@ class Slideshow(App):
         self.prev = None   # Player for the outgoing item while a transition runs
         self.trans = None
         self.request_transition = None
-        self.jump_to = self.p.get("start")  # file name to play next, right away
+        self.jump_to = self.p.get("start")
+        self.fx = None
+        self.fx_rng = random.Random()  # file name to play next, right away
 
     @property
     def item(self):
@@ -226,6 +230,9 @@ class Slideshow(App):
                     self.trans = Transition(settings["transition"], self.prev.frame(now), c.w, c.h, tdur)
                     self.trans.start = now
                 self.cur = incoming
+                # maybe give this item a random effect (rate and kinds set per slideshow)
+                length = max(0.0, incoming.end_time(settings) - now)
+                self.fx = slidefx.roll(settings, self.fx_rng, now, length)
                 after_pos, after, _ = self._peek_next(items, settings)
                 prefetch(self._path(after), settings, c.w, c.h)
                 break
@@ -236,6 +243,8 @@ class Slideshow(App):
             return
 
         frame = self.cur.frame(now)
+        if self.fx is not None:
+            frame = self.fx.apply(frame, now)
         if self.trans is not None:
             out = self.trans.mix(frame, now, self._outgoing_frame(now))  # both items keep animating
             if self.trans.done(now):
@@ -261,6 +270,13 @@ class Slideshow(App):
         else:
             waits = [self.cur.next_change(now), max(0.005, self.cur.end_time(settings) - tdur - now)]
             self.interval = max(0.005, min(waits + [1.0]))
+        if self.fx is not None:
+            if self.fx.active(now) and self.fx.animated:
+                self.interval = min(self.interval, 1 / self._fps())
+            elif now < self.fx.start:  # wake up when a burst begins
+                self.interval = min(self.interval, max(0.005, self.fx.start - now))
+            elif self.fx.end is not None and now < self.fx.end:
+                self.interval = min(self.interval, max(0.005, self.fx.end - now))
 
     def describe(self):
         g = self.ctx.store.galleries.get(self.gid)

@@ -1,6 +1,8 @@
-"""JSON-file persistence for settings, scenes, playlists and the schedule (in ./data)."""
+"""JSON-file persistence for settings, scenes, playlists and the schedule (in ./data, a working copy of
+storage.db: every save is also written to the database when one is attached)."""
 
 import json
+import logging
 import re
 import threading
 import time
@@ -63,14 +65,19 @@ DEFAULT_SETTINGS = {
     "display": {"transition_fps": 15},
     "weather": {"units": "fahrenheit"},
     "music_assistant": {"url": "", "token": "", "player": ""},
-    "sendspin": {"enabled": False, "name": "Flipdot board", "port": 8928, "unpaired": False},
-    "mqtt": {"enabled": False, "host": "", "port": 1883, "username": "", "password": "", "prefix": "flipdot"},
+    "sendspin": {"enabled": False, "name": "Flipdot board", "port": 8928, "unpaired": True, "server_url": "auto"},
+    "mqtt": {"enabled": False, "host": "", "port": 1883, "username": "", "password": "", "prefix": "flipdot",
+             "discovery": False, "discovery_prefix": "homeassistant"},
+    "quiet_hours": {"enabled": False, "start": "22:00", "end": "07:00", "max_flips": 150, "slowdown": 3},
+    "board_health": {"auto_exercise": False, "exercise_time": "12:00"},
+    "ai": {"api_key": "", "model": "claude-opus-5-5"},
 }
 
 
 class Store:
-    def __init__(self, path):
+    def __init__(self, path, persist=None):
         self.dir = Path(path)
+        self.persist = persist  # storage.Storage, or None to keep files only
         (self.dir / "scenes").mkdir(parents=True, exist_ok=True)
         self._lock = threading.Lock()
         self.settings = self._load("settings.json", DEFAULT_SETTINGS)
@@ -108,6 +115,15 @@ class Store:
             tmp = self.dir / (name + ".tmp")
             tmp.write_text(json.dumps(data, indent=1))
             tmp.replace(self.dir / name)
+        self.sync(name)
+
+    def sync(self, *paths):
+        """Copy files/folders (relative to the data folder) to the database right away."""
+        if self.persist:
+            try:
+                self.persist.sync(*paths)
+            except Exception:
+                logging.getLogger("store").exception("couldn't save %s to the database", paths)
 
     def save_settings(self, data):
         self.settings = data
@@ -189,7 +205,11 @@ class Store:
 
     GALLERY_DEFAULTS = {"mode": "crop", "dither": False, "threshold": 128, "invert": False, "image_seconds": 10,
                         "gif_loops": 1, "gif_min_seconds": 0, "shuffle": False, "transition": "morph",
-                        "transition_duration": 1.0}
+                        "transition_duration": 1.0,
+                        # random effects: chance per item (%), which ones, whole item or a burst
+                        "fx_chance": 0, "fx_effects": ["invert", "flash", "glitch", "mirror", "kaleidoscope", "wave",
+                                                       "scanlines", "pixelate", "outline", "static", "life", "melt"],
+                        "fx_mode": "burst", "fx_seconds": 3, "fx_strength": 50}
 
     def gallery_dir(self, gid):
         if not re.fullmatch(r"g[0-9]+", gid or ""):
@@ -218,6 +238,7 @@ class Store:
         import shutil
         self.galleries.pop(gid, None)
         shutil.rmtree(self.dir / "media" / gid, ignore_errors=True)
+        self.sync(f"media/{gid}")
         self.save_galleries()
 
     # ---- scenes ----------------------------------------------------------------
@@ -255,3 +276,4 @@ class Store:
 
     def delete_scene(self, scene_id):
         self._scene_path(scene_id).unlink(missing_ok=True)
+        self.sync(f"scenes/{scene_id}.json")

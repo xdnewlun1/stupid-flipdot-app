@@ -39,6 +39,8 @@ class Runner:
         self.lock = threading.RLock()
         self.wake = threading.Event()
         self.listeners = []  # called with status() whenever the mode/app changes
+        self.quiet = False  # quiet hours active (set by boardcare)
+        self.slowdown = 1.0  # transitions take this many times longer (quiet hours)
         threading.Thread(target=self._loop, daemon=True).start()
 
     # ---- control (called from HTTP/MQTT threads) --------------------------------
@@ -48,7 +50,8 @@ class Runner:
 
     def _start_transition(self, kind, duration=1.0):
         if kind and kind != "none":
-            self.transition = Transition(kind, self._current_canvas(), self.board.width, self.board.height, duration)
+            self.transition = Transition(kind, self._current_canvas(), self.board.width, self.board.height,
+                                         float(duration) * self.slowdown)
 
     def transition_fps(self):
         return max(5, min(30, float(self.store.settings.get("display", {}).get("transition_fps", 15))))
@@ -210,6 +213,7 @@ class Runner:
                 "notification": bool(self.notif),
                 "drawings": self.drawings_on_board(),
                 "schedule_target": self.scheduled_playlist(time.time()),
+                "quiet_hours": self.quiet,
             }
 
     def _changed(self):

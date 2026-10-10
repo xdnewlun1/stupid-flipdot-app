@@ -1,9 +1,9 @@
-// Board view + Draw tab: drawing tools, undo/redo, selection, text stamp, export.
-// You can draw on the board itself (which stops whatever is running) or on a drawing layer
-// (which keeps the running composition going).
+// Board view + Draw tab: drawing tools, undo/redo, selection, text stamp, export, animation frames, AI drawing.
+// You can draw on the board itself (which stops whatever is running), on a drawing layer
+// (which keeps the running composition going), or, in animation mode, on frames kept in the page.
 import {
   $, api, board, bus, renderDots, cloneGrid, gridToRows, blankGrid, pausePolling, rowsToGrid,
-  safe, toast, download, refreshScenes, wsSend, fontSelect, fontCache, drawingsCache, loadDrawings, el,
+  safe, toast, download, refreshScenes, wsSend, fontSelect, fontCache, drawingsCache, loadDrawings, el, scenesCache,
 } from "./common.js";
 
 const CELL = 16;
@@ -16,12 +16,17 @@ let selection = null;            // {x0,y0,x1,y1}
 let clip = null, pasteMode = false;
 let stampRows = null;
 let pending = [], touched = new Set();
-const undoStack = [], redoStack = [];
+let undoStack = [], redoStack = [];  // point at the current frame's history in animation mode
 let target = null;               // null = the board, else { id, name, grid } of a drawing layer
 let paused = false;
+let anim = null;                 // { frames: [{ grid, delay, undo, redo }], cur, sceneId, name, dirty }
+let animOn = false;
+const mainHistory = { undo: undoStack, redo: redoStack };
 
 // the grid the tools work on
-const G = () => (target ? target.grid : board.grid);
+const frame = () => anim.frames[anim.cur];
+const G = () => (animOn ? frame().grid : target ? target.grid : board.grid);
+const editingAnim = () => animOn && active;  // the canvas shows the frame being edited, not the board
 const onBoard = () => !target || (board.runner?.drawings || []).includes(target.id);
 const showLayerOnly = () => target && ($("layerOnly").checked || !onBoard());
 
@@ -30,8 +35,9 @@ export function setActive(on) { active = on; canvas.style.cursor = on ? "crossha
 function redraw() {
   if (!board.grid.length) return;
   if (canvas.width !== board.W * CELL) { canvas.width = board.W * CELL; canvas.height = board.H * CELL; }
-  renderDots(ctx, showLayerOnly() ? target.grid : board.grid, CELL, { overlay });
+  renderDots(ctx, editingAnim() ? frame().grid : showLayerOnly() ? target.grid : board.grid, CELL, { overlay });
   if (!active) return;
+  if (animOn && $("animOnion").checked && anim.cur > 0) drawOnion(anim.frames[anim.cur - 1].grid, frame().grid);
   if (selection) {
     const { x0, y0, x1, y1 } = normSel(selection);
     ctx.setLineDash([6, 4]); ctx.strokeStyle = "#f2c94c"; ctx.lineWidth = 2;
@@ -120,7 +126,11 @@ function pushHistory() {
 }
 
 async function commit(grid) {
-  if (target) {
+  if (animOn) {
+    frame().grid = grid;
+    redraw();
+    frameChanged();
+  } else if (target) {
     target.grid = grid;
     redraw();
     await api(`/api/drawings/${target.id}`, { rows: gridToRows(grid) });
@@ -133,7 +143,7 @@ async function commit(grid) {
 
 function pause(on) {
   // while drawing straight on the board, don't let incoming frames overwrite the stroke
-  if (on && !target && !paused) { pausePolling(true); paused = true; }
+  if (on && !target && !animOn && !paused) { pausePolling(true); paused = true; }
   if (!on && paused) { pausePolling(false); paused = false; }
 }
 
@@ -219,6 +229,7 @@ function paintAt(c) {
 async function flushPending() {
   if (!pending.length) return;
   const dots = pending; pending = [];
+  if (animOn) return frameChanged();  // frames live in the page until saved
   if (target) {
     if (!showLayerOnly()) redraw();
     if (wsSend({ type: "dots", drawing: target.id, dots })) return;
@@ -261,11 +272,13 @@ async function redo() {
 $("undo").onclick = safe(undo);
 $("redo").onclick = safe(redo);
 const filled = v => G().map(r => r.map(() => v));
-$("allBlack").onclick = safe(async () => { pushHistory(); target ? await commit(filled(false)) : await api("/api/fill", { color: "black" }); });
-$("allWhite").onclick = safe(async () => { pushHistory(); target ? await commit(filled(true)) : await api("/api/fill", { color: "white" }); });
-$("invert").onclick = safe(async () => { pushHistory(); target ? await commit(G().map(r => r.map(v => !v))) : await api("/api/invert", {}); });
+const local = () => target || animOn;
+$("allBlack").onclick = safe(async () => { pushHistory(); local() ? await commit(filled(false)) : await api("/api/fill", { color: "black" }); });
+$("allWhite").onclick = safe(async () => { pushHistory(); local() ? await commit(filled(true)) : await api("/api/fill", { color: "white" }); });
+$("invert").onclick = safe(async () => { pushHistory(); local() ? await commit(G().map(r => r.map(v => !v))) : await api("/api/invert", {}); });
 
 $("saveScene").onclick = safe(async () => {
+  if (animOn) return saveAnim(true);
   const name = prompt("Scene name?", "My drawing");
   if (!name) return;
   await api("/api/scenes", { name, frames: [{ rows: gridToRows(G()), delay: 100 }] });
@@ -289,6 +302,21 @@ $("exportPretty").onclick = () => {
   c.width = board.W * 12; c.height = board.H * 12;
   renderDots(c.getContext("2d"), G(), 12, { seams: false });
   c.toBlob(b => download("flipdot-board.png", b));
+};
+$("exportGif").onclick = safe(async () => {
+  const box = $("gifOpts");
+  box.hidden = !box.hidden;
+  if (box.hidden) return;
+  const j = await api("/api/timelapse");
+  $("gifInfo").textContent = `${Math.floor(j.seconds / 60)} min ${j.seconds % 60} s recorded (${j.frames} changes)`;
+});
+$("gifDownload").onclick = () => {
+  const q = new URLSearchParams({ minutes: $("gifMinutes").value, speed: $("gifSpeed").value, scale: $("gifScale").value });
+  const a = el("a", { href: `/api/timelapse.gif?${q}`, download: "flipdot-timelapse.gif" });
+  document.body.append(a);
+  a.click();
+  a.remove();
+  toast("Rendering GIF…");
 };
 $("importImg").onclick = () => { bus.dispatchEvent(new CustomEvent("tab", { detail: "media" })); $("file").click(); };
 
@@ -357,6 +385,7 @@ document.addEventListener("keydown", safe(async e => {
   else if (mod && k === "x" && selection) { e.preventDefault(); await copySel(true); }
   else if (mod && k === "v" && clip) { e.preventDefault(); paste(); }
   else if (k === "escape") { pasteMode = false; selection = null; overlay = null; redraw(); }
+  else if (animOn && !mod && (k === "," || k === ".")) selectFrame(anim.cur + (k === "," ? -1 : 1));
   else if (!mod && board.runner && !board.runner.interactive) {
     const t = { p: "pencil", l: "line", r: "rect", c: "circle", f: "fill", t: "text", s: "select" }[k];
     if (t) setTool(t);
@@ -378,7 +407,7 @@ function updateTargetUi() {
   for (const id of ["layerOnlyBox", "renameDrawing", "deleteDrawing"]) $(id).hidden = !isLayer;
   $("showDrawing").hidden = !isLayer || onBoard();
   $("targetHint").textContent = !isLayer ? ""
-    : onBoard() ? "On the board — what's running keeps going while you draw."
+    : onBoard() ? "On the board. What's running keeps going while you draw."
     : "Not on the board right now (showing just this layer).";
 }
 
@@ -402,7 +431,7 @@ $("newDrawing").onclick = safe(async () => {
   const j = await api("/api/drawings", { show: true });
   await loadDrawings();
   await setTarget(j.id);
-  toast("New drawing layer added on top — draw away");
+  toast("New drawing layer added on top");
 });
 $("showDrawing").onclick = safe(async () => { await api(`/api/drawings/${target.id}/show`, {}); });
 $("renameDrawing").onclick = safe(async () => {
@@ -422,3 +451,189 @@ $("deleteDrawing").onclick = safe(async () => {
 bus.addEventListener("drawings", renderTargets);
 bus.addEventListener("state", updateTargetUi);
 bus.addEventListener("drawTarget", e => { bus.dispatchEvent(new CustomEvent("tab", { detail: "draw" })); setTarget(e.detail).catch(err => toast(err.message, true)); });
+
+// ---- animation mode: frames live in the page until saved as a scene ----
+
+const MIN_DELAY = 20, MAX_DELAY = 60000;
+const clampDelay = v => Math.max(MIN_DELAY, Math.min(MAX_DELAY, Math.round(+v) || defaultDelay()));
+const defaultDelay = () => Math.max(MIN_DELAY, Math.min(MAX_DELAY, Math.round(+$("animDefault").value) || 200));
+const newFrame = (grid, delay = defaultDelay()) => ({ grid, delay, undo: [], redo: [] });
+
+function drawOnion(prev, cur) {
+  // dots lit in the previous frame but dark in this one, as faint rings (only on this canvas, never on the board)
+  ctx.strokeStyle = "rgba(233, 185, 73, 0.55)";
+  ctx.lineWidth = 2;
+  for (let y = 0; y < prev.length; y++)
+    for (let x = 0; x < prev[y].length; x++)
+      if (prev[y][x] && !cur[y]?.[x]) {
+        ctx.beginPath(); ctx.arc(x * CELL + CELL / 2, y * CELL + CELL / 2, CELL * 0.3, 0, Math.PI * 2); ctx.stroke();
+      }
+}
+
+function useHistory(h) {
+  undoStack = h.undo; redoStack = h.redo;
+}
+
+function thumb(f) {
+  if (f.thumb) return f.thumb;  // cached until the frame changes
+  const c = f.thumb = document.createElement("canvas");
+  c.width = board.W * 3; c.height = board.H * 3;
+  renderDots(c.getContext("2d"), f.grid, 3, { seams: false });
+  return c;
+}
+
+function renderStrip() {
+  $("animStrip").replaceChildren(...anim.frames.map((f, i) => {
+    const b = el("button", { class: "fr" + (i === anim.cur ? " active" : ""), title: `Frame ${i + 1}`, "aria-pressed": String(i === anim.cur),
+                             "aria-label": `Frame ${i + 1}, ${f.delay} ms`, onclick: () => selectFrame(i) },
+      thumb(f), el("span", {}, `${i + 1} · ${f.delay} ms`));
+    return b;
+  }));
+  $("animStrip").children[anim.cur]?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  $("animDelay").value = frame().delay;
+  const total = anim.frames.reduce((t, f) => t + f.delay, 0);
+  $("animInfo").textContent = `${anim.name}${anim.dirty ? " (unsaved)" : ""} · ${anim.frames.length} frame${anim.frames.length === 1 ? "" : "s"} · ${(total / 1000).toFixed(1)} s`;
+  $("animDel").disabled = anim.frames.length < 2;
+  $("animLeft").disabled = anim.cur === 0;
+  $("animRight").disabled = anim.cur === anim.frames.length - 1;
+}
+
+let thumbTimer = null;
+function frameChanged() {
+  if (!anim.dirty) { anim.dirty = true; frame().thumb = null; renderStrip(); return; }
+  const f = frame(), i = anim.cur;
+  f.thumb = null;
+  clearTimeout(thumbTimer);  // just refresh this frame's thumbnail, at most every 150 ms
+  thumbTimer = setTimeout(() => {
+    const slot = $("animStrip").children[i];
+    if (slot && anim.frames[i] === f) slot.replaceChild(thumb(f), slot.firstChild);
+  }, 150);
+}
+
+function selectFrame(i) {
+  if (!anim || i < 0 || i >= anim.frames.length) return;
+  anim.cur = i;
+  useHistory(frame());
+  selection = null; overlay = null; pasteMode = false;
+  renderStrip();
+  redraw();
+}
+
+function setAnim(frames, { name = "Animation", sceneId = null, dirty = false } = {}) {
+  anim = { frames, cur: 0, name, sceneId, dirty };
+  animOn = true;
+  $("animMode").checked = true;
+  $("animPanel").hidden = false;
+  selectFrame(0);
+}
+
+function setAnimMode(on) {
+  if (on && !anim) setAnim([newFrame(cloneGrid(G()))]);  // start from what's on the canvas now
+  animOn = on;
+  $("animMode").checked = on;
+  $("animPanel").hidden = !on;
+  if (on) selectFrame(anim.cur);
+  else { useHistory(mainHistory); selection = null; overlay = null; redraw(); }
+}
+$("animMode").onchange = () => setAnimMode($("animMode").checked);
+
+function edit(fn) {
+  fn();
+  anim.dirty = true;
+  selectFrame(Math.max(0, Math.min(anim.cur, anim.frames.length - 1)));
+}
+$("animAdd").onclick = () => edit(() => { anim.frames.splice(anim.cur + 1, 0, newFrame(blankGrid())); anim.cur++; });
+$("animDup").onclick = () => edit(() => { anim.frames.splice(anim.cur + 1, 0, newFrame(cloneGrid(frame().grid), frame().delay)); anim.cur++; });
+$("animDel").onclick = () => edit(() => { if (anim.frames.length > 1) anim.frames.splice(anim.cur, 1); });
+const move = d => edit(() => {
+  const j = anim.cur + d;
+  if (j < 0 || j >= anim.frames.length) return;
+  [anim.frames[anim.cur], anim.frames[j]] = [anim.frames[j], anim.frames[anim.cur]];
+  anim.cur = j;
+});
+$("animLeft").onclick = () => move(-1);
+$("animRight").onclick = () => move(1);
+$("animDelay").onchange = () => edit(() => { frame().delay = clampDelay($("animDelay").value); });
+$("animAllDelay").onclick = () => edit(() => { const d = defaultDelay(); anim.frames.forEach(f => (f.delay = d)); });
+$("animOnion").onchange = () => redraw();
+$("animNew").onclick = () => {
+  if (anim?.dirty && !confirm("Start a new animation? Unsaved changes to this one are lost.")) return;
+  setAnim([newFrame(blankGrid())]);
+};
+
+const payload = () => anim.frames.map(f => ({ rows: gridToRows(f.grid), delay: f.delay }));
+$("animPlay").onclick = safe(async () => {
+  await api("/api/animation", { frames: payload(), loop: true, name: anim.name });
+  toast("Playing on the board");
+});
+$("animStop").onclick = safe(() => api("/api/animation/stop", {}));
+
+async function saveAnim(asNew) {
+  let name = anim.name;
+  if (asNew || !anim.sceneId) {
+    name = prompt("Scene name?", anim.sceneId ? `${anim.name} copy` : anim.name);
+    if (!name) return;
+  }
+  const j = await api("/api/scenes", { name, frames: payload(), id: asNew ? undefined : anim.sceneId || undefined });
+  Object.assign(anim, { name, sceneId: j.id, dirty: false });
+  renderStrip();
+  await refreshScenes();
+  toast(`Saved "${name}"`);
+}
+$("animSave").onclick = safe(() => saveAnim(false));
+
+function renderSceneChoices() {
+  $("animScene").replaceChildren(...scenesCache.list.length
+    ? scenesCache.list.map(s => el("option", { value: s.id }, s.frames > 1 ? `${s.name} (${s.frames} frames)` : s.name))
+    : [el("option", { value: "" }, "No saved scenes yet")]);
+}
+bus.addEventListener("scenes", renderSceneChoices);
+
+export async function openScene(id) {
+  if (!id) return;
+  if (anim?.dirty && !confirm("Open another scene? Unsaved changes to this animation are lost.")) return;
+  const s = await api(`/api/scenes/${id}`);
+  setAnim(s.frames.map(f => newFrame(rowsToGrid(f.rows), clampDelay(f.delay ?? 100))), { name: s.name, sceneId: id });
+  bus.dispatchEvent(new CustomEvent("tab", { detail: "draw" }));
+}
+$("animOpen").onclick = safe(() => openScene($("animScene").value));
+bus.addEventListener("editScene", e => openScene(e.detail).catch(err => toast(err.message, true)));
+
+// ---- "Draw me…": Claude draws it (POST /api/ai/draw) ----
+
+$("aiToggle").setAttribute("aria-expanded", "false");
+$("aiToggle").onclick = () => {
+  $("aiOpts").hidden = !$("aiOpts").hidden;
+  $("aiToggle").setAttribute("aria-expanded", String(!$("aiOpts").hidden));
+  $("aiToggle").classList.toggle("active", !$("aiOpts").hidden);
+  if (!$("aiOpts").hidden) $("aiPrompt").focus();
+};
+$("aiPrompt").addEventListener("keydown", e => { if (e.key === "Enter") $("aiGo").click(); });
+$("aiGo").onclick = safe(async () => {
+  const text = $("aiPrompt").value.trim();
+  if (!text) return toast("Describe what to draw first", true);
+  const frames = Math.max(1, Math.min(8, Math.round(+$("aiFrames").value) || 1));
+  $("aiGo").disabled = true;
+  $("aiStatus").textContent = frames > 1 ? `Drawing ${frames} frames… this can take a minute or two.` : "Drawing… this can take a minute.";
+  let j;
+  try {
+    j = await api("/api/ai/draw", { prompt: text, frames, style: $("aiStyle").value.trim() });
+  } catch (e) {
+    $("aiStatus").textContent = "";
+    throw e;
+  } finally {
+    $("aiGo").disabled = false;
+  }
+  const grids = j.frames.map(f => rowsToGrid(f.rows));
+  const note = [j.frames.length < frames ? `got ${j.frames.length} of ${frames} frames` : "",
+                j.repaired ? `${j.repaired} resized to fit` : ""].filter(Boolean).join(", ");
+  $("aiStatus").textContent = `Done${note ? ` (${note})` : ""}. Undo puts back what was there.`;
+  if (grids.length > 1) {
+    if (anim?.dirty && !confirm("Replace the animation you're editing with the new drawing?")) return;
+    const d = defaultDelay();
+    setAnim(grids.map(g => newFrame(g, d)), { name: text.slice(0, 40), dirty: true });
+  } else {
+    pushHistory();
+    await commit(grids[0]);  // current frame in animation mode, else the board or drawing layer
+  }
+});

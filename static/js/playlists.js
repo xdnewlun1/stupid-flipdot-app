@@ -40,13 +40,13 @@ function render() {
   $("plAddApp").replaceChildren(...catalog.apps.map(a => el("option", { value: a.id }, `${a.category}: ${a.title}`)));
   const pl = playlists[current];
   const box = $("plItems");
-  if (!pl) { box.replaceChildren(el("p", { class: "muted" }, "No playlists yet — press New.")); renderSchedule(); return; }
-  if (!pl.items.length) box.replaceChildren(el("p", { class: "muted" }, "Empty playlist. Add items below or from the Apps tab."));
+  if (!pl) { box.replaceChildren(el("p", { class: "muted" }, "No playlists yet. Press New to make one.")); renderSchedule(); return; }
+  if (!pl.items.length) box.replaceChildren(el("p", { class: "muted" }, "This playlist is empty. Add items below or from the Apps tab."));
   else box.replaceChildren(el("div", { class: "items" }, pl.items.map((item, i) => {
     const { title, detail } = describeItem(item);
-    const dur = el("input", { type: "number", min: 1, value: item.duration, title: "seconds" });
-    const trans = el("select", { title: "Transition into this item" },
-      el("option", { value: "" }, "playlist transition"),
+    const dur = el("input", { type: "number", min: 1, value: item.duration, title: "Seconds on the board", "aria-label": "Seconds on the board" });
+    const trans = el("select", { title: "Transition into this item", "aria-label": "Transition into this item" },
+      el("option", { value: "" }, "Playlist transition"),
       catalog.transitions.map(t => el("option", { value: t, selected: item.transition === t }, t)));
     trans.onchange = safe(async () => { if (trans.value) item.transition = trans.value; else delete item.transition; await savePlaylists(); });
     dur.onchange = safe(async () => { item.duration = Math.max(1, +dur.value || 30); await savePlaylists(); });
@@ -86,21 +86,22 @@ function renderEditor() {
 
 function renderSchedule() {
   $("schEnabled").checked = !!schedule.enabled;
-  const opts = sel => [el("option", { value: "", selected: !sel }, "(nothing)"),
+  const opts = sel => [el("option", { value: "", selected: !sel }, "Nothing"),
     el("option", { value: OFF, selected: sel === OFF }, "Off (all black)"),
     ...Object.keys(playlists).map(n => el("option", { value: n, selected: n === sel }, n))];
   $("schDefault").replaceChildren(...opts(schedule.default));
+  if (!schedule.rules.length) return $("schRules").replaceChildren(el("p", { class: "muted" }, "No rules yet, so the default playlist plays all day. Press Add rule for time-based changes."));
   $("schRules").replaceChildren(el("div", { class: "items" }, schedule.rules.map((rule, i) => {
     rule.days ??= [0, 1, 2, 3, 4, 5, 6];
-    const start = el("input", { type: "time", value: rule.start || "00:00" });
-    const end = el("input", { type: "time", value: rule.end || "23:59" });
-    const target = el("select", {}, opts(rule.playlist));
+    const start = el("input", { type: "time", value: rule.start || "00:00", "aria-label": "From" });
+    const end = el("input", { type: "time", value: rule.end || "23:59", "aria-label": "Until" });
+    const target = el("select", { "aria-label": "Playlist" }, opts(rule.playlist));
     start.onchange = safe(() => { rule.start = start.value; return saveSchedule(); });
     end.onchange = safe(() => { rule.end = end.value; return saveSchedule(); });
     target.onchange = safe(() => { rule.playlist = target.value; return saveSchedule(); });
     return el("div", { class: "item" },
       el("div", { class: "days" }, DAYS.map((d, di) => el("button", {
-        class: rule.days.includes(di) ? "active" : "",
+        class: rule.days.includes(di) ? "active" : "", "aria-pressed": String(rule.days.includes(di)),
         onclick: safe(() => {
           rule.days = rule.days.includes(di) ? rule.days.filter(x => x !== di) : [...rule.days, di].sort();
           return saveSchedule();

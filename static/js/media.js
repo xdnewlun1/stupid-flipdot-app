@@ -157,7 +157,7 @@ async function loadFile(file) {
     await new Promise((ok, fail) => { video.onloadeddata = ok; video.onerror = () => fail(new Error("can't play this video")); });
     await video.play().catch(() => {});
     source = { kind: "video" };
-    $("imgInfo").textContent = `${sourceName} · ${video.videoWidth}×${video.videoHeight} · ${video.duration.toFixed(1)} s — stream it live, or convert a clip`;
+    $("imgInfo").textContent = `${sourceName} · ${video.videoWidth}×${video.videoHeight} · ${video.duration.toFixed(1)} s. Stream it live, or convert a clip.`;
   } else if (file.type.startsWith("image/")) {
     $("imgInfo").textContent = "Decoding…";
     const frames = await decodeImage(file);
@@ -174,13 +174,13 @@ async function loadFile(file) {
 
 async function startWebcam() {
   if (!navigator.mediaDevices?.getUserMedia)
-    return toast("Webcam needs https or localhost — open this page on the server machine via http://localhost:8080", true);
+    return toast("The webcam needs https or localhost. Open this page on the server machine at http://localhost:8080.", true);
   resetSource();
   video.srcObject = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 }, audio: false });
   await video.play();
   source = { kind: "webcam" };
   sourceName = "webcam";
-  $("imgInfo").textContent = "Webcam — stream it live, or record a clip";
+  $("imgInfo").textContent = "Webcam. Stream it live, or record a clip.";
   reconvert();
 }
 
@@ -216,7 +216,7 @@ async function toggleLive() {
     } catch (e) { toast(e.message, true); stopLive(); }
     busy = false;
   }, 1000 / fps());
-  if (layerId) toast("Streaming into a layer — what's running keeps going");
+  if (layerId) toast("Streaming into a layer. What's running keeps going.");
   updateButtons();
   startPreview();
 }
@@ -252,7 +252,7 @@ async function convertClip() {
     $("clip").disabled = false;
   }
   converted = frames;
-  $("imgInfo").textContent = `${sourceName} clip · ${frames.length} frames at ${rate} fps — send it or save it as a scene`;
+  $("imgInfo").textContent = `${sourceName} clip · ${frames.length} frames at ${rate} fps. Send it or save it as a scene.`;
   updateButtons();
   startPreview();
 }
@@ -295,6 +295,7 @@ $("webcam").onclick = safe(startWebcam);
 
 const drop = $("drop");
 drop.onclick = () => $("file").click();
+drop.onkeydown = e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); $("file").click(); } };
 $("file").onchange = safe(e => loadFile(e.target.files[0]));
 drop.addEventListener("dragover", e => { e.preventDefault(); drop.classList.add("over"); });
 drop.addEventListener("dragleave", () => drop.classList.remove("over"));

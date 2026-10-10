@@ -69,8 +69,8 @@ async def wait_for(cond, timeout, step=0.1):
     return cond()
 
 
-def make_link(data_dir, port, unpaired):
-    link = sendspin_link.SendspinLink(data_dir, name="Flipdot e2e", port=port, advertise=False)
+def make_link(data_dir, port, unpaired, server_url=""):
+    link = sendspin_link.SendspinLink(data_dir, name="Flipdot e2e", port=port, advertise=False, server_url=server_url)
     link.set_unpaired_access(unpaired)
     link.start()
     return link
@@ -193,8 +193,30 @@ async def main():
           not link2.metadata.get("title") and not sig2["live"], link2.metadata.get("title") or "nothing received")
 
 
+async def dial_test():
+    """The board dials Music Assistant's Sendspin server itself (client-initiated)."""
+    loop = asyncio.get_running_loop()
+    tmp = Path(tempfile.mkdtemp(prefix="sendspin-dial-"))
+    port = free_port()
+    server = SendspinServer(loop, Identity.generate(), "Listening Music Assistant", pairing_store=InMemoryServerPairingStore())
+    await server.start_server(port=port, host="127.0.0.1", discover_clients=False)
+    link = make_link(tmp / "board", free_port(), unpaired=True, server_url=f"ws://127.0.0.1:{port}/sendspin")
+    await wait_for(lambda: (tmp / "board" / "sendspin" / "identity.key").exists(), 10)
+    board_id = Identity.from_private_bytes((tmp / "board" / "sendspin" / "identity.key").read_bytes()).peer_id
+    await server.trust_unpaired(board_id)
+    ok = await wait_for(link.connected, 25)
+    check("board dials Music Assistant itself (client-initiated)", ok, link.current_status())
+    if ok:
+        client = server.get_client(board_id)
+        client.group.start_stream()
+        client.group.group_role("metadata").set_metadata(Metadata(title="Dialed in", artist="Tester"))
+        ok = await wait_for(lambda: link.metadata.get("title") == "Dialed in", 5)
+        check("song info arrives over the dialled connection", ok, link.metadata.get("title"))
+
+
 if __name__ == "__main__":
     asyncio.run(main())
+    asyncio.run(dial_test())
     failed = [n for n, ok in results if not ok]
     print(f"\n{len(results) - len(failed)}/{len(results)} checks passed" + (f"; failed: {', '.join(failed)}" if failed else ""))
     sys.stdout.flush()

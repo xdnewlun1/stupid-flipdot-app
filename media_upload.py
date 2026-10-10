@@ -97,6 +97,8 @@ def add_upload(store, gid, name, data, skip_covers=True):
         added.append(add_file(store, gid, name, data))
     else:
         raise ValueError("upload images (png, jpg, gif, webp, bmp) or a .zip of them")
+    if added:
+        store.sync(f"media/{gid}")
     store.save_galleries()
     return added, skipped
 
@@ -115,5 +117,7 @@ def remove_covers(store, gid):
         else:
             keep.append(item)
     g["items"] = keep
+    if removed:
+        store.sync(f"media/{gid}")
     store.save_galleries()
     return removed

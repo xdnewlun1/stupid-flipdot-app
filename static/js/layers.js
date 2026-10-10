@@ -142,7 +142,7 @@ function layerCard(layer, index) {
 function render() {
   const list = $("lyList");
   if (!layers.length) {
-    list.replaceChildren(el("p", { class: "muted" }, "No layers yet — add some below."));
+    list.replaceChildren(el("p", { class: "muted" }, "No layers yet. Pick an app below and press Add layer."));
     return;
   }
   // show the top layer first
@@ -213,7 +213,7 @@ $("lyLoadRunning").onclick = safe(async () => {
   renderBar();
   render();
   setDirty(!current);
-  toast("Loaded the layers that are on the board" + (current ? "" : " — use Save as… to keep them"));
+  toast("Loaded the layers that are on the board" + (current ? "" : ". Use Save as… to keep them."));
 });
 $("lyAdd").onclick = () => {
   const app = catalog.byId[$("lyAddApp").value];
@@ -232,7 +232,7 @@ $("lyAddDrawing").onclick = safe(async () => {
   const id = await addDrawingLayer(null, null);
   if (!$("lyLive").checked) await run(true);
   bus.dispatchEvent(new CustomEvent("drawTarget", { detail: id }));
-  toast("Drawing layer added — draw on it here");
+  toast("Drawing layer added. Draw on it in the Draw tab.");
 });
 $("lyAddBoard").onclick = safe(() => addDrawingLayer("board", "Board snapshot"));
 bus.addEventListener("drawings", () => render());

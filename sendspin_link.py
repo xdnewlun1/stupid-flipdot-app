@@ -6,7 +6,8 @@ timestamp so the dots line up with what you hear. No audio is played or captured
 
 Needs `pip install -r requirements-sendspin.txt` (Python 3.12+). The aiosendspin version must match
 the one Music Assistant uses — the encryption handshake changed between versions (a 10.x board can't
-talk to Music Assistant's 9.1.1 server). Without it everything else still works and the music
+talk to Music Assistant's 9.1.1 server). For Music Assistant 2.7.x install requirements-sendspin-ma27.txt
+instead (aiosendspin 2.0.0); sendspin_legacy.py then handles the link. Without it everything else still works and the music
 visualizer falls back to a generated beat. Tested by tests/sendspin_e2e.py.
 """
 
@@ -23,6 +24,9 @@ log = logging.getLogger("sendspin")
 # The aiosendspin version Music Assistant pins (music-assistant/server, providers/sendspin/manifest.json).
 # Keep requirements-sendspin.txt in step with it.
 MA_AIOSENDSPIN = "9.1.1"
+# Music Assistant 2.7.x pins the alpha protocol, aiosendspin 2.0.0 (requirements-sendspin-ma27.txt);
+# with that installed, start_link() uses sendspin_legacy.LegacySendspinLink instead.
+MA27_AIOSENDSPIN = "2.0.0"
 
 try:
     from aiosendspin.client import ClientListener, PairingSupport, SendspinClient
@@ -40,8 +44,18 @@ except ImportError:  # optional dependency
 
 try:
     from importlib.metadata import version as _pkg_version
-    VERSION = _pkg_version("aiosendspin") if AVAILABLE else None
+    VERSION = _pkg_version("aiosendspin")
 except Exception:
+    VERSION = None
+
+LEGACY = bool(VERSION) and VERSION.split(".")[0] == MA27_AIOSENDSPIN.split(".")[0]
+if not AVAILABLE and LEGACY:
+    try:
+        from aiosendspin.client import SendspinClient as _LegacyClient  # noqa: F401
+        AVAILABLE = True
+    except ImportError:
+        pass
+if not AVAILABLE:
     VERSION = None
 
 BINS = 16
@@ -69,10 +83,16 @@ class _FailureCapture(logging.Handler):
 
 
 class SendspinLink:
-    def __init__(self, data_dir, name="Flipdot board", port=8928, on_pair_code=None, advertise=True):
+    protocol = "Sendspin with encryption (Music Assistant 2.8+)"
+
+    def __init__(self, data_dir, name="Flipdot board", port=8928, on_pair_code=None, advertise=True, server_url="auto"):
         self.dir = Path(data_dir) / "sendspin"
         self.dir.mkdir(parents=True, exist_ok=True)
         self.name, self.port, self.advertise = name, port, advertise
+        # "auto": find Music Assistant's Sendspin server on the network and dial it (falls back to
+        # waiting for Music Assistant to find us); a ws:// URL: dial that; "" : only wait to be found
+        self.server_url = server_url
+        self.mode = None
         self.on_pair_code = on_pair_code  # called with "123-456" / None from the link thread
         self.status = "off" if AVAILABLE else "not installed (pip install aiosendspin)"
         self.server_name = None
@@ -140,6 +160,19 @@ class SendspinLink:
             self.vis_support = ClientHelloVisualizerSupport(buffer_capacity=256 * 1024, rate_max=30,
                                                             types=list(TYPES), spectrum=spectrum)
             self.vis_state = None
+        url = self.server_url
+        if url == "auto":
+            self.status = "looking for Music Assistant on the network"
+            found = await asyncio.get_running_loop().run_in_executor(None, discover_servers, 4.0)
+            url = found[0]["url"] if found else ""
+            if found:
+                log.info("Sendspin: found %s at %s", found[0]["name"], url)
+        if url:
+            self.mode, self.server_url_used = "dial", url
+            await self._dial_forever(url)
+            return
+        # Server-initiated: advertise on mDNS and wait for Music Assistant to connect to us.
+        self.mode = "listen"
         listener = ClientListener(self.identity.peer_id, self._on_connection, port=self.port,
                                   client_name=self.name, advertise_mdns=self.advertise)
         await listener.start()
@@ -147,7 +180,31 @@ class SendspinLink:
         log.info("Sendspin: advertising as %r on port %d", self.name, self.port)
         await asyncio.Event().wait()  # run forever
 
-    async def _on_connection(self, ws):
+    async def _dial_forever(self, url):
+        """Client-initiated: connect to Music Assistant's Sendspin server, reconnecting as needed."""
+        delay = 2
+        while True:
+            client = self._make_client()
+            done = asyncio.Event()
+            client.add_disconnect_listener(done.set)
+            self.status = f"connecting to {url}"
+            try:
+                await client.connect(url)
+                self.client, delay = client, 2
+                self.last_error = None
+                await done.wait()
+            except Exception as e:
+                self.last_error = f"{type(e).__name__}: {e}"[:200]
+                log.warning("Sendspin: couldn't connect to %s: %s", url, self.last_error)
+            finally:
+                if self.client is client:
+                    self.client = None
+                    self.playing = None
+            self.status = f"reconnecting to {url}"
+            await asyncio.sleep(delay)
+            delay = min(delay * 2, 30)
+
+    def _make_client(self):
         kwargs = {"pairing_store": self.store, "visualizer_support": self.vis_support,
                   "pairing_support": self._pairing_support()}
         if self.vis_state is not None and "visualizer_state" in inspect.signature(SendspinClient).parameters:
@@ -156,6 +213,10 @@ class SendspinLink:
         client.add_visualizer_listener(lambda frames: self._on_frames(client, frames))
         client.add_metadata_listener(self._on_metadata)
         client.add_group_update_listener(self._on_group)
+        return client
+
+    async def _on_connection(self, ws):
+        client = self._make_client()
         self.client = client
         try:
             await client.attach_websocket(ws)  # serves the connection until it closes
@@ -298,14 +359,55 @@ class SendspinLink:
         return self.status
 
     def describe(self):
-        warning = None
-        if VERSION and VERSION.split(".")[0] != MA_AIOSENDSPIN.split(".")[0]:
-            warning = (f"aiosendspin {VERSION} is installed but Music Assistant uses {MA_AIOSENDSPIN}; "
-                       f"they can't connect — run: pip install -r requirements-sendspin.txt")
-        return {"available": AVAILABLE, "version": VERSION, "warning": warning,
+        return {"available": AVAILABLE, "version": VERSION, "warning": version_warning(),
+                "protocol": self.protocol, "mode": self.mode,
+                "server_url": getattr(self, "server_url_used", None),
                 "status": self.current_status(), "server": self.server_name,
                 "pair_code": self.pair_code, "connected": self.connected(), "port": self.port,
                 "receiving": time.time() - self.updated < 2.0, "metadata": self.metadata}
+
+
+def version_warning():
+    """None when the installed aiosendspin speaks a protocol some Music Assistant version uses."""
+    if not VERSION or LEGACY or VERSION.split(".")[0] == MA_AIOSENDSPIN.split(".")[0]:
+        return None
+    return (f"aiosendspin {VERSION} is installed but Music Assistant uses {MA_AIOSENDSPIN} "
+            f"({MA27_AIOSENDSPIN} for Music Assistant 2.7.x); they can't connect — run: "
+            f"pip install -r requirements-sendspin.txt (or requirements-sendspin-ma27.txt)")
+
+
+def discover_servers(timeout=3.0):
+    """Sendspin servers (e.g. Music Assistant) advertising on the local network via mDNS."""
+    import socket
+    try:
+        from zeroconf import ServiceBrowser, Zeroconf
+    except ImportError:
+        return []
+    found = {}
+
+    class _L:
+        def add_service(self, zc, type_, name):
+            info = zc.get_service_info(type_, name, timeout=1500)
+            if not info:
+                return
+            addrs = [socket.inet_ntoa(a) for a in info.addresses if len(a) == 4]
+            if addrs:
+                path = (info.properties.get(b"path") or b"/sendspin").decode()
+                found[name] = {"name": name.split(".")[0], "url": f"ws://{addrs[0]}:{info.port}{path}"}
+
+        def update_service(self, *a):
+            pass
+
+        def remove_service(self, *a):
+            pass
+
+    zc = Zeroconf()
+    try:
+        ServiceBrowser(zc, "_sendspin-server._tcp.local.", _L())
+        time.sleep(timeout)
+    finally:
+        zc.close()
+    return list(found.values())
 
 
 _link = None
@@ -318,6 +420,10 @@ def get_link():
 def start_link(data_dir, **kw):
     global _link
     if _link is None:
-        _link = SendspinLink(data_dir, **kw)
+        if LEGACY:  # Music Assistant 2.7.x
+            from sendspin_legacy import LegacySendspinLink
+            _link = LegacySendspinLink(data_dir, **kw)
+        else:
+            _link = SendspinLink(data_dir, **kw)
     _link.start()
     return _link
