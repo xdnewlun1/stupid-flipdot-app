@@ -369,6 +369,15 @@ export const compCache = { names: [] };
 export const fontCache = { list: [] };
 export const drawingsCache = { list: [] };
 export const galleriesCache = { list: [] };
+export const videosCache = { list: [] };  // the Videos library (videos.js keeps it current)
+// uploaded NES ROMs (GET /api/nes/roms); "nesroms" fires on the bus when the list changes
+export const nesCache = { list: [], built: true, loaded: false };
+export async function loadNesRoms() {
+  const j = await api("/api/nes/roms");
+  Object.assign(nesCache, { list: j.roms, built: j.built, max_bytes: j.max_bytes, loaded: true });
+  bus.dispatchEvent(new Event("nesroms"));
+  return nesCache;
+}
 
 export async function loadDrawings() {
   drawingsCache.list = (await api("/api/drawings")).drawings;
@@ -447,6 +456,11 @@ export function paramForm(app, values = {}) {
       input = el("select", { id }, scenesCache.list.map(s => el("option", { value: s.id, selected: s.id === v }, `${s.name}${s.frames > 1 ? ` (${s.frames} frames)` : ""}`)));
       if (!scenesCache.list.length) input.append(el("option", { value: "" }, "No scenes saved yet"));
       getters[p.name] = () => input.value;
+    } else if (p.type === "video") {
+      const ready = videosCache.list.filter(x => x.status === "ready");
+      input = el("select", { id }, ready.map(x => el("option", { value: x.id, selected: x.id === v }, x.name)));
+      if (!ready.length) input.append(el("option", { value: "" }, "No videos yet (add them on the Videos page)"));
+      getters[p.name] = () => input.value;
     } else if (p.type === "gallery") {
       input = el("select", { id }, galleriesCache.list.map(g => el("option", { value: g.id, selected: g.id === v }, `${g.name} (${g.count})`)));
       if (!galleriesCache.list.length) input.append(el("option", { value: "" }, "No slideshows yet"));
@@ -455,6 +469,25 @@ export function paramForm(app, values = {}) {
       input = el("select", { id }, drawingsCache.list.map(d => el("option", { value: d.id, selected: d.id === v }, d.name)));
       if (!drawingsCache.list.length) input.append(el("option", { value: "" }, "No drawings yet"));
       getters[p.name] = () => input.value;
+    } else if (p.type === "nesrom") {
+      // fills itself from the uploaded ROMs, and again whenever that list changes
+      const sel = input = el("select", { id });
+      const fill = () => {
+        const keep = sel.value || v;
+        const roms = nesCache.list.filter(r => !r.problem);
+        sel.replaceChildren(...roms.map(r => el("option", { value: r.name, selected: r.name === keep }, r.title)));
+        if (!roms.length) sel.append(el("option", { value: "" }, nesCache.loaded ? "No games uploaded yet" : "Loading…"));
+      };
+      fill();
+      let seen = false;  // once the form has been on the page and is gone, stop listening
+      const onRoms = () => {
+        if (sel.isConnected) seen = true;
+        else if (seen) return bus.removeEventListener("nesroms", onRoms);
+        fill();
+      };
+      bus.addEventListener("nesroms", onRoms);
+      if (!nesCache.loaded) loadNesRoms().catch(() => {});
+      getters[p.name] = () => sel.value;
     } else if (p.type === "font") {
       input = fontSelect(v, { id });
       getters[p.name] = () => input.value;
@@ -518,5 +551,6 @@ export function describeItem(item) {
   else if (item.app === "layers") detail = p.composition;
   else if (item.app === "slideshow") detail = galleriesCache.list.find(g => g.id === p.gallery)?.name;
   else if (item.app === "drawing") detail = drawingsCache.list.find(d => d.id === p.drawing)?.name;
+  else if (item.app === "video") detail = videosCache.list.find(x => x.id === p.video)?.name;
   return { title, detail: detail ? String(detail).slice(0, 60) : "" };
 }

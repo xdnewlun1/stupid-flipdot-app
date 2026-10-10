@@ -14,6 +14,7 @@ from transitions import NAMES as TRANSITIONS, Transition
 log = logging.getLogger("runner")
 
 OFF = "__off__"  # schedule target meaning "all black"
+LIVE_TIMEOUT = 4  # seconds without a frame before a browser's live stream counts as gone
 
 
 @dataclass
@@ -46,6 +47,12 @@ class Runner:
         self.clock_offset = 0.0  # seconds a pausable app has spent paused (its clock runs this far behind)
         self.render_once = False  # paused, but show the result of a skip
         self._problem, self._problem_at = None, 0
+        # progress ticks (a playing video's position): cheaper than _changed(), only live views listen
+        self.ticks = []
+        self._tick = None
+        # a live stream from a browser (Import, Stream live): {"id", "name", "target", "since", "last"}
+        self.live = None
+        self._stopped_streams = []  # streams ended by Stop: frames still in flight are ignored
         threading.Thread(target=self._loop, daemon=True).start()
 
     # ---- control (called from HTTP/MQTT threads) --------------------------------
@@ -134,9 +141,11 @@ class Runner:
         if self.paused_at is not None:
             self.pause(False)
 
-    def stop(self):
+    def stop(self, end_stream=True):
         """Back to manual mode: nothing runs, the board keeps whatever is on it."""
         with self.lock:
+            if end_stream and self.live:
+                self.end_stream(self.live["id"])
             if self.mode == "manual" and not self.app and not self.notif and not self.transition:
                 return
             if self.notif:
@@ -150,6 +159,36 @@ class Runner:
             self.mode = "manual"
             self.playlist = None
             self.paused_at = None
+            self._changed()
+
+    # ---- live streams from a browser ------------------------------------------------
+
+    def stream_frame(self, info, target):
+        """A frame of a browser's live stream is arriving (target "board" or "layer"). Returns False when that
+        stream was stopped here, so the frame should be dropped."""
+        sid = str((info or {}).get("id") or "")[:64]
+        if not sid:
+            return True
+        with self.lock:
+            if sid in self._stopped_streams:
+                return False
+            if target == "board":
+                self.stop(end_stream=False)
+            now = time.time()
+            if self.live is None or self.live["id"] != sid or self.live["target"] != target:
+                self.live = {"id": sid, "name": str(info.get("name") or "")[:80], "target": target, "since": now, "last": now}
+                self._changed()
+            else:
+                self.live["last"] = now
+            return True
+
+    def end_stream(self, sid, stopped=True):
+        with self.lock:
+            if not self.live or self.live["id"] != sid:
+                return
+            self.live = None
+            if stopped:
+                self._stopped_streams = (self._stopped_streams + [sid])[-20:]
             self._changed()
 
     def run(self, spec, transition="none", duration=1.0):
@@ -309,6 +348,7 @@ class Runner:
             top = self._top()
             setup, error, problem_app = self.problem(app)
             skip = self._skippable()
+            live = self.live
             slide = None
             if top is not None and top.id == "slideshow" and top.item:
                 slide = {"gallery": top.gid, "file": top.item.get("file")}
@@ -316,7 +356,11 @@ class Runner:
                 "mode": self.mode,
                 "playlist": self.playlist,
                 "app": app.id if app else None,
-                "description": app.describe() if app else None,
+                "description": (f"Live stream: {live['name']}" if live else app.describe() if app else None),
+                # a browser streaming to the board; pages compare the id with their own to say "this browser"
+                "live": {k: live[k] for k in ("id", "name", "target", "since")} if live else None,
+                # a playing video's position etc. (apps/video.py)
+                "video": top.media_status() if top is not None and hasattr(top, "media_status") else None,
                 "interactive": bool(app and app.interactive),
                 "notification": bool(self.notif),
                 "drawings": self.drawings_on_board(),
@@ -329,7 +373,7 @@ class Runner:
                 "paused": self.paused_at is not None,
                 "can_pause": self.can_pause(),
                 "can_next": skip is not None or self.mode in ("playlist", "schedule"),
-                "skip": "picture" if skip is not None else "item",
+                "skip": getattr(skip, "skip_unit", "picture") if skip is not None else "item",
                 # what you started, so its options form can open with the values on the board
                 "spec": top.spec if top is not None and hasattr(top, "spec") and top.id != "layers" else None,
                 "layer_set": top.name if top is not None and top.id == "layers" else None,
@@ -436,6 +480,9 @@ class Runner:
                     log.exception("playlist advance failed")
                 if self.notif and now >= self.notif["until"]:
                     self._end_notification()
+                if self.live and now - self.live["last"] > LIVE_TIMEOUT:
+                    log.info("live stream %s stopped sending frames", self.live["name"])
+                    self.end_stream(self.live["id"], stopped=False)
                 app = self.notif["app"] if self.notif else self.app
                 frozen = (app is not None and app is self.app and not self.notif and self.paused_at is not None
                           and getattr(app, "pausable", False) and not self.transition)
@@ -472,6 +519,11 @@ class Runner:
                     else:
                         out = c
                     self.board.set_canvas(out)
+                    tick = getattr(app, "status_tick", None) if app is self.app else None
+                    if tick is not None and tick != self._tick:
+                        self._tick = tick
+                        for fn in self.ticks:
+                            fn()
                     if getattr(app, "restore", False) and not self.transition:
                         self.app = None  # restore finished; back to plain manual mode
                     delay = min(app.interval, 1 / self.transition_fps()) if self.transition else app.interval

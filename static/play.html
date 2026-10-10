@@ -114,6 +114,12 @@
     <button data-key="weapon">Next weapon</button>
     <button data-key="run" id="runKey" aria-pressed="false">Run</button>
   </div>
+  <div class="extra" id="nesKeys" role="group" aria-label="NES" hidden>
+    <button data-key="select">Select</button>
+    <button data-key="start">Start</button>
+    <button data-key="save" title="Save the game here (one save per game)">Save</button>
+    <button data-key="load" title="Go back to the saved game">Load</button>
+  </div>
   </div>
 <script type="module">
 import { GAME_GROUPS as GAMES } from "/static/js/games.js";
@@ -142,7 +148,7 @@ for (const [group, games] of Object.entries(GAMES)) {
   gamePick.append(og);
 }
 const HINTS = { tetris: ["rotate", "drop"], blackjack: ["deal / hit", "stand"], snake: ["", ""], pong: ["", ""],
-  breakout: ["launch", "launch"], invaders: ["fire", "fire"], tron: ["", ""], flappy: ["flap", "flap"], platformer: ["jump", "run"], doom: ["fire", "use"],
+  breakout: ["launch", "launch"], invaders: ["fire", "fire"], tron: ["", ""], flappy: ["flap", "flap"], platformer: ["jump", "run"], doom: ["fire", "use"], nes: ["", ""],
   asteroids: ["fire", "hyperspace"], galaxian: ["fire", "fire"], missile_command: ["fire", "fire"], centipede: ["fire", "fire"], lunar_lander: ["thrust", ""],
   pacman: ["", ""], frogger: ["", ""], qix: ["draw", "slow draw"], bomberman: ["bomb", "bomb"], tanks: ["fire", "fire"],
   dino: ["jump", "jump"], racer: ["gas", "brake"], copter: ["climb", ""], stacker: ["stop / go on", "take prize"], skyjump: ["", ""], pitfall: ["jump / let go", ""],
@@ -160,7 +166,9 @@ function showStatus() {
   // Doom-only buttons; "Run" is a toggle in the game, so it resets whenever Doom isn't running
   const doom = !!runner.interactive && runner.app === "doom";
   document.getElementById("doomKeys").hidden = !doom;
-  document.getElementById("gameKeys").hidden = !runner.interactive || doom;
+  const nes = !!runner.interactive && runner.app === "nes";
+  document.getElementById("nesKeys").hidden = !nes;
+  document.getElementById("gameKeys").hidden = !runner.interactive || doom || nes;
   if (!doom) runKey.setAttribute("aria-pressed", "false");
   statusEl.textContent = (runner.interactive ? runner.description : "No game running. Pick one above.") + (wsOpen ? "" : " (reconnecting…)");
   if (document.activeElement !== gamePick) gamePick.value = runner.interactive && HINTS[runner.app] ? runner.app : "";

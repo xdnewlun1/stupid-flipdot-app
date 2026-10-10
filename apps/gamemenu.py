@@ -24,14 +24,14 @@ STATE_FILE = "gamemenu.json"
 
 # Same grouping and order as the phone controller's picker (static/play.html)
 GROUPS = [
-    ("Classics", ["snake", "tetris", "pong", "breakout", "invaders", "tron", "flappy", "platformer", "blackjack", "doom"]),
+    ("Classics", ["snake", "tetris", "pong", "breakout", "invaders", "tron", "flappy", "platformer", "blackjack", "doom", "nes"]),
     ("Arcade", ["asteroids", "galaxian", "missile_command", "centipede", "lunar_lander"]),
     ("Maze & action", ["pacman", "frogger", "qix", "bomberman", "tanks"]),
     ("Runners & racing", ["dino", "racer", "copter", "stacker", "skyjump", "pitfall"]),
     ("Two players", ["connect4", "tictactoe", "artillery", "checkers", "battleship", "quickdraw", "air_hockey"]),
     ("Puzzles", ["game2048", "minesweeper", "sokoban", "lights_out", "simon", "columns", "mastermind"]),
 ]
-PAUSE_KEY = {"doom": "start"}  # games that keep running on their own: toggle their pause around the menu
+PAUSE_KEY = {"doom": "start", "nes": "pause"}  # games that keep running on their own: toggle their pause around the menu
 
 
 def groups():

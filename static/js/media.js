@@ -12,6 +12,11 @@ let previewTimer = null, liveTimer = null, sourceName = "";
 
 const fps = () => Math.max(1, Math.min(20, +$("fps").value || 10));
 
+// This tab's live stream, so the status can say "from this browser" (other tabs and devices see another id)
+export const STREAM_ID = Math.random().toString(36).slice(2, 12);
+let streamSeen = false;  // the server has listed this stream as live (after that, its absence means it was stopped)
+const streamInfo = () => ({ id: STREAM_ID, name: sourceName || "video" });
+
 function convertFrame(src) {
   const W = board.W, H = board.H;
   const mode = $("imgMode").value, dither = $("dither").value === "dither";
@@ -121,6 +126,7 @@ function updateButtons() {
   $("live").disabled = !isVideo;
   $("clip").disabled = !isVideo;
   $("live").textContent = liveTimer ? "Stop streaming" : "Stream live";
+  liveNote().hidden = !liveTimer;
   $("live").classList.toggle("primary", !!liveTimer);
 }
 
@@ -185,10 +191,26 @@ async function startWebcam() {
 }
 
 function stopLive() {
+  if (liveTimer) api("/api/stream/stop", { id: STREAM_ID }).catch(() => {});
   clearInterval(liveTimer);
   liveTimer = null;
+  streamSeen = false;
   updateButtons();
 }
+// closing the tab ends the stream on the server right away (otherwise it notices after a few seconds without frames)
+window.addEventListener("pagehide", () => {
+  if (liveTimer) navigator.sendBeacon?.("/api/stream/stop", JSON.stringify({ id: STREAM_ID }));
+});
+// Stop pressed anywhere (or another browser started streaming): stop sending
+bus.addEventListener("state", () => {
+  if (!liveTimer) return;
+  const mine = board.runner?.live?.id === STREAM_ID;
+  if (mine) streamSeen = true;
+  else if (streamSeen) {
+    stopLive();
+    toast("The live stream was stopped.");
+  }
+});
 
 let liveDrawing = null;  // drawing layer that live video streams into
 
@@ -211,14 +233,30 @@ async function toggleLive() {
     busy = true;
     const rows = gridToRows(convertFrame(video));
     try {
-      if (!layerId) await api("/api/frame", { rows });
-      else if (!wsSend({ type: "drawing_rows", drawing: layerId, rows })) await api(`/api/drawings/${layerId}`, { rows });
+      const stream = streamInfo();
+      if (!layerId) { if ((await api("/api/frame", { rows, stream })).stopped) stopLive(); }
+      else if (!wsSend({ type: "drawing_rows", drawing: layerId, rows, stream })) {
+        if ((await api(`/api/drawings/${layerId}`, { rows, stream })).stopped) stopLive();
+      }
     } catch (e) { toast(e.message, true); stopLive(); }
     busy = false;
   }, 1000 / fps());
   if (layerId) toast("Streaming into a layer. What's running keeps going.");
   updateButtons();
   startPreview();
+}
+
+function liveNote() {
+  let n = $("liveNote");
+  if (!n) {
+    n = document.createElement("p");
+    n.id = "liveNote";
+    n.className = "muted";
+    n.setAttribute("role", "status");
+    n.textContent = "Streaming from this tab. It keeps going while you use other pages here, and stops when you close this tab.";
+    $("live").closest(".row, div").after(n);
+  }
+  return n;
 }
 
 async function convertClip() {

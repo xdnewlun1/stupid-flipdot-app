@@ -200,13 +200,12 @@ class Renderer:
     def __call__(self, color, layer, roi):
         from PIL import Image, ImageChops, ImageFilter, ImageOps
         size = (self.w, self.h)
-        if self.look == "plain":
-            grey = color.point(LUMA).resize(size, Image.BOX, box=roi)
-            return self._dither(grey).point(NONZERO).tobytes()
-        # how much each background pixel stands out from the backdrop (the most common colour: usually
-        # the sky, but a game may paint its playfield with a solid tile)
         hist = color.histogram()[:64]
-        back = max(range(64), key=hist.__getitem__)
+        back = max(range(64), key=hist.__getitem__)  # the backdrop: usually the sky, or a solid playfield
+        if self.look == "plain":  # brightness, turned over when the backdrop is light so it stays dark
+            grey = color.point(LUMA if LUMA[back] < 128 else [255 - v for v in LUMA]).resize(size, Image.BOX, box=roi)
+            return self._dither(grey).point(NONZERO).tobytes()
+        # how much each background pixel stands out from the backdrop
         lut = DIST[back] + [0] * 192
         bgmask = layer.point(BG)
         bv = ImageChops.multiply(color.point(lut), bgmask).resize(size, Image.BOX, box=roi)
@@ -293,7 +292,7 @@ class NES(App):
         self.last_quiet_check = 0
         self.last_frame_no = 0
         self.scroll = None
-        self.scrolled_at = 0
+        self.scrolls = collections.deque()  # when the scroll position changed (last 30 s)
         self.note = None  # (text, until)
         self.paused = False
         self.ms = 0.0     # Python time per board frame (for describe/logs)
@@ -515,12 +514,16 @@ class NES(App):
         steps = max(1, round((h[3] - self.last_frame_no) / 6)) if self.last_frame_no else 1  # camera in 10/s steps
         self.last_frame_no = h[3]
         if self.scroll is not None and h[4] != self.scroll:
-            self.scrolled_at = now
+            self.scrolls.append(now)
         self.scroll = h[4]
+        while self.scrolls and now - self.scrolls[0] > 30:
+            self.scrolls.popleft()
         mode = self.p["camera"]
         roi = self.camera(oam, steps) if mode != "off" else FULL
-        if mode == "auto" and now - self.scrolled_at > 30:
-            roi = FULL  # this screen hasn't scrolled for a while (a menu, a one-screen game): show all of it
+        # auto: follow only once the screen has scrolled for about 4 s of the last 30 (a short slide in a
+        # cut scene doesn't count); menus and one-screen games keep the whole picture
+        if mode == "auto" and len(self.scrolls) < 4 * self.fps:
+            roi = FULL
         return self.render_dots(color, layer, roi)
 
     def describe(self):

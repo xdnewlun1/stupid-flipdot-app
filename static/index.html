@@ -7,6 +7,7 @@
 <meta name="color-scheme" content="dark light">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22%3E%3Crect width=%2224%22 height=%2224%22 rx=%225%22 fill=%22%23111%22/%3E%3Cg fill=%22%23e9b949%22%3E%3Ccircle cx=%227.5%22 cy=%227.5%22 r=%222%22/%3E%3Ccircle cx=%2216.5%22 cy=%227.5%22 r=%222%22/%3E%3Ccircle cx=%2212%22 cy=%2212%22 r=%222%22/%3E%3Ccircle cx=%227.5%22 cy=%2216.5%22 r=%222%22/%3E%3C/g%3E%3C/svg%3E">
 <link rel="stylesheet" href="/static/style.css">
+<link rel="stylesheet" href="/static/videos.css">
 </head>
 <body>
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
@@ -43,6 +44,7 @@
   <symbol id="i-auto" viewBox="0 0 24 24"><path d="M4 12a8 8 0 0 1 14-5.3L20 9"/><path d="M20 4v5h-5"/><path d="M20 12a8 8 0 0 1-14 5.3L4 15"/><path d="M4 20v-5h5"/></symbol>
   <symbol id="i-chat" viewBox="0 0 24 24"><path d="M4 5h16v11H9l-5 4V5z"/></symbol>
   <symbol id="i-slides" viewBox="0 0 24 24"><rect x="6" y="5" width="12" height="14" rx="1.5"/><path d="M3 8v8M21 8v8"/></symbol>
+  <symbol id="i-video" viewBox="0 0 24 24"><rect x="3" y="6" width="13" height="12" rx="2"/><path d="m16 10.5 5-3v9l-5-3"/></symbol>
   <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.2-4.2"/></symbol>
   <symbol id="i-zoomin" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.2-4.2M8 11h6M11 8v6"/></symbol>
   <symbol id="i-zoomout" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.2-4.2M8 11h6"/></symbol>
@@ -64,6 +66,7 @@
       <button data-tab="apps"><svg class="i" aria-hidden="true"><use href="#i-apps"/></svg>Apps</button>
       <button data-tab="layers"><svg class="i" aria-hidden="true"><use href="#i-layers"/></svg>Layers</button>
       <button data-tab="slideshows"><svg class="i" aria-hidden="true"><use href="#i-slides"/></svg>Slideshows</button>
+      <button data-tab="videos"><svg class="i" aria-hidden="true"><use href="#i-video"/></svg>Videos</button>
       <p class="navGroup">Programme</p>
       <button data-tab="playlists"><svg class="i" aria-hidden="true"><use href="#i-playlist"/></svg>Playlists</button>
       <button data-tab="schedule"><svg class="i" aria-hidden="true"><use href="#i-schedule"/></svg>Schedule</button>
@@ -476,6 +479,127 @@
     </div>
   </section>
 
+  <!-- ===================== VIDEOS (static/js/videos.js, static/videos.css) ===================== -->
+  <section class="tab card" id="tab-videos" hidden>
+    <div id="vdNoFfmpeg" class="statusWarn" role="alert" hidden></div>
+    <div id="vdDrop" class="drop" role="button" tabindex="0">Drop videos here (WebM, MP4, MOV, MKV, GIF…), or click to choose files</div>
+    <input type="file" id="vdFile" accept="video/*,image/gif,.mkv,.webm,.mov" multiple hidden>
+    <div class="row">
+      <label class="muted">Sizing <select id="vdMode">
+        <option value="crop">Cut to fit</option>
+        <option value="fit">Fit inside (black bars)</option>
+        <option value="stretch">Stretch to fit</option>
+      </select></label>
+      <label class="muted"><input type="checkbox" id="vdKeep"> <span>Keep the original (needed to change sizing later; uses a lot of space)</span></label>
+    </div>
+    <div id="vdUploads" class="vdUploads"></div>
+
+    <div id="vdPlayer" class="vdPlayer" hidden>
+      <div class="bar">
+        <h2 id="vdName"></h2>
+        <span class="spacer"></span>
+        <button id="vdRename">Rename</button>
+        <button id="vdDelete" class="danger">Delete</button>
+      </div>
+      <p id="vdInfo" class="muted"></p>
+      <div id="vdBody">
+        <div class="vdStage">
+          <canvas id="vdPreview" width="504" height="252" role="img" aria-label="Preview of the frame at the playhead"></canvas>
+          <p id="vdOnBoard" class="muted"></p>
+        </div>
+        <div id="vdStrip" class="vdStrip" aria-label="Jump to a point in the video"></div>
+        <div class="vdTimeline">
+          <div class="vdTrack" id="vdTrack">
+            <div class="vdRange" id="vdRange" hidden></div>
+            <input type="range" id="vdSeek" min="0" max="1" step="0.1" value="0" aria-label="Playhead">
+            <button class="vdHandle" id="vdIn" aria-label="Range start (arrow keys move it)" title="Drag to set where the range starts"></button>
+            <button class="vdHandle out" id="vdOut" aria-label="Range end (arrow keys move it)" title="Drag to set where the range ends"></button>
+          </div>
+          <span id="vdTime" class="vdTime">0:00 / 0:00</span>
+        </div>
+        <div class="row vdControls">
+          <button id="vdShow" class="primary"><svg class="i" aria-hidden="true"><use href="#i-play"/></svg>Show on board</button>
+          <div class="group" role="group" aria-label="Playback">
+            <button id="vdPrev" title="Previous video" aria-label="Previous video"><svg class="i" aria-hidden="true"><use href="#i-prev"/></svg></button>
+            <button id="vdBack" title="Back 10 seconds" aria-label="Back 10 seconds"><svg class="i" aria-hidden="true"><use href="#i-left"/></svg>10 s</button>
+            <button id="vdPlayPause" aria-pressed="false"><svg class="i" aria-hidden="true"><use href="#i-play"/></svg><span>Play</span></button>
+            <button id="vdFwd" title="Forward 10 seconds" aria-label="Forward 10 seconds">10 s<svg class="i" aria-hidden="true"><use href="#i-right"/></svg></button>
+            <button id="vdNext" title="Next video" aria-label="Next video"><svg class="i" aria-hidden="true"><use href="#i-next"/></svg></button>
+            <button id="vdStop" title="Stop (the picture stays on the board)"><svg class="i" aria-hidden="true"><use href="#i-stop"/></svg>Stop</button>
+          </div>
+          <label class="muted">Speed <select id="vdSpeed">
+            <option value="0.5">0.5×</option><option value="0.75">0.75×</option><option value="1" selected>1×</option>
+            <option value="1.25">1.25×</option><option value="1.5">1.5×</option><option value="2">2×</option>
+          </select></label>
+        </div>
+        <div class="row vdRangeRow">
+          <span id="vdRangeText" class="muted"></span>
+          <div class="group" role="group" aria-label="Range">
+            <button id="vdSetIn">Set start</button>
+            <button id="vdSetOut">Set end</button>
+            <button id="vdClearRange">Clear</button>
+          </div>
+          <label class="muted"><input type="checkbox" id="vdLoop"> <span>Loop</span></label>
+          <button id="vdPlayRange">Play range</button>
+          <span class="savedNote" id="vdRangeSaved" role="status"></span>
+        </div>
+        <div class="form">
+          <label for="vdTitle">Title shown when it starts <span class="savedNote" id="vdTitleSaved" role="status"></span></label>
+          <div>
+            <div class="row tight"><input id="vdTitle" type="text" maxlength="120" placeholder="No title: nothing scrolls by"><button id="vdTitleClear">Clear</button></div>
+            <p class="help" id="vdTitleNote"></p>
+          </div>
+        </div>
+        <details class="disclosure" id="vdLook">
+          <summary>Display options</summary>
+          <p class="muted">Saved with this video and applied on the board right away. <span class="savedNote" id="vdDisplaySaved" role="status"></span></p>
+          <div class="form">
+            <label for="vdDither">Style</label>
+            <select id="vdDither">
+              <option value="ordered">Ordered dither (shading, fewest flips)</option>
+              <option value="diffusion">Diffusion dither (more detail, flips more)</option>
+              <option value="threshold">Threshold (crisp, no shading)</option>
+            </select>
+            <label for="vdThreshold">Brightness cutoff <span id="vdThVal"></span></label>
+            <input id="vdThreshold" type="range" min="1" max="254">
+            <label for="vdContrast">Contrast <span id="vdConVal"></span></label>
+            <input id="vdContrast" type="range" min="0.2" max="3" step="0.1">
+            <label for="vdGamma">Gamma <span id="vdGamVal"></span></label>
+            <div><input id="vdGamma" type="range" min="0.3" max="3" step="0.1"><p class="help">Below 1 brightens the shadows, above 1 darkens them.</p></div>
+            <label for="vdInvert">Negative</label>
+            <div class="row tight"><input id="vdInvert" type="checkbox"><span class="muted">Swap lit and dark dots.</span></div>
+          </div>
+        </details>
+        <div id="vdReconvert" class="row" hidden>
+          <label class="muted">Convert again with <select id="vdRemode">
+            <option value="crop">Cut to fit</option><option value="fit">Fit inside (black bars)</option><option value="stretch">Stretch to fit</option>
+          </select></label>
+          <button id="vdReconvertBtn">Convert again</button>
+        </div>
+      </div>
+    </div>
+
+    <p id="vdEmpty" class="muted">No videos yet. Drop one above: it's converted for the board in the background.</p>
+    <div id="vdGrid" class="ssItems vdGrid"></div>
+
+    <details class="disclosure" id="vdOptions">
+      <summary>Options</summary>
+      <p class="muted">For new uploads. <span class="savedNote" id="vdOptsSaved" role="status"></span></p>
+      <div class="form">
+        <label for="vdMaxMb">Largest upload (MB)</label><input id="vdMaxMb" type="number" min="1" max="100000" step="1" inputmode="numeric">
+        <label for="vdKeepDefault">Keep originals</label>
+        <div class="row tight"><input id="vdKeepDefault" type="checkbox"><span class="muted">Off by default: originals are big and go into the storage database and backups.</span></div>
+        <label for="vdFps">Frames per second</label>
+        <div class="row tight"><input id="vdFps" type="number" min="1" max="30" step="1" inputmode="numeric" style="width:80px"><span class="muted">15 is about as fast as the discs flip.</span></div>
+        <label for="vdTitleSource">Title when the file has none</label>
+        <select id="vdTitleSource">
+          <option value="name">Use the video's name</option>
+          <option value="metadata">No title (only titles from the file itself)</option>
+        </select>
+      </div>
+    </details>
+  </section>
+
   <!-- ===================== PLAYLISTS ===================== -->
   <section class="tab card" id="tab-playlists" hidden>
     <div class="bar">
@@ -699,7 +823,8 @@
       <h2>Gamepad <span class="savedNote" id="gpSaved" role="status"></span></h2>
       <p class="lede">Plug USB gamepads or a Mayflash GameCube adapter (PC mode) into the server to play the board's games. Each
         adapter port is a player, port 1 = player 1. The stick and D-pad steer, A and B are the game buttons. In Doom, L/R strafe,
-        X switches weapon, Y toggles run, Z opens doors and Start pauses.</p>
+        X switches weapon, Y toggles run, Z opens doors and Start pauses. In NES games, Z or X is Select,
+        Y saves the game and L loads it.</p>
       <div class="form">
         <label for="gpEnabled">Gamepads</label><input id="gpEnabled" type="checkbox">
         <label for="gpDeadzone">Stick dead zone</label>

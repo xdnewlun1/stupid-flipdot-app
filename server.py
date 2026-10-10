@@ -36,8 +36,9 @@ import rules
 import sendspin_link
 import storage as storage_mod
 import timelapse
+import video as video_mod
 from apps import gamemenu, slideshow
-from apps import music
+from apps import music, nes
 from apps.media import convert_image
 from apps.widgets import geocode
 from boardcare import BoardCare
@@ -342,6 +343,8 @@ def ws_message(msg):
         runner.input(msg["key"], msg.get("action", "down"), int(msg.get("player", 1)))
     elif msg.get("type") == "drawing_rows":
         # a whole picture for a drawing layer, e.g. live video streamed into a composition
+        if msg.get("stream") and not runner.stream_frame(msg["stream"], "layer"):
+            return  # that stream was stopped here; frames still on their way are dropped
         store.update_drawing(msg["drawing"], rows=msg["rows"], save=False)
         runner.wake.set()
     elif msg.get("type") == "dots" and msg.get("drawing"):
@@ -442,9 +445,23 @@ def post_dots(req):
 
 
 @route("POST", "/api/frame")
-@manual
 def post_frame(req):
-    board.set_frame(req.json()["rows"])
+    """{"rows": [...]}; with "stream": {"id", "name"} it's a frame of a browser's live stream (Import page)."""
+    body = req.json()
+    if body.get("stream"):
+        if not runner.stream_frame(body["stream"], "board"):
+            return {"stopped": True, **state()}
+    else:
+        runner.stop()
+    board.set_frame(body["rows"])
+    return state()
+
+
+@route("POST", "/api/stream/stop")
+def post_stream_stop(req):
+    """{"id": ...}: the browser ended its live stream (or its tab is closing: sent with sendBeacon)."""
+    runner.end_stream(str(req.json().get("id") or ""), stopped=False)
+    return {"ok": True}
 
 
 @route("POST", "/api/fill")
@@ -553,6 +570,8 @@ def get_drawing(req, did):
 def update_drawing(req, did):
     """Replace a drawing's dots and/or rename it: {"rows": [...], "name": ...}. Doesn't stop what's running."""
     body = req.json()
+    if body.get("stream") and not runner.stream_frame(body["stream"], "layer"):
+        return {"stopped": True}
     store.update_drawing(did, rows=body.get("rows"), name=body.get("name"))
     runner.wake.set()
     return {"ok": True}
@@ -714,6 +733,131 @@ def play_gallery_item(req, gid):
 def delete_gallery(req, gid):
     store.delete_gallery(gid)
     return {"ok": True, "cleaned": clean_refs("gallery", gid)}
+
+
+# ---- videos (video.py converts and stores them, apps/video.py plays them) ----------------
+
+STREAMED_UPLOADS = {"/api/videos/upload"}  # big bodies these routes read from req.rfile themselves
+
+
+def video_display(req):
+    return {k: v[0] for k, v in req.query.items() if k in video_mod.DISPLAY_DEFAULTS}
+
+
+def running_video(vid=None):
+    """The Video app on the board (directly, or the first video layer), optionally only if it plays `vid`."""
+    app = runner.app
+    if app is None or runner.notif:
+        return None
+    found = [app] if app.id == "video" else [l.app for l in app.layers if l.app.id == "video"] if app.id == "layers" else []
+    return next((a for a in found if vid is None or a.vid == vid), None)
+
+
+@route("GET", "/api/videos")
+def get_videos(req):
+    lib = video_mod.library
+    return {"videos": lib.listing(), "ffmpeg": video_mod.have_ffmpeg(), "no_ffmpeg": video_mod.NO_FFMPEG,
+            "settings": lib.settings()}
+
+
+@route("POST", "/api/videos/upload")
+def upload_video(req):
+    """Raw file bytes (streamed to disk) with ?name=FILE&mode=crop|fit|stretch&fps=15&keep=0|1. Converts in the background."""
+    q = {k: v[0] for k, v in req.query.items()}
+    try:
+        keep = None if "keep" not in q else q["keep"] in ("1", "true")
+        vid = video_mod.library.receive(req.rfile, req.body_length, q.get("name") or "video", q.get("mode", "crop"),
+                                        q.get("fps"), keep)
+    except Exception:
+        req.close_connection = True  # the rest of the body may still be on its way
+        raise
+    return {"id": vid, "videos": video_mod.library.listing()}
+
+
+@route("GET", "/api/videos/(v[0-9]+)")
+def get_video(req, vid):
+    video_mod.library.get(vid)
+    return video_mod.library.public(vid)
+
+
+@route("POST", "/api/videos/(v[0-9]+)")
+def update_video(req, vid):
+    """{"name", "title" ("" = none), "display": {dither, threshold, contrast, gamma, invert}, "range": {start, end, loop}}."""
+    body = req.json()
+    v = video_mod.library.update(vid, name=body.get("name"), title=body.get("title"), display=body.get("display"),
+                                 rng=body.get("range"))
+    runner.wake.set()
+    return v
+
+
+@route("POST", "/api/videos/(v[0-9]+)/delete")
+def delete_video(req, vid):
+    """Deleted for real after video.UNDO_SECONDS, unless /restore comes first."""
+    video_mod.library.delete(vid)
+    return {"ok": True, "undo_seconds": video_mod.UNDO_SECONDS}
+
+
+@route("POST", "/api/videos/(v[0-9]+)/restore")
+def restore_video(req, vid):
+    return video_mod.library.restore(vid)
+
+
+@route("POST", "/api/videos/(v[0-9]+)/convert")
+def reconvert_video(req, vid):
+    """Convert again from the kept original: {"mode": "crop"|"fit"|"stretch", "fps": 15}."""
+    body = req.json()
+    video_mod.library.reconvert(vid, body.get("mode"), body.get("fps"))
+    return video_mod.library.public(vid)
+
+
+@route("GET", "/api/videos/(v[0-9]+)/frame")
+def video_frame(req, vid):
+    """?t=SECONDS (+ display options): that frame as dots, for the scrub preview."""
+    t, rows = video_mod.library.frame_rows(vid, req.query.get("t", ["0"])[0], video_display(req))
+    return {"t": t, "rows": rows}
+
+
+@route("GET", "/api/videos/(v[0-9]+)/strip")
+def video_strip(req, vid):
+    return {"frames": [{"t": t, "rows": rows} for t, rows in video_mod.library.strip(vid, video_display(req))]}
+
+
+@route("POST", "/api/videos/(v[0-9]+)/play")
+def play_video(req, vid):
+    """Show on board: {"t": seconds to start from, "start", "end", "loop", "speed"}; extra app params pass through."""
+    body = req.json()
+    v = video_mod.library.get(vid)
+    if v.get("status") != "ready":
+        raise ValueError(f"{v['name']} isn't converted yet.")
+    rng = v.get("range") or {}
+    params = {"video": vid, "start": rng.get("start", 0), "end": rng.get("end", 0), "loop": rng.get("loop", False),
+              **{k: body[k] for k in ("start", "end", "loop", "speed", "show_title", "title_position") if k in body}}
+    runner.run({"app": "video", "params": params}, body.get("transition", "none"))
+    if body.get("t") is not None:
+        with runner.lock:
+            app = running_video(vid)
+            if app is not None:
+                app.seek(body["t"])
+    return state()
+
+
+@route("POST", "/api/videos/control")
+def video_control(req):
+    """For the video on the board: {"seek": seconds} | {"nudge": ±seconds} | {"speed", "loop", "start", "end"}."""
+    body = req.json()
+    with runner.lock:
+        app = running_video(body.get("id"))
+        if app is None:
+            raise HttpError(409, "That video isn't on the board. Press Show on board first.")
+        if "seek" in body:
+            app.seek(body["seek"])
+        elif "nudge" in body:
+            app.seek(app.pos + float(body["nudge"]))
+        app.set_options(**{k: body[k] for k in ("speed", "loop", "start", "end") if k in body})
+        runner.render_once = True  # shows the new frame even while paused
+        runner.wake.set()
+    runner._changed()
+    return state()
 
 
 @route("GET", "/api/compositions")
@@ -1118,6 +1262,48 @@ def delete_font(req):
     return {"fonts": fonts.font_list()}
 
 
+@route("GET", "/api/nes/roms")
+def get_nes_roms(req):
+    """Uploaded NES ROMs, and whether the emulator is built."""
+    return {"roms": nes.list_roms(store), "built": nes.built(), "setup": nes.SETUP_HINT, "max_bytes": nes.MAX_ROM,
+            "mappers": [f"{n} {m}" for n, m in nes.MAPPERS.items()]}
+
+
+@route("POST", "/api/nes/roms")
+def post_nes_rom(req):
+    """Upload a ROM: raw .nes file bytes with ?name=Game.nes. Checks the iNES header, the size and the mapper."""
+    name = req.query.get("name", [""])[0]
+    if Path(name).suffix.lower() != ".nes":
+        raise ValueError("send a .nes file with ?name=FILENAME")
+    data = req.raw()
+    info = nes.parse_ines(data)
+    problem = nes.mapper_problem(info["mapper"])
+    if problem:
+        raise ValueError(problem)
+    folder = nes.rom_dir(store)
+    folder.mkdir(parents=True, exist_ok=True)
+    name = nes.safe_name(name)
+    replaced = (folder / name).exists()
+    tmp = folder / (name + ".tmp")
+    tmp.write_bytes(data)
+    tmp.replace(folder / name)
+    store.sync(nes.ROM_DIR)
+    return {"name": name, "replaced": replaced, "roms": nes.list_roms(store)}
+
+
+@route("POST", "/api/nes/roms/delete")
+def delete_nes_rom(req):
+    """{"name": "Game.nes"}: removes the ROM and its saved game."""
+    name = Path(str(req.json()["name"])).name
+    path = nes.rom_dir(store) / name
+    if path.suffix.lower() != ".nes" or not path.is_file():
+        raise HttpError(404, f"no ROM called {name}")
+    path.unlink()
+    (Path(store.dir) / nes.SAVE_DIR / (path.stem + ".state")).unlink(missing_ok=True)
+    store.sync(nes.ROM_DIR)
+    return {"roms": nes.list_roms(store)}
+
+
 @route("POST", "/api/render_text")
 def post_render_text(req):
     body = req.json()
@@ -1379,10 +1565,16 @@ class Handler(BaseHTTPRequestHandler):
         if length < 0 or (public and length > guestwall.BODY_MAX):
             self.close_connection = True  # don't read a body like that; drop the connection instead
             return self._json({"error": "That message is too long." if length > 0 else "bad Content-Length"}, 413 if length > 0 else 400)
-        self._raw = self.rfile.read(length)
+        streamed = self.command == "POST" and url.path in STREAMED_UPLOADS
+        if streamed:
+            self._raw, self.body_length = b"", length  # the route reads the body itself, straight to disk
+        else:
+            self._raw = self.rfile.read(length)
         if public:
             return self._guest(url)
         if not self._authorized():
+            if streamed:
+                self.close_connection = True  # the unread body would otherwise be taken for the next request
             return self._send(401, b"password required", "text/plain", {"WWW-Authenticate": 'Basic realm="flipdot"'})
         guestwall.note_host(self.headers.get("Host"))
         if url.path == "/ws":
@@ -1478,6 +1670,7 @@ def main():
     store = Store(args.data, persist=persist)
     fonts.USER_FONT_DIR = Path(args.data) / "fonts"
     fonts.USER_FONT_DIR.mkdir(parents=True, exist_ok=True)
+    video_mod.library = video_mod.Library(store, board.width, board.height, on_purge=lambda vid: clean_refs("video", vid))
     runner = Runner(board, store)
     care = BoardCare(board, runner, store)
     atexit.register(persist.flush)  # runs last (atexit is LIFO), after the wear counts are written
@@ -1490,6 +1683,7 @@ def main():
     hub = Hub(board, runner, ws_message)
     board.listeners.append(hub.notify)
     runner.listeners.append(hub.notify)
+    runner.ticks.append(hub.notify)  # a playing video's position, live on every page
     if store.schedule.get("enabled"):
         runner.resume_schedule()
     start_mqtt()

@@ -1,0 +1,65 @@
+/* Videos page (static/js/videos.js) and the video progress line under "what's on". Uses the tokens in style.css. */
+
+.vdUploads { display: flex; flex-direction: column; gap: var(--s2); margin-top: var(--s2); }
+.vdUpload { display: flex; align-items: center; gap: var(--s3); flex-wrap: wrap; padding: var(--s2) var(--s3);
+            background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--r2); font-size: var(--fs-sm); }
+.vdUpload.bad { border-color: var(--danger); color: var(--danger); }
+.vdUpload .vdBar { flex: 1; min-width: 120px; }
+.vdUpName { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 40ch; }
+.vdUpload button.close { height: 28px; width: 28px; padding: 0; }
+
+.vdBar { height: 6px; border-radius: 999px; background: var(--surface-3); overflow: hidden; margin: var(--s1) var(--s1) var(--s2); }
+.vdBar span { display: block; height: 100%; background: var(--accent); transition: width 300ms linear; }
+
+.drop.disabled { opacity: 0.6; }
+
+/* library grid */
+.vdGrid { margin-top: var(--s3); }
+.vdItem.selected { border-color: var(--text-3); }
+.vdItem .vdPick { display: block; width: 100%; height: auto; padding: 0; border: 0; background: none; border-radius: var(--r1); }
+.vdItem .vdPick canvas { width: 100%; display: block; }
+.vdMeta { font-size: var(--fs-xs); color: var(--text-3); margin: 0 var(--s1) var(--s2); }
+.vdMeta.bad { color: var(--danger); }
+
+/* player panel */
+.vdPlayer { margin-top: var(--s4); padding: var(--s4); background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--r3); }
+.vdPlayer h2 { margin: 0; font-size: var(--fs-lg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.vdPlayer > .bar { flex-wrap: nowrap; }
+.vdStage { max-width: 504px; }
+.vdStage canvas { width: 100%; height: auto; display: block; aspect-ratio: 2 / 1; border-radius: var(--r2); background: var(--board-bg); }
+.vdStage p { margin: var(--s1) 0 0; font-size: var(--fs-sm); }
+.vdStrip { display: flex; gap: 2px; margin-top: var(--s3); overflow-x: auto; scrollbar-width: none; }
+.vdThumb { flex: 1 1 0; min-width: 24px; max-width: 84px; height: auto; padding: 0; border: 1px solid transparent; border-radius: 3px; background: var(--board-bg); }
+.vdThumb:hover { border-color: var(--accent); }
+.vdThumb canvas { width: 100%; display: block; }
+
+.vdTimeline { display: flex; align-items: center; gap: var(--s3); margin-top: var(--s2); }
+.vdTrack { position: relative; flex: 1; min-width: 0; height: 32px; display: flex; align-items: center; }
+.vdTrack input[type=range] { position: relative; z-index: 1; margin: 0; }
+.vdRange { position: absolute; top: 50%; height: 10px; transform: translateY(-50%); background: var(--accent-soft);
+           border: 1px solid var(--accent); border-radius: 3px; pointer-events: none; }
+.vdHandle { position: absolute; z-index: 2; top: 0; width: 14px; height: 12px; min-height: 0; padding: 0; margin-left: -7px;
+            border: 0; border-radius: 3px 3px 0 0; background: var(--accent); cursor: ew-resize; touch-action: none;
+            clip-path: polygon(0 0, 100% 0, 100% 60%, 50% 100%, 0 60%); }
+.vdHandle:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.vdTime { font-variant-numeric: tabular-nums; font-size: var(--fs-sm); color: var(--text-2); white-space: nowrap; }
+.vdControls, .vdRangeRow { margin-top: var(--s3); }
+.vdControls .group button { gap: var(--s1); }
+
+/* the progress line under "what's on" while a video plays */
+.vidProgress { height: 3px; margin-top: 3px; border-radius: 999px; background: var(--surface-3); overflow: hidden; max-width: 320px; }
+.vidProgress[hidden] { display: none; }
+.vidProgress span { display: block; height: 100%; background: var(--accent); }
+
+@media (pointer: coarse) {
+  .vdTrack { height: 44px; }
+  .vdHandle { width: 22px; height: 18px; margin-left: -11px; }
+  .vdItem .ctl button { width: 44px; }
+}
+@media (max-width: 600px) {
+  .vdPlayer { padding: var(--s3); margin-left: calc(-1 * var(--s2)); margin-right: calc(-1 * var(--s2)); }
+  .vdControls .group { flex-wrap: wrap; }
+  .vdTimeline { flex-wrap: wrap; gap: 0; }
+  .vdTrack { flex: 1 1 100%; }
+  .vdTime { width: 100%; text-align: right; }
+}

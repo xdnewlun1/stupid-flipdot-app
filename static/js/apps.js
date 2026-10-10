@@ -1,5 +1,5 @@
 // Apps tab: browse apps, set options (live for the app you started), show on board / for N s / as a layer / in a playlist.
-import { $, api, appSections, autosave, board, catalog, el, icon, paramForm, safe, toast, bus } from "./common.js";
+import { $, api, appSections, autosave, board, catalog, el, icon, iconButton, loadNesRoms, nesCache, paramForm, safe, toast, bus, undoable } from "./common.js";
 import { addToPlaylist, playlistNames } from "./playlists.js";
 
 let selected = null, form = null;
@@ -92,6 +92,7 @@ function select(app, { reveal = false } = {}) {
     app.interactive ? el("p", {}, "Control it from your phone at ", el("a", { href: "/play", target: "_blank" }, location.host + "/play"),
       ", or with the arrow keys / WASD + Space / Enter on this page while it runs.") : null,
     app.params.length ? form.el : el("p", { class: "muted" }, "No options."),
+    app.id === "nes" ? nesPanel(form) : null,
     el("h3", {}, "Other ways to show it"),
     el("div", { class: "row" },
       el("button", { onclick: safe(async () => {
@@ -131,3 +132,59 @@ bus.addEventListener("playlists", () => { if (selected) select(selected); });
 bus.addEventListener("scenes", () => { if (selected?.params.some(p => p.type === "scene")) select(selected); });
 bus.addEventListener("compositions", () => { if (selected?.id === "layers") select(selected); });
 bus.addEventListener("fonts", () => { if (selected?.params.some(p => p.type === "font")) select(selected); });
+
+// ---- NES: the uploaded ROMs, under the NES app's options ----
+function nesPanel(form) {
+  const note = el("span", { class: "savedNote", role: "status" });
+  const warn = el("p", { class: "muted", hidden: true });
+  const list = el("div", { class: "items" });
+  const removed = new Set();  // deleted, until the Undo window runs out
+  const file = el("input", { type: "file", accept: ".nes", multiple: true, hidden: true, onchange: safe(async e => {
+    const files = [...e.target.files];
+    e.target.value = "";
+    let last = null;
+    for (const f of files) {
+      if (f.size > (nesCache.max_bytes || 1049104)) throw new Error(`${f.name} is ${Math.round(f.size / 1024)} KB; the limit is 1 MB`);
+      last = await autosave(note, () => api(`/api/nes/roms?name=${encodeURIComponent(f.name)}`, f, { raw: true }), "Uploaded");
+    }
+    await loadNesRoms();
+    if (last) toast(files.length > 1 ? `Added ${files.length} games` : `${last.replaced ? "Replaced" : "Added"} ${last.name.replace(/\.nes$/i, "")}`);
+  }) });
+  const draw = () => {
+    if (!list.isConnected && list.dataset.drawn) return bus.removeEventListener("nesroms", draw);
+    list.dataset.drawn = "1";
+    warn.hidden = nesCache.built;
+    if (!nesCache.built) warn.replaceChildren(icon("warn"), " The emulator isn't built on the server yet: run scripts/setup-nes.sh there, then reload this page.");
+    const roms = nesCache.list.filter(r => !removed.has(r.name));
+    list.replaceChildren(...(roms.length ? roms.map(r => el("div", { class: "item" },
+      el("span", { class: "name" }, r.title, el("small", { class: r.problem ? "warnText" : "" },
+        r.problem || `${r.mapper_name} · ${Math.round(r.size / 1024)} KB${r.saved ? " · has a saved game" : ""}`)),
+      r.problem ? null : el("button", { onclick: safe(async () => {
+        await api("/api/run", { app: "nes", params: { ...form.values(), rom: r.name } });
+        toast(`Showing ${r.title}`);
+      }) }, icon("play"), "Show on board"),
+      iconButton("x", `Delete ${r.title}`, () => {
+        removed.add(r.name);
+        draw();
+        undoable(`Deleted ${r.title}${r.saved ? " and its saved game" : ""}`, {
+          undo: () => { removed.delete(r.name); draw(); },
+          commit: async () => {
+            try { await api("/api/nes/roms/delete", { name: r.name }); } finally { removed.delete(r.name); await loadNesRoms(); }
+          },
+        });
+      })))
+      : [el("p", { class: "muted" }, nesCache.loaded ? "No games yet. Upload a .nes file to play." : "Loading…")]));
+  };
+  bus.addEventListener("nesroms", draw);
+  loadNesRoms().catch(e => toast(e.message, true));
+  const box = el("div", { class: "nesRoms" },
+    el("h3", {}, "NES ROMs", note),
+    el("p", { class: "muted" }, "No games come with the board: you must supply your own .nes files, from cartridges you own or free "
+      + "homebrew. Up to 1 MB each. Games on the common NROM, MMC1, UxROM, CNROM, MMC3 and AxROM boards run; the game you pick "
+      + "above starts with Show on board."),
+    warn,
+    el("div", { class: "row" }, el("button", { onclick: () => file.click() }, icon("upload"), "Upload ROM…"), file),
+    list);
+  draw();
+  return box;
+}

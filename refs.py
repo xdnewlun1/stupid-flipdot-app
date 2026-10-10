@@ -7,7 +7,7 @@ Layers app spec. Everything here works on plain dicts: `data` is
 {"playlists": ..., "compositions": ..., "schedule": ..., "rules": [...]}.
 """
 
-KINDS = ("playlist", "composition", "scene", "gallery", "drawing")
+KINDS = ("playlist", "composition", "scene", "gallery", "drawing", "video")
 DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 
 

@@ -14,16 +14,16 @@ Close Maestro first — the Ethernet box only accepts one connection per port.
 
 ## What's in the UI
 
-The sidebar (a tab bar at the bottom on phones) has **Now playing**, **Create** (Draw, Import), **Library** (Pictures, Apps, Layers, Slideshows), **Programme** (Playlists, Schedule, Automations), **Guest wall** and **Settings**. Old links still work: `#media` opens Import, `#scenes` opens Pictures, and the old Settings groups open their new homes. `#settings/<group>` links straight to a Settings group (for example `#settings/music`).
+The sidebar (a tab bar at the bottom on phones) has **Now playing**, **Create** (Draw, Import), **Library** (Pictures, Apps, Layers, Slideshows, Videos), **Programme** (Playlists, Schedule, Automations), **Guest wall** and **Settings**. Old links still work: `#media` opens Import, `#scenes` opens Pictures, and the old Settings groups open their new homes. `#settings/<group>` links straight to a Settings group (for example `#settings/music`).
 
 | Page | |
 |---|---|
 | **Everywhere** | **Show on board** always puts something on the board (**Show for N s** shows it briefly, then goes back; **Add as layer** puts it on top of what's running; **Add to playlist**). Every page except Now playing and Draw has a **Now showing** strip at the top: a small live preview (click it for a bigger one), what's showing and why ("Digital clock · You started it · the schedule is paused"), **Resume schedule** whenever the schedule is paused, Next and Stop, and a warning with a Settings button when the app on the board needs setup or can't load its data. Stop, Previous, Pause and Next say what they'll do; Next and Previous step through a slideshow's pictures, Pause freezes a slideshow or animation (or holds a playlist item). Playlists, schedule, automations, layer sets, slideshow options and settings save themselves, with "Saved" next to what you changed; removals can be undone from the toast; naming and deleting use one dialog. Errors stay until dismissed, next to the button that failed where possible, with a button to the setting that fixes them. |
 | **Now playing** (home) | the board large, what's on and why, Previous / Pause / Next / Stop / Resume schedule, a message box (**Show on board** or **Show for N s**), Clock, Weather and All black buttons, and the game controller link while a game runs. On a fresh install a **Getting started** list (set a location, show something, open the phone controller) sits here until you hide it |
 | **Draw** | the board stays in view above the tools (pinned at the top on a phone); **zoom** in with the buttons under it or a two-finger pinch, and pan with the Move tool or by dragging while not drawing; the preview is view-only until you tick **Draw on the board** (that stops what's running) or pick a drawing layer; pencil, line, rectangle, circle (outline/filled), flood fill, text stamp, select + copy/cut/paste/flip, undo/redo (Ctrl+Z / Ctrl+Y), save to Pictures, **animation mode** (frame strip: add / duplicate / delete / reorder frames, per-frame duration, onion skin, play on the board, save to Pictures or open one from there; tools, undo and copy/paste work on the current frame), **Draw me…** (Claude draws a picture or a short animation from a description; needs an Anthropic API key in Settings → AI drawing), export PNG, **export GIF** (timelapse of the last 1–30 minutes, sped up; recorded in memory) |
-| **Import** (was Image & video) | images and animated GIFs (stretch / cut / fit, threshold or dither), video files (stream live or convert a clip), webcam (works on `http://localhost` or https only); show it, add it as a layer or save it to Pictures; on a phone the result and its buttons come right after the file picker |
+| **Import** (was Image & video) | images and animated GIFs (stretch / cut / fit, threshold or dither), video files (stream live or convert a clip; while a stream runs every status view says "Live stream: name", from this browser or another one, it stops when the tab closes or after 4 s without frames, and Stop ends it), webcam (works on `http://localhost` or https only); show it, add it as a layer or save it to Pictures; on a phone the result and its buttons come right after the file picker |
 | **Pictures** (was Scenes) | one library for still pictures, animations and drawing layers (filter by kind), each with **Show on board**, **Add as layer**, **Edit** (opens it in Draw), Rename, PNG/JSON download and Delete; drawing layers on the board are marked |
-| **Apps** | a search box and category chips (Everyday, Widgets, Generative, Utilities, Used in playlists, Games); everyday apps come first and games last, grouped as on the phone controller; "Used in playlists" holds the apps that show something you made (a picture, drawing layer, layer set or slideshow); the **Show on board** button sits under the app's name, above its options; options of the app you started change it on the board as you edit them (and the form opens with the values that are on the board); fields that don't apply hide (e.g. pixel scale vs size in dots, scroll speed only for the ticker); clocks (digital, analog, countdown), text (static / ticker / typewriter), weather, **calendar** (iCal links: next events with today/tomorrow labels and a countdown; all-day events, time zones, simple repeats), crypto, stocks, sports scores, any JSON URL, now playing from Music Assistant, music visualizer, Game of Life, matrix rain, plasma, bouncing balls, starfield, fireworks, ripples, metaballs, tunnel, spiral, maze, Lissajous, fire, **random effects** (cycles through them all), Snake / Tetris / Pong / Breakout / Space Invaders / Tron light cycles (vs a CPU or a second player) / Flappy / **Platformer** (run, jump, stomp walkers, reach the flag) / Blackjack (dealt from deckofcardsapi.com), **Doom** (the real game; see below), **arcade**: Asteroids, Galaxian, Missile Command, Centipede, Lunar Lander; **maze & action**: Pac-Man, Frogger, Qix, Bomberman (up to 4 players), Tank Combat; **runners & racing**: Dino Run, Road Racer (pseudo-3D road), Cave Copter, Stacker, Sky Jump, Pitfall Run; **two players** (or vs the computer): Connect Four, Tic-tac-toe, Artillery, Checkers, Battleship, Quick Draw, Air Hockey; **puzzles**: 2048, Minesweeper, Sokoban, Lights Out, Simon, Columns, Mastermind (every game plays a demo of itself when idle and keeps a best score), disc exerciser, **Guest wall** (a QR code to `/guest`, where guests leave a name and message from their phone, alternating with the approved messages as scrolling text; moderate on the Guest wall page, or approve automatically), **Wi-Fi QR code** (guests scan it to join; very long names/passwords switch to a full-height inverted code) |
+| **Apps** | a search box and category chips (Everyday, Widgets, Generative, Utilities, Used in playlists, Games); everyday apps come first and games last, grouped as on the phone controller; "Used in playlists" holds the apps that show something you made (a picture, drawing layer, layer set or slideshow); the **Show on board** button sits under the app's name, above its options; options of the app you started change it on the board as you edit them (and the form opens with the values that are on the board); fields that don't apply hide (e.g. pixel scale vs size in dots, scroll speed only for the ticker); clocks (digital, analog, countdown), text (static / ticker / typewriter), weather, **calendar** (iCal links: next events with today/tomorrow labels and a countdown; all-day events, time zones, simple repeats), crypto, stocks, sports scores, any JSON URL, now playing from Music Assistant, music visualizer, Game of Life, matrix rain, plasma, bouncing balls, starfield, fireworks, ripples, metaballs, tunnel, spiral, maze, Lissajous, fire, **random effects** (cycles through them all), Snake / Tetris / Pong / Breakout / Space Invaders / Tron light cycles (vs a CPU or a second player) / Flappy / **Platformer** (run, jump, stomp walkers, reach the flag) / Blackjack (dealt from deckofcardsapi.com), **Doom** (the real game; see below), **NES** (your own ROMs; see below), **arcade**: Asteroids, Galaxian, Missile Command, Centipede, Lunar Lander; **maze & action**: Pac-Man, Frogger, Qix, Bomberman (up to 4 players), Tank Combat; **runners & racing**: Dino Run, Road Racer (pseudo-3D road), Cave Copter, Stacker, Sky Jump, Pitfall Run; **two players** (or vs the computer): Connect Four, Tic-tac-toe, Artillery, Checkers, Battleship, Quick Draw, Air Hockey; **puzzles**: 2048, Minesweeper, Sokoban, Lights Out, Simon, Columns, Mastermind (every game plays a demo of itself when idle and keeps a best score), disc exerciser, **Guest wall** (a QR code to `/guest`, where guests leave a name and message from their phone, alternating with the approved messages as scrolling text; moderate on the Guest wall page, or approve automatically), **Wi-Fi QR code** (guests scan it to join; very long names/passwords switch to a full-height inverted code) |
 | **Layers** | stack apps with blend modes (On top, Add (light up), Halo, Invert where overlapping, Mask, Cut out), drawing layers you can keep editing live, position/size, scrolling, density, speed, Negative (swap a layer's lit and dark dots); saved **layer sets** (the API calls them compositions; usable in playlists) save themselves as you edit, and when the set you're editing is on the board, changes show there right away; picking a set only opens it, **Show on board** shows it; the editor follows the stack that's on the board |
 | **Slideshows** | a playlist of your own images and GIFs: drop files or a .zip, which is unpacked automatically, any time; the pictures come first and **Display options** explain sizing, dithering and the brightness cutoff; while it plays, Previous / Pause / Next work and the picture on the board is highlighted; option changes apply to the playing slideshow right away; images show for 10 s by default, GIFs play through, then it moves on and loops; optional **random effects** give some items an effect such as glitch, wave or Game of Life, for a short burst or the whole item, with a chance, effect list and strength per slideshow |
 | **Playlists** | playlists of apps with durations and transitions (dissolve, wipe, slide); items that need setup (Weather without a location, Now playing without Music Assistant) are flagged and skipped; removing an item, rule, layer or slideshow image can be undone from the toast; renaming a playlist or composition updates the schedule, playlists and automations that use it, and deleting something lists what uses it first, then removes those items (automations are turned off); the **transitions** gallery (preview each one on the board) |
@@ -32,7 +32,7 @@ The sidebar (a tab bar at the bottom on phones) has **Now playing**, **Create** 
 | **Guest wall** | messages left at `/guest`: approve, hide or delete them, or approve automatically; the count of waiting messages shows in the navigation |
 | **Settings** | **Location & display** (theme, weather location and units, transition frame rate), **Fonts** (upload your own), **AI drawing**, **Music** (Music Assistant, Sendspin), **Smart home & API** (MQTT with optional Home Assistant discovery, webhook examples), **Controllers** (gamepads, button mapping), **Board hardware** (step through panels to check the mapping, edit column/row/ip/port/address/rotate, save to `config.yaml` without a restart), **Maintenance** (flips per disc as a heatmap, exercise rarely flipped discs now or daily), **Backup** (backup / restore of `storage.db`) |
 
-`/play` is a phone game controller (pick any game from the grouped list; held sideways it puts the D-pad left and A/B right of the board; it reminds gamepad players that holding Start opens the game menu; D-pad + A/B with per-game labels, Start/X/Y/Z, player 1 or 2; Doom's extra buttons while Doom runs). USB gamepads work too; see below.
+`/play` is a phone game controller (pick any game from the grouped list; held sideways it puts the D-pad left and A/B right of the board; it reminds gamepad players that holding Start opens the game menu; D-pad + A/B with per-game labels, Start/X/Y/Z, player 1 or 2; Doom's extra buttons while Doom runs; Select / Start / Save / Load while the NES runs). USB gamepads work too; see below.
 
 Drawing or showing something yourself pauses the schedule; **Resume schedule** (in the Now showing strip and on Now playing) goes back to it. "Draw me…" and Undo only change the board with **Draw on the board** ticked; otherwise a drawing goes onto a new drawing layer that you can add when you like.
 
@@ -115,6 +115,43 @@ copy of it (`GET /api/storage/backup`). **Restore from backup** uploads one
 (`POST /api/storage/restore?confirm=1`, raw `.db` bytes); it's checked, then replaces all saved data when
 the server next restarts (the replaced database is kept as `storage.db.before-restore`). `config.yaml`
 (panel mapping, password) stays in the app folder and isn't part of the database.
+
+## Videos
+
+Longer clips play from the **Videos** page (Library). It needs ffmpeg on the server: `sudo apt install ffmpeg`
+(the page says so if it's missing).
+
+- **Upload**: drop WebM, MP4, MOV, MKV, GIF or anything else ffmpeg reads. Uploads stream straight to disk
+  (limit: Videos → Options, 1024 MB by default) and are converted in the background, one at a time, with a
+  progress bar. Sizing (cut to fit / fit inside / stretch) is chosen at upload; **Keep the original** (off by
+  default) lets you convert again with other sizing later, at the cost of storing the whole file.
+- **Format**: 8-bit grey frames already sized to the board, 15 frames a second by default (about as fast as
+  the discs flip), in zlib chunks of 15 frames with an index (`video.py`), so any point is one small read away.
+  Files are split into ~1-minute segments, so `storage.db` holds them as rows of a few hundred KB to ~1.5 MB.
+  Size per hour of video: about 15 MB for simple footage, 50-85 MB for typical video, up to ~150 MB for
+  pure noise. Kept originals add their full size.
+- **Playing**: pick a video, then **Show on board**, Play/Pause, Stop, ±10 s and Previous/Next video. The
+  timeline shows the time; dragging it previews that frame as dots, letting go seeks the board; arrow keys
+  step 1 s (Shift: 10 s); the strip of thumbnails above it jumps there. **Set start / Set end** (or the
+  handles on the timeline) mark a range to play or loop. Speed 0.5-2×. Display options (ordered dither,
+  diffusion dither, threshold, cutoff, contrast, gamma, negative) are saved per video and apply while it
+  plays. The title (from the file's metadata, else the video's name; editable, or clear it) scrolls across
+  once when a video starts, on a black band; set it off or at the bottom with the app's options.
+- The **Video** app works in playlists (a video that isn't looping ends its item early) and as a layer.
+  Pause, Previous and Next in the Now showing strip work for it, and the strip shows the position live.
+- **Flips**: video flips a lot of discs, and the discs are loud. Ordered dither flips far fewer than
+  diffusion. During quiet hours the app drops to 2 frames a second (option), and the quiet-hours flip limit
+  still applies.
+
+```
+GET  /api/videos                        library, ffmpeg present?, options
+POST /api/videos/upload?name=F&mode=crop&keep=0   (raw file bytes)
+POST /api/videos/<id>                   {"name"|"title"|"display"|"range"}
+POST /api/videos/<id>/play              {"t":120,"speed":1.5}
+POST /api/videos/control                {"seek":s} | {"nudge":-10} | {"speed","loop","start","end"}
+GET  /api/videos/<id>/frame?t=12.5      that frame as dots (scrub preview)
+POST /api/videos/<id>/delete | /restore (deleted for good after 30 s) | /convert {"mode"}
+```
 
 ## Music visualizer over Sendspin (optional)
 
@@ -214,11 +251,62 @@ Licences: doomgeneric is GPL-2.0 (built locally from its source, not distributed
 Freedoom is under a BSD-style licence (`data/doom/FREEDOOM-COPYING.txt`); the DOOM shareware WAD
 is id Software's and only installed if you provide it.
 
+## NES games (optional)
+
+The *NES* app (Apps → Games) emulates the NES and draws its picture on the board. **No games come
+with it: you must supply your own `.nes` files** (dumps of cartridges you own, or free homebrew).
+Set up the emulator on the Pi once:
+
+```sh
+sudo apt install build-essential patch curl python3
+./scripts/setup-nes.sh
+```
+
+The script downloads [agnes](https://github.com/kgabis/agnes) (MIT) at a pinned commit into
+`native/nes/build/`, checks the files' SHA-256, applies `native/nes/agnes_flipdot.patch` (it records
+for every pixel whether it's background or a sprite and which palette entry it uses, and adds
+mappers 3 and 7) and builds `native/nes/build/nes_flipdot` with our driver `native/nes/nes_flipdot.c`.
+It rebuilds from scratch if the build was made on another CPU, and finishes by checking that the
+emulator sends a frame. The emulator runs the game at 60 frames per second, sends the board only the
+frames it shows, and reads buttons on stdin.
+
+**ROMs:** Apps → NES → *NES ROMs* → *Upload ROM…* (or `POST /api/nes/roms?name=Game.nes` with the
+file as the body; `GET /api/nes/roms` lists them, `POST /api/nes/roms/delete {"name": …}` removes one
+and its saved game). The upload checks the iNES header, the size (1 MB at most) and the mapper:
+NROM (0), MMC1 (1), UxROM (2), CNROM (3), MMC3 (4) and AxROM (7) run; others are refused with a
+message. ROMs and saves live in `data/nes/`, so they're kept in `storage.db`.
+
+**Controls:** D-pad, A, B and Start as on the NES; player 2 is the second pad (or Player 2 on
+`/play`). Select is Z or X on a gamepad. Y saves the game and L loads it (one saved game per ROM,
+in `data/nes/saves/`); `/play` shows *Select*, *Start*, *Save* and *Load* buttons while the NES runs.
+A short Start on a gamepad reaches the game; holding it opens the game menu, which pauses the
+emulator until you come back.
+
+**Look:** *Layered outline* (default) scores the background by how much each colour stands out from
+the backdrop (the most common colour on screen), outlines terrain with a light dither inside, and
+draws sprites solid with a dark ring. *Filled* shades the background by that score instead;
+*Plain dither* dithers the picture's brightness. *Shading strength* and *Outline threshold* tune them.
+**Camera:** the whole 256×224 screen is squeezed to 84×42 (small text becomes unreadable); *Follow
+the player* shows a 252×126 window (3× closer) that tracks the player's sprites; *Auto* (default)
+follows only once a game has scrolled for a few seconds, so menus and one-screen games stay whole.
+Other settings: updates per second (default 10) and quiet hours (refuse, or 3 updates per second).
+
+Be aware: scrolling games flip a lot of dots. Measured on the PC at 10 updates per second: Nova the
+Squirrel (a scrolling platformer) averaged about 150 flips per update with peaks of 600–900 while the
+screen scrolls; Thwaite and Concentration Room (one-screen games) about 12–40. The emulator takes
+about 1.5 ms per NES frame and the board conversion about 1.5 ms per update on the PC, roughly half a
+core on a Pi 4 (estimated, not measured on a Pi). It's loud and wears the discs; don't leave it running.
+
+Legal: agnes is MIT-licensed and built locally from its source (not distributed here). Commercial
+NES games are copyrighted: only use ROMs you have the right to use. None are included, downloaded
+or committed (`*.nes` is in `.gitignore`).
+
 ## Gamepads and the GameCube adapter
 
 Plug USB gamepads or a Mayflash GameCube adapter (PC mode, the switch on the side) into the Pi. Each
 adapter port is a player (port 1 = player 1). Stick or D-pad steer, A and B are the game buttons; in Doom,
-L/R strafe, X switches weapon, Y toggles run, Z opens doors and Start pauses. The server reads
+L/R strafe, X switches weapon, Y toggles run, Z opens doors and Start pauses; in NES games, Z or X is
+Select, Y saves and L loads. The server reads
 `/dev/input` directly, so its user must be in the `input` group:
 
 ```sh
@@ -256,3 +344,4 @@ journalctl --user -u flipdot -f       # logs
 - `static/` – web UI
 - `apps/pack_arcade.py`, `pack_maze.py`, `pack_runner.py`, `pack_versus.py`, `pack_puzzle.py` – the game packs
 - `native/doom/` – Doom platform file + Makefile (`scripts/setup-doom.sh` fetches and builds the engine); `apps/doom.py` – the Doom app
+- `native/nes/` – NES driver, agnes patch + Makefile (`scripts/setup-nes.sh` fetches and builds the emulator); `apps/nes.py` – the NES app

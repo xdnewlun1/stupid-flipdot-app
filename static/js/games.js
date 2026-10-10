@@ -1,7 +1,7 @@
 // The games, grouped the same way everywhere (the Apps page, pickers and the phone controller): [id, name]
 export const GAME_GROUPS = {
   "Classics": [["snake", "Snake"], ["tetris", "Tetris"], ["pong", "Pong"], ["breakout", "Breakout"], ["invaders", "Space Invaders"],
-    ["tron", "Tron"], ["flappy", "Flappy"], ["platformer", "Platformer"], ["blackjack", "Blackjack"], ["doom", "Doom"]],
+    ["tron", "Tron"], ["flappy", "Flappy"], ["platformer", "Platformer"], ["blackjack", "Blackjack"], ["doom", "Doom"], ["nes", "NES"]],
   "Arcade": [["asteroids", "Asteroids"], ["galaxian", "Galaxian"], ["missile_command", "Missile Command"], ["centipede", "Centipede"],
     ["lunar_lander", "Lunar Lander"]],
   "Maze & action": [["pacman", "Pac-Man"], ["frogger", "Frogger"], ["qix", "Qix"], ["bomberman", "Bomberman"], ["tanks", "Tank Combat"]],

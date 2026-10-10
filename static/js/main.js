@@ -1,6 +1,7 @@
 import { $, api, board, bus, catalog, el, fixFor, icon, live, loadCatalog, loadDrawings, loadFonts, openSettings, refreshScenes, renderDots, safe, startPolling, toast, wsSend } from "./common.js";
 import { setActive as setDrawActive } from "./draw.js";
-import "./media.js";
+import { STREAM_ID } from "./media.js";
+import { fmtTime, loadVideos } from "./videos.js";
 import { loadGalleries } from "./slideshows.js";
 import { renderAppList } from "./apps.js";
 import { loadPlaylists } from "./playlists.js";
@@ -20,6 +21,7 @@ const PAGES = {
   apps: ["library", "Apps", "Clocks, text, widgets, patterns and games. Pick one to set it up and show it."],
   layers: ["library", "Layers", "Stack apps and pictures so they play at the same time, like a clock over Game of Life."],
   slideshows: ["library", "Slideshows", "A playlist made of your own images and GIFs: each one stays up for a set time, then the next one starts."],
+  videos: ["library", "Videos", "Longer clips (WebM, MP4, MOV, GIF…), converted for the board. Pick one to play it, scrub through it or loop part of it."],
   playlists: ["programme", "Playlists", "Items that play one after another, each for a set time. The schedule decides when each playlist runs."],
   schedule: ["programme", "Schedule", "Which playlist plays when, and quiet hours for the night."],
   automations: ["programme", "Automations", "When something happens (music starts, an event arrives), change what's on the board."],
@@ -101,6 +103,19 @@ function statusParts(r) {
   const what = r.description || "";
   const held = r.schedule_enabled && r.mode !== "schedule" ? " · the schedule is paused" : "";
   let s;
+  if (r.live) {  // a browser is streaming video to the board (Import, Stream live)
+    const mine = r.live.id === STREAM_ID;
+    const what = `Live stream: ${r.live.name}`;
+    const why = mine ? "From this browser. It stops if you close this tab" : "From another browser. It stops when that tab closes";
+    return [what, r.live.target === "layer" ? `${why} · on a layer` : why];
+  }
+  if (r.video && !r.notification) {  // a video: name, position and whether it's playing
+    const v = r.video;
+    const state = r.paused ? "paused" : v.ended ? "finished" : "playing";
+    const sp = v.speed && v.speed !== 1 ? ` at ${v.speed}×` : "";
+    const where = r.mode === "app" ? "You started it" : r.mode === "playlist" ? `From the playlist "${r.playlist}"` : `From the schedule (${r.playlist})`;
+    return [`${v.name} · ${fmtTime(v.pos)} / ${fmtTime(v.duration)} · ${state}${sp}`, where + held];
+  }
   if (r.notification) s = [what, "For a few seconds, then back to what was on"];
   else if (r.mode === "manual") s = ["A still picture", "Nothing is running" + held];
   else if (r.mode === "app") s = [what, "You started it" + held];
@@ -151,13 +166,13 @@ function renderMode() {
   $("quietState").hidden = !r.quiet_hours;
   renderConnection(live() ? "live" : "poll");
   const name = r.description || "what's running";
-  const stoppable = r.mode !== "manual" || r.notification;
+  const stoppable = r.mode !== "manual" || r.notification || !!r.live;
   setAct("stop", { disabled: !stoppable, aria: stoppable ? `Stop ${name}. The picture stays on the board.` : "Nothing is running" });
-  const pic = r.skip === "picture";
-  setAct("next", { disabled: !r.can_next, label: pic ? "Next picture" : "Next",
-    aria: !r.can_next ? "Nothing to skip. Next works for playlists, the schedule and slideshows." : pic ? "Show the next picture in the slideshow" : "Skip to the next playlist item" });
-  setAct("prev", { hidden: !r.can_next, aria: pic ? "Show the previous picture in the slideshow" : "Go back to the previous playlist item" });
-  const frozen = ["slideshow", "scene"].includes(r.app);
+  const pic = r.skip === "picture", vid = r.skip === "video";
+  setAct("next", { disabled: !r.can_next, label: pic ? "Next picture" : vid ? "Next video" : "Next",
+    aria: !r.can_next ? "Nothing to skip. Next works for playlists, the schedule, slideshows and videos." : pic ? "Show the next picture in the slideshow" : vid ? "Play the next video in the library" : "Skip to the next playlist item" });
+  setAct("prev", { hidden: !r.can_next, aria: pic ? "Show the previous picture in the slideshow" : vid ? "Play the previous video in the library" : "Go back to the previous playlist item" });
+  const frozen = ["slideshow", "scene", "video"].includes(r.app);
   setAct("pause", { hidden: !r.can_pause && !r.paused, pressed: !!r.paused, iconName: r.paused ? "play" : "pause", label: r.paused ? "Resume" : "Pause",
     aria: r.paused ? "Carry on from here" : frozen ? "Pause on this picture" : "Stay on this item (the playlist stops moving on)" });
   setAct("resume", { hidden: !(r.schedule_enabled && r.mode !== "schedule"), aria: "Go back to what the schedule plays now" });
@@ -331,6 +346,7 @@ document.querySelectorAll("[data-theme-choice]").forEach(b => b.addEventListener
     await loadFonts();
     await loadDrawings();
     await loadGalleries();
+    await loadVideos();
     await refreshScenes();
     await loadCompositions();
     renderGallery();
