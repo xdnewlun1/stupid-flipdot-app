@@ -237,6 +237,8 @@ input[type=range]::-moz-range-thumb { width: 12px; height: 12px; border-radius: 
 
 .form { display: grid; grid-template-columns: minmax(150px, 34%) minmax(0, 1fr); gap: var(--s3) var(--s4); align-items: center; margin: var(--s4) 0; }
 .form > label { color: var(--text-2); font-size: var(--fs-sm); }
+.checklist { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: var(--s2) var(--s4); }
+.checklist > label { font-size: var(--fs-sm); }
 .form input[type=text], .form input[type=password], .form input[type=number], .form input[type=datetime-local], .form select, .form input[type=range] { width: 100%; }
 .ssSettings { grid-template-columns: minmax(130px, auto) minmax(0, 1fr) minmax(130px, auto) minmax(0, 1fr); }
 

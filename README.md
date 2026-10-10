@@ -171,7 +171,15 @@ bars** (16, 21 or 42 full-height bars with falling peak caps; from the bottom, m
 bass in the middle), **spectrum mountain** (the spectrum as a filled ridge, same layouts), **sunburst**
 (rays from the middle), **waterfall** (a spectrogram scrolling out from the middle), **rings** (the bass
 sizes a disc, each other band moves its own ring), **blob** (metaballs pulsing with the bass), **waveform**
-(filled, thick line or mirrored), **warp** starfield and **sparkle**.
+(filled, thick line or mirrored), **warp** starfield, **sparkle**, and five pattern styles: **tunnel** (a
+kaleidoscope rushing towards you), **vortex** (spiral arms turning into the middle), **moire** (two sets
+of rings crossing), **lissajous** (a turning figure with an echo) and **plasma** (flowing stripes). In
+those, the bass gives size and pulse, the mids bend the shape, the highs add sparkle.
+
+Nothing stands still: every style runs on a clock that ticks slowly in silence and faster with the
+music, and a low ripple runs under the spectrum, so quiet passages show slow, calm movement. The bass
+disc in the middle (rings, sunburst, warp, tunnel, vortex) inverts what's under it and keeps a lit
+edge, so it reads over everything else.
 
 - **Scale** (0.5–4, default 1.5) multiplies how far it moves: bar height, ray and ring size, wave height,
   amount of rain, warp speed, sparkle density. At 1.5 loud parts reach the edges; 3 pins more of it there.
@@ -180,11 +188,33 @@ sizes a disc, each other band moves its own ring), **blob** (metaballs pulsing w
 - **Beat effects**: off (default), subtle (a ring from the middle on each beat) or big (a thick
   shockwave, and the board flashes every 4th beat).
 
+**Mix** (a style) changes between styles while the music plays, with a transition at each change.
+Both styles keep following the music during the transition, and each keeps its own state (rain drops,
+peak caps, waterfall history).
+
+- **When**: every 4/8/16/32 bars (default 16), counted from the first beat of the song and realigned on
+  downbeats, so changes land on phrase boundaries. This needs a steady beat from live audio; with the
+  generated beat, or a beat too irregular to count, it changes every N seconds instead (default 20).
+  Also on each new song (on by default) and, optionally, on a drop or break (the last ~1.5 s getting
+  much louder or quieter than the last ~10 s). **At least … seconds between changes** (default 8)
+  holds a song change back until it has passed.
+- **Styles in the mix**: a checklist, all by default; random order (never the same twice in a row) or
+  in list order. **Random look** gives each new style a random layout, bar count, wave look and scale.
+- **Transition**: random, one of the list, or none. Random picks *swirl* or *zoom-through* half the time:
+  the old picture turns and grows past you while the new one turns in from small. Morph, migrate,
+  scatter, life, ghost, flash, glitch and zoom-in/out aren't offered: they're too slow live, are built from a
+  single frame, or flicker. **Length** (default 1.5 s) is rounded to whole beats when the beat is steady.
+- The *Now showing* line names the current style: "Music visualizer · Mix (now: sunburst, …)". Mix
+  works in layers and playlists too.
+
 Levels come from `audio_signal.py`'s display reading: per band and spectrum bin a running peak and
 floor, so quiet and loud songs both use the full height, and a held note stays up rather than sinking
 back. Without live audio it follows a generated beat. Flips per update (of 3528 dots) on music-like
-input at the defaults: rain ~500, bars ~260, mountain ~300, sunburst ~210, waterfall ~460, rings ~440,
-blob ~230, waveform ~220, warp ~350, sparkle ~270.
+input at the defaults, then in silence: rain ~590/70, bars ~270/3, mountain ~270/6, sunburst ~290/50,
+waterfall ~520/35, rings ~500/20, blob ~270/12, waveform ~220/13, warp ~370/80, sparkle ~230/85,
+tunnel ~470/180, vortex ~590/80, moire ~680/200, lissajous ~760/120, plasma ~540/100. A Mix transition
+flips ~500–750 per update. Render time on a desktop PC: under 1.2 ms per frame for any style, under
+~2.5 ms (95th percentile) during a Mix transition with the two heaviest styles.
 
 ## Music visualizer over Sendspin (optional)
 

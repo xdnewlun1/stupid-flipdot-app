@@ -11,6 +11,8 @@ import random
 import time
 from array import array
 
+from PIL import Image
+
 from canvas import Canvas
 
 BAYER4 = [[0, 8, 2, 10], [12, 4, 14, 6], [3, 11, 1, 9], [15, 7, 13, 5]]
@@ -378,6 +380,37 @@ def _life(t, old, new, p):
     return out
 
 
+def _turned(c, angle, scale):
+    """c turned by angle (radians) and scaled about the middle, as a Pillow image (Pillow does the work in C)."""
+    w, h = c.w, c.h
+    cx, cy = w / 2, h / 2
+    a, b = math.cos(angle) / scale, math.sin(angle) / scale
+    img = Image.frombytes("L", (w, h), bytes(c.px))
+    return img.transform((w, h), Image.AFFINE, (a, b, cx - a * cx - b * cy, -b, a, cy + b * cx - a * cy),
+                         Image.NEAREST)
+
+
+def _flow(turn):
+    """Both pictures keep moving: the old one turns and grows past you while the new one turns in from
+    small, mixed by a dither pattern that opens from the middle. Good between two animations."""
+    def render(t, old, new, p):
+        if p >= 1:
+            return new.copy()
+        w, h = old.w, old.h
+        if "order" not in t.state:
+            cx, cy = (w - 1) / 2, (h - 1) / 2
+            far = math.hypot(cx, cy)
+            t.state["order"] = [0.6 * math.hypot(x - cx, y - cy) / far + 0.4 * (BAYER4[y % 4][x % 4] + 0.5) / 16
+                                for y in range(h) for x in range(w)]
+        a = _turned(old, turn * p, 1 + 1.5 * p * p)
+        b = _turned(new, -turn * (1 - p), 0.35 + 0.65 * p)
+        mask = Image.frombytes("L", (w, h), bytes(255 if v < p else 0 for v in t.state["order"]))
+        out = Canvas(w, h)
+        out.px = bytearray(Image.composite(b, a, mask).tobytes())
+        return out
+    return render
+
+
 MOVES = {
     "slide-left": _slide("left", False), "slide-right": _slide("right", False),
     "slide-up": _slide("up", False), "slide-down": _slide("down", False),
@@ -385,7 +418,7 @@ MOVES = {
     "push-up": _slide("up", True), "push-down": _slide("down", True),
     "zoom-in": _zoom(True), "zoom-out": _zoom(False), "flip": _flip, "melt": _melt,
     "pixelate": _pixelate, "flash": _flash, "glitch": _glitch, "ghost": _ghost,
-    "morph": _morph, "migrate": _migrate(False), "scatter": _migrate(True), "life": _life,
+    "swirl": _flow(1.0), "zoom-through": _flow(0.0), "morph": _morph, "migrate": _migrate(False), "scatter": _migrate(True), "life": _life,
 }
 
 ALIASES = {"wipe": "wipe-right", "slide": "push-up"}

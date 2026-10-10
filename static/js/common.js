@@ -536,6 +536,12 @@ export function paramForm(app, values = {}) {
     } else if (p.type === "checkbox") {
       input = el("input", { id, type: "checkbox", checked: !!v });
       getters[p.name] = () => input.checked;
+    } else if (p.type === "checklist") {
+      // a list of values: one switch per option
+      const on = new Set((Array.isArray(v) ? v : String(v ?? "").split(",")).map(String));
+      const boxes = p.options.map(([val, label]) => [val, el("input", { type: "checkbox", checked: on.has(String(val)) }), label]);
+      input = el("div", { id, class: "checklist" }, boxes.map(([, box, label]) => el("label", {}, box, label)));
+      getters[p.name] = () => boxes.filter(([, box]) => box.checked).map(([val]) => val);
     } else if (p.type === "number") {
       input = el("input", { id, type: "number", value: v, min: p.min, max: p.max, step: p.step ?? "any" });
       getters[p.name] = () => (input.value === "" ? p.default : Number(input.value));
