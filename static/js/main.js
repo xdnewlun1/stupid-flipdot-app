@@ -14,8 +14,14 @@ function showTab(name) {
   if (!TABS.includes(name)) name = "draw";
   for (const t of TABS) $(`tab-${t}`).hidden = t !== name;
   $("tab-media-slides").hidden = name !== "media";
-  document.querySelectorAll("#tabs button").forEach(b => b.classList.toggle("active", b.dataset.tab === name));
+  document.querySelectorAll("#tabs button").forEach(b => {
+    const on = b.dataset.tab === name;
+    b.classList.toggle("active", on);
+    if (on) { b.setAttribute("aria-current", "page"); $("pageTitle").textContent = b.textContent.trim(); }
+    else b.removeAttribute("aria-current");
+  });
   setDrawActive(name === "draw");
+  document.body.dataset.tab = name;
   if (location.hash !== "#" + name) history.replaceState(null, "", "#" + name);
   if (name === "settings") loadSettings().catch(e => toast(e.message, true));
 }
@@ -34,14 +40,20 @@ function renderMode() {
   else if (r.mode === "playlist") text = `Playlist <b>${escapeHtml(r.playlist)}</b> → ${what}`;
   else text = r.playlist === "__off__" ? "Schedule: <b>off</b>" : r.playlist ? `Schedule: <b>${escapeHtml(r.playlist)}</b> → ${what}` : "Schedule: nothing scheduled";
   if (r.interactive) text += ` · <a href="/play" target="_blank">controller</a>`;
-  text += live() ? ` <span class="live" title="Live updates over WebSocket">● live</span>` : ` <span class="muted" title="WebSocket down; polling instead">○ polling</span>`;
-  $("mode").innerHTML = text;
+  const dot = live() ? `<span class="dot live" title="Live updates over WebSocket"></span>` : `<span class="dot poll" title="WebSocket down; polling instead"></span>`;
+  $("mode").innerHTML = dot + `<span>${text}</span>`;
+  $("deviceState").textContent = live() ? "live" : "polling";
+  $("sideFoot").textContent = live() ? "connected · live" : "reconnecting…";
   $("btnNext").disabled = !(r.mode === "playlist" || r.mode === "schedule");
   $("btnStop").disabled = r.mode === "manual" && !r.notification;
 }
 const escapeHtml = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 bus.addEventListener("state", renderMode);
-bus.addEventListener("offline", () => ($("mode").textContent = "server unreachable — retrying…"));
+bus.addEventListener("offline", () => {
+  $("mode").innerHTML = `<span class="dot off"></span><span>Server unreachable — retrying…</span>`;
+  $("deviceState").textContent = "offline";
+  $("sideFoot").textContent = "offline";
+});
 bus.addEventListener("live", renderMode);
 bus.addEventListener("reconnecting", renderMode);
 
@@ -67,6 +79,20 @@ function gameKey(e, action) {
 }
 window.addEventListener("keydown", e => gameKey(e, "down"), true);
 window.addEventListener("keyup", e => gameKey(e, "up"), true);
+
+// ---- theme: Auto (follow the OS) / Light / Dark, remembered per browser ----
+function applyTheme(choice) {
+  if (choice === "light" || choice === "dark") document.documentElement.dataset.theme = choice;
+  else delete document.documentElement.dataset.theme;
+  document.querySelectorAll("[data-theme-choice]").forEach(b => b.classList.toggle("active", b.dataset.themeChoice === (choice || "auto")));
+}
+let savedTheme = "auto";
+try { savedTheme = localStorage.getItem("theme") || "auto"; } catch {}
+applyTheme(savedTheme);
+document.querySelectorAll("[data-theme-choice]").forEach(b => b.addEventListener("click", () => {
+  applyTheme(b.dataset.themeChoice);
+  try { localStorage.setItem("theme", b.dataset.themeChoice); } catch {}
+}));
 
 // ---- start ----
 (async () => {

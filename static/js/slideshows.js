@@ -1,5 +1,5 @@
 // Slideshows (Image & video tab): upload images / GIFs / zips, order them, set timings, play.
-import { $, api, board, bus, catalog, el, galleriesCache, renderDots, rowsToGrid, safe, toast } from "./common.js";
+import { $, api, board, bus, catalog, el, galleriesCache, icon, iconButton, renderDots, rowsToGrid, safe, toast } from "./common.js";
 
 let current = null, gallery = null, saveTimer = null;
 const thumbs = new Map();  // `${gid}/${file}/${settingsKey}` -> rows
@@ -80,15 +80,14 @@ function itemCard(item, i) {
     el("div", { class: "name", title: item.name }, (isGif ? `GIF · ${item.frames} frames · ` : "") + item.name),
     el("div", { class: "ctl" },
       input, el("span", { class: "muted" }, isGif ? "plays" : "s"),
-      el("button", { title: "Play this now", class: "playNow", onclick: safe(async () => {
+      el("button", { title: "Play this now", "aria-label": "Play this now", class: "playNow", onclick: safe(async () => {
         await api(`/api/galleries/${current}/play`, { file: item.file });
         toast(`Playing ${item.name}`);
-      }) }, "▶"),
-      el("button", { title: "Earlier", onclick: move(-1) }, "←"),
-      el("button", { title: "Later", onclick: move(1) }, "→"),
-      el("button", { class: "danger", title: "Remove", onclick: () => {
-        gallery.items.splice(i, 1); render(); saveItems();
-      } }, "✕")));
+      }) }, icon("play")),
+      el("span", { class: "spacer" }),
+      iconButton("left", "Play earlier", move(-1)),
+      iconButton("right", "Play later", move(1)),
+      iconButton("x", "Remove from slideshow", () => { gallery.items.splice(i, 1); render(); saveItems(); }, "danger")));
 }
 
 async function loadThumbs() {

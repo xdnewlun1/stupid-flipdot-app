@@ -13,12 +13,12 @@ export function renderAppList() {
     list.append(el("div", { class: "appCat" },
       el("h3", {}, cat),
       el("div", { class: "appCards" }, items.map(a =>
-        el("button", { class: "appCard" + (selected?.id === a.id ? " active" : ""), onclick: () => select(a) },
+        el("button", { class: "appCard" + (selected?.id === a.id ? " active" : ""), "aria-pressed": selected?.id === a.id ? "true" : "false", onclick: () => select(a, { reveal: true }) },
           a.title, el("small", {}, a.description))))));
   }
 }
 
-function select(app) {
+function select(app, { reveal = false } = {}) {
   selected = app;
   renderAppList();
   form = paramForm(app);
@@ -55,6 +55,9 @@ function select(app) {
       }) }, "Add to playlist"),
       plSelect, el("label", { class: "muted" }, "for ", duration, " s")),
   ].filter(Boolean));
+  // on narrow screens the details sit below the long list: bring them into view
+  if (reveal && window.matchMedia("(max-width: 1100px)").matches)
+    $("appDetail").scrollIntoView({ behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" });
 }
 
 bus.addEventListener("playlists", () => { if (selected) select(selected); });

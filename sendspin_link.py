@@ -54,6 +54,20 @@ def _defined(value):
     return None if value is None or type(value).__name__ == "UndefinedField" else value
 
 
+class _FailureCapture(logging.Handler):
+    """aiosendspin reports why an incoming connection failed only at debug level; surface it."""
+
+    def __init__(self, link):
+        super().__init__(logging.DEBUG)
+        self.link = link
+
+    def emit(self, record):
+        msg = record.getMessage()
+        if any(w in msg.lower() for w in ("failed", "malformed", "refus", "reject", "abort")):
+            self.link.last_error = msg
+            log.warning("Music Assistant connection attempt failed: %s", msg)
+
+
 class SendspinLink:
     def __init__(self, data_dir, name="Flipdot board", port=8928, on_pair_code=None, advertise=True):
         self.dir = Path(data_dir) / "sendspin"
@@ -80,12 +94,18 @@ class SendspinLink:
         self._prev_bass = 0.0
         self._last_beat_frame = 0.0
         self._unpaired = None  # desired "unpaired access" setting, applied once the loop runs
+        self.last_error = None
 
     # ---- lifecycle -------------------------------------------------------------------
 
     def start(self):
         if not AVAILABLE or self.loop is not None:
             return
+        for name in ("aiosendspin.client.client", "aiosendspin.client.connection", "aiosendspin.client.listener"):
+            lg = logging.getLogger(name)
+            lg.setLevel(logging.DEBUG)
+            lg.propagate = False  # keep the library's debug chatter out of the main log
+            lg.addHandler(_FailureCapture(self))
         self.status = "starting"
         threading.Thread(target=self._thread, daemon=True, name="sendspin").start()
 
@@ -273,6 +293,8 @@ class SendspinLink:
             return f"connected to {self.server_name}"
         if self.pair_code:
             return f"pairing — enter {self.pair_code} in Music Assistant"
+        if self.last_error:
+            return f"{self.status} (last attempt failed: {self.last_error})"
         return self.status
 
     def describe(self):

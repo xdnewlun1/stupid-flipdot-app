@@ -4,31 +4,71 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Flipdot Control</title>
+<meta name="color-scheme" content="dark light">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22%3E%3Crect width=%2224%22 height=%2224%22 rx=%225%22 fill=%22%23111%22/%3E%3Cg fill=%22%23e9b949%22%3E%3Ccircle cx=%227.5%22 cy=%227.5%22 r=%222%22/%3E%3Ccircle cx=%2216.5%22 cy=%227.5%22 r=%222%22/%3E%3Ccircle cx=%2212%22 cy=%2212%22 r=%222%22/%3E%3Ccircle cx=%227.5%22 cy=%2216.5%22 r=%222%22/%3E%3C/g%3E%3C/svg%3E">
 <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
-<main>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-draw" viewBox="0 0 24 24"><path d="M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16v4z"/><path d="m13.5 6.5 4 4"/></symbol>
+  <symbol id="i-image" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="m21 16-5-5-9 9"/></symbol>
+  <symbol id="i-apps" viewBox="0 0 24 24"><rect x="4" y="4" width="6" height="6" rx="1.5"/><rect x="14" y="4" width="6" height="6" rx="1.5"/><rect x="4" y="14" width="6" height="6" rx="1.5"/><rect x="14" y="14" width="6" height="6" rx="1.5"/></symbol>
+  <symbol id="i-layers" viewBox="0 0 24 24"><path d="m12 3 9 5-9 5-9-5 9-5z"/><path d="m3 13 9 5 9-5"/></symbol>
+  <symbol id="i-playlist" viewBox="0 0 24 24"><path d="M4 6h12M4 12h12M4 18h7"/><path d="m15 15 6 3.5-6 3.5z"/></symbol>
+  <symbol id="i-scenes" viewBox="0 0 24 24"><rect x="3" y="6" width="14" height="14" rx="2"/><path d="M7 3h12a2 2 0 0 1 2 2v12"/></symbol>
+  <symbol id="i-settings" viewBox="0 0 24 24"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></symbol>
+  <symbol id="i-stop" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/></symbol>
+  <symbol id="i-next" viewBox="0 0 24 24"><path d="m6 5 9 7-9 7z"/><path d="M18 5v14"/></symbol>
+  <symbol id="i-schedule" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4"/></symbol>
+  <symbol id="i-play" viewBox="0 0 24 24"><path d="m8 5 11 7-11 7z"/></symbol>
+  <symbol id="i-up" viewBox="0 0 24 24"><path d="m6 15 6-6 6 6"/></symbol>
+  <symbol id="i-down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+  <symbol id="i-left" viewBox="0 0 24 24"><path d="m15 6-6 6 6 6"/></symbol>
+  <symbol id="i-right" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
+  <symbol id="i-copy" viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></symbol>
+  <symbol id="i-edit" viewBox="0 0 24 24"><path d="M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16v4z"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 16V4m0 0-4 4m4-4 4 4"/><path d="M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></symbol>
+  <symbol id="i-logo" viewBox="0 0 24 24"><rect x="1" y="1" width="22" height="22" rx="5" fill="none" stroke="currentColor" stroke-width="1.5"/>
+    <g fill="currentColor"><circle cx="7.5" cy="7.5" r="2"/><circle cx="16.5" cy="7.5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="7.5" cy="16.5" r="2"/></g>
+    <g fill="none" stroke="currentColor" stroke-width="1" opacity=".45"><circle cx="12" cy="7.5" r="1.6"/><circle cx="7.5" cy="12" r="1.6"/><circle cx="16.5" cy="12" r="1.6"/><circle cx="12" cy="16.5" r="1.6"/><circle cx="16.5" cy="16.5" r="1.6"/></g></symbol>
+</svg>
+<div class="app">
+  <aside class="sidebar">
+    <div class="brand"><svg class="logo" aria-hidden="true"><use href="#i-logo"/></svg><span>Flipdot<small>84 × 42 · 18 panels</small></span></div>
+    <nav class="nav" id="tabs" aria-label="Sections">
+      <button data-tab="draw" class="active"><svg class="i" aria-hidden="true"><use href="#i-draw"/></svg>Draw</button>
+      <button data-tab="media"><svg class="i" aria-hidden="true"><use href="#i-image"/></svg>Image &amp; video</button>
+      <button data-tab="apps"><svg class="i" aria-hidden="true"><use href="#i-apps"/></svg>Apps</button>
+      <button data-tab="layers"><svg class="i" aria-hidden="true"><use href="#i-layers"/></svg>Layers</button>
+      <button data-tab="playlists"><svg class="i" aria-hidden="true"><use href="#i-playlist"/></svg>Playlists</button>
+      <button data-tab="scenes"><svg class="i" aria-hidden="true"><use href="#i-scenes"/></svg>Scenes</button>
+      <button data-tab="settings"><svg class="i" aria-hidden="true"><use href="#i-settings"/></svg>Settings</button>
+    </nav>
+    <div class="sidebar-bottom">
+      <div class="theme" role="group" aria-label="Theme">
+        <button data-theme-choice="auto">Auto</button><button data-theme-choice="light">Light</button><button data-theme-choice="dark">Dark</button>
+      </div>
+      <div class="sidebar-foot" id="sideFoot">connecting…</div>
+    </div>
+  </aside>
+<main class="main">
   <header class="top">
-    <h1>Flipdot Control</h1>
-    <div id="mode" class="mode">connecting…</div>
-    <div class="group">
-      <button id="btnStop" title="Stop whatever is running; the board keeps its current picture">Stop</button>
-      <button id="btnNext" title="Skip to the next playlist item">Next</button>
-      <button id="btnSchedule" title="Go back to the schedule">Resume schedule</button>
+    <h1 id="pageTitle">Draw</h1>
+    <div id="mode" class="mode" role="status" aria-live="polite"><span class="dot"></span>connecting…</div>
+    <span class="spacer"></span>
+    <div class="group" role="group" aria-label="Playback">
+      <button id="btnStop" title="Stop whatever is running; the board keeps its current picture"><svg class="i" aria-hidden="true"><use href="#i-stop"/></svg>Stop</button>
+      <button id="btnNext" title="Skip to the next playlist item"><svg class="i" aria-hidden="true"><use href="#i-next"/></svg>Next</button>
+      <button id="btnSchedule" title="Go back to the schedule"><svg class="i" aria-hidden="true"><use href="#i-schedule"/></svg>Schedule</button>
     </div>
   </header>
 
-  <div class="wrap boardWrap"><canvas id="board"></canvas></div>
-
-  <nav class="tabs" id="tabs">
-    <button data-tab="draw" class="active">Draw</button>
-    <button data-tab="media">Image &amp; video</button>
-    <button data-tab="apps">Apps</button>
-    <button data-tab="layers">Layers</button>
-    <button data-tab="playlists">Playlists &amp; schedule</button>
-    <button data-tab="scenes">Scenes</button>
-    <button data-tab="settings">Settings</button>
-  </nav>
+  <section class="device" aria-label="Board preview">
+    <div class="wrap boardWrap"><canvas id="board"></canvas></div>
+    <div class="device-meta"><span>84 × 42</span><span>3 × 6 panels</span><span id="deviceState">—</span></div>
+  </section>
 
   <!-- ===================== DRAW ===================== -->
   <section class="tab card" id="tab-draw">
@@ -46,9 +86,9 @@
         <button data-tool="pencil" class="active" title="Pencil (P)">Pencil</button>
         <button data-tool="line" title="Line (L)">Line</button>
         <button data-tool="rect" title="Rectangle (R)">Rect</button>
-        <button data-tool="rectfill" title="Filled rectangle">Rect ■</button>
+        <button data-tool="rectfill" title="Filled rectangle">Filled rect</button>
         <button data-tool="circle" title="Circle (C)">Circle</button>
-        <button data-tool="circlefill" title="Filled circle">Circle ●</button>
+        <button data-tool="circlefill" title="Filled circle">Filled circle</button>
         <button data-tool="fill" title="Flood fill (F)">Fill</button>
         <button data-tool="text" title="Text stamp (T)">Text</button>
         <button data-tool="select" title="Select / copy / paste (S)">Select</button>
@@ -383,7 +423,8 @@
     <div id="hooks" class="docs"></div>
   </section>
 </main>
-<div id="toast" class="toast" hidden></div>
+</div>
+<div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 <script type="module" src="/static/js/main.js"></script>
 </body>
 </html>

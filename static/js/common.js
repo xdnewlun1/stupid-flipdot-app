@@ -43,23 +43,68 @@ export function applyState(s) {
   if (changed) bus.dispatchEvent(new Event("state"));
 }
 
+// Discs are pre-rendered once per size (shaded like real flipdots, with the axle line),
+// then stamped — nicer and much faster than drawing 3,528 arcs every frame.
+const discCache = new Map();
+function discSprites(cell) {
+  if (discCache.has(cell)) return discCache.get(cell);
+  const make = (lit) => {
+    const c = document.createElement("canvas");
+    c.width = c.height = cell;
+    const g = c.getContext("2d"), r = cell * 0.43, m = cell / 2;
+    const grad = g.createRadialGradient(m - r * 0.35, m - r * 0.35, r * 0.1, m, m, r);
+    if (lit) { grad.addColorStop(0, "#fffbf0"); grad.addColorStop(1, "#d9d1bd"); }
+    else { grad.addColorStop(0, "#232323"); grad.addColorStop(1, "#121212"); }
+    g.fillStyle = grad;
+    g.beginPath(); g.arc(m, m, r, 0, Math.PI * 2); g.fill();
+    if (cell >= 10) {  // the pivot axle across the disc
+      g.strokeStyle = lit ? "rgba(0,0,0,0.12)" : "rgba(255,255,255,0.05)";
+      g.lineWidth = Math.max(1, cell / 18);
+      g.beginPath(); g.moveTo(m - r, m); g.lineTo(m + r, m); g.stroke();
+    }
+    return c;
+  };
+  const pair = { on: make(true), off: make(false) };
+  discCache.set(cell, pair);
+  return pair;
+}
+
 export function renderDots(ctx, grid, cell, { seams = true, overlay = null } = {}) {
   const h = grid.length, w = grid[0]?.length || 0;
-  ctx.fillStyle = "#000";
+  const { on, off } = discSprites(cell);
+  ctx.fillStyle = "#050505";
   ctx.fillRect(0, 0, w * cell, h * cell);
-  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
-    const v = overlay && overlay[y] && overlay[y][x] !== undefined && overlay[y][x] !== null ? overlay[y][x] : grid[y][x];
-    ctx.beginPath();
-    ctx.arc(x * cell + cell / 2, y * cell + cell / 2, cell * 0.42, 0, Math.PI * 2);
-    ctx.fillStyle = v ? "#f4f4f0" : "#1c1c1c";
-    ctx.fill();
+  for (let y = 0; y < h; y++) {
+    const row = grid[y], ov = overlay && overlay[y];
+    for (let x = 0; x < w; x++) {
+      const v = ov && ov[x] !== undefined && ov[x] !== null ? ov[x] : row[x];
+      ctx.drawImage(v ? on : off, x * cell, y * cell);
+    }
   }
-  if (seams && cell >= 4) {
-    ctx.strokeStyle = "rgba(242,201,76,.22)";
+  if (seams && cell >= 4) {  // panel joins, barely there
+    ctx.strokeStyle = "rgba(255,255,255,0.06)";
     ctx.lineWidth = 1;
-    for (let x = 28; x < w; x += 28) { ctx.beginPath(); ctx.moveTo(x * cell, 0); ctx.lineTo(x * cell, h * cell); ctx.stroke(); }
-    for (let y = 7; y < h; y += 7) { ctx.beginPath(); ctx.moveTo(0, y * cell); ctx.lineTo(w * cell, y * cell); ctx.stroke(); }
+    for (let x = 28; x < w; x += 28) { ctx.beginPath(); ctx.moveTo(x * cell + 0.5, 0); ctx.lineTo(x * cell + 0.5, h * cell); ctx.stroke(); }
+    for (let y = 7; y < h; y += 7) { ctx.beginPath(); ctx.moveTo(0, y * cell + 0.5); ctx.lineTo(w * cell, y * cell + 0.5); ctx.stroke(); }
   }
+}
+
+// Inline icon from the sprite in index.html
+export function icon(name) {
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("class", "i");
+  svg.setAttribute("aria-hidden", "true");
+  const use = document.createElementNS("http://www.w3.org/2000/svg", "use");
+  use.setAttribute("href", `#i-${name}`);
+  svg.append(use);
+  return svg;
+}
+
+// Compact icon-only button with an accessible name
+export function iconButton(name, label, onclick, extra = "") {
+  const b = el("button", { class: `icon ghost ${extra}`.trim(), title: label, "aria-label": label, onclick });
+  b.append(icon(name));
+  return b;
 }
 
 // Small static thumbnail canvas for a frame

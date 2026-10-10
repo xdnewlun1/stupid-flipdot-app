@@ -1,5 +1,5 @@
 // Playlists & schedule tab.
-import { $, api, bus, catalog, describeItem, el, paramForm, safe, toast } from "./common.js";
+import { $, api, bus, catalog, describeItem, el, iconButton, paramForm, safe, toast } from "./common.js";
 
 let playlists = {}, current = null, editing = null;
 let schedule = { enabled: false, default: "", rules: [] }, OFF = "__off__";
@@ -60,11 +60,11 @@ function render() {
       el("div", { class: "name" }, title, el("small", {}, detail)),
       el("label", { class: "muted" }, dur, " s"), trans,
       el("div", { class: "group" },
-        el("button", { onclick: move(-1), title: "Move up" }, "↑"),
-        el("button", { onclick: move(1), title: "Move down" }, "↓"),
-        el("button", { onclick: () => { editing = editing === i ? null : i; render(); } }, "Edit"),
-        el("button", { onclick: safe(() => api("/api/run", { app: item.app, params: item.params })), title: "Run this item now" }, "▶"),
-        el("button", { class: "danger", onclick: safe(async () => { pl.items.splice(i, 1); editing = null; await savePlaylists(); }) }, "✕")));
+        iconButton("up", "Move up", move(-1)),
+        iconButton("down", "Move down", move(1)),
+        iconButton("edit", editing === i ? "Close editor" : "Edit settings", () => { editing = editing === i ? null : i; render(); }),
+        iconButton("play", "Run this item now", safe(() => api("/api/run", { app: item.app, params: item.params }))),
+        iconButton("x", "Remove from playlist", safe(async () => { pl.items.splice(i, 1); editing = null; await savePlaylists(); }), "danger")));
   })));
   renderEditor();
   renderSchedule();
@@ -107,7 +107,7 @@ function renderSchedule() {
         }),
       }, d))),
       start, el("span", { class: "muted" }, "to"), end, el("span", { class: "muted" }, "play"), target,
-      el("button", { class: "danger", onclick: safe(() => { schedule.rules.splice(i, 1); return saveSchedule(); }) }, "✕"));
+      iconButton("x", "Remove rule", safe(() => { schedule.rules.splice(i, 1); return saveSchedule(); }), "danger"));
   })));
 }
 

@@ -1,6 +1,6 @@
 // Layers tab: build stacks of apps with blend modes, edit them live, save compositions.
 // Also hosts the transitions gallery.
-import { $, api, board, bus, catalog, compCache, drawingsCache, el, loadDrawings, paramForm, safe, toast } from "./common.js";
+import { $, api, board, bus, catalog, compCache, drawingsCache, el, icon, iconButton, loadDrawings, paramForm, safe, toast } from "./common.js";
 
 const BLENDS = [
   ["normal", "Normal"], ["add", "Add"], ["halo", "Halo"], ["xor", "Invert"], ["mask", "Mask"], ["cut", "Cut out"],
@@ -98,13 +98,13 @@ function layerCard(layer, index) {
       el("div", { class: "name" }, isSnapshot ? "Board snapshot" : isDrawing ? `Drawing: ${drawingName || "?"}` : title,
         el("small", {}, BLEND_HELP[layer.blend || "normal"] + (index === 0 ? " · bottom layer" : ""))),
       blend,
-      isDrawing ? el("button", { onclick: () => bus.dispatchEvent(new CustomEvent("drawTarget", { detail: layer.params.drawing })) }, "✎ Draw on it") : null,
+      isDrawing ? el("button", { onclick: () => bus.dispatchEvent(new CustomEvent("drawTarget", { detail: layer.params.drawing })) }, icon("draw"), "Draw on it") : null,
       el("div", { class: "group" },
-        el("button", { title: "Move up", onclick: move(1) }, "↑"),
-        el("button", { title: "Move down", onclick: move(-1) }, "↓"),
-        el("button", { onclick: () => { isOpen ? open.delete(index) : open.add(index); render(); } }, isOpen ? "Close" : "Options"),
-        el("button", { title: "Duplicate", onclick: () => { layers.splice(index + 1, 0, clone(layer)); render(); changed(); } }, "⧉"),
-        el("button", { class: "danger", title: "Remove", onclick: () => { layers.splice(index, 1); open.clear(); render(); changed(); } }, "✕"))));
+        iconButton("up", "Move up", move(1)),
+        iconButton("down", "Move down", move(-1)),
+        iconButton(isOpen ? "up" : "settings", isOpen ? "Hide options" : "Layer options", () => { isOpen ? open.delete(index) : open.add(index); render(); }),
+        iconButton("copy", "Duplicate layer", () => { layers.splice(index + 1, 0, clone(layer)); render(); changed(); }),
+        iconButton("x", "Remove layer", () => { layers.splice(index, 1); open.clear(); render(); changed(); }, "danger"))));
 
   if (isOpen) {
     const body = el("div", { class: "body" });
