@@ -1,0 +1,14 @@
+[Unit]
+Description=Flipdot board server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/Documents/Programming/flipdisk
+ExecStart=/usr/bin/python3 %h/Documents/Programming/flipdisk/server.py --port 8080
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

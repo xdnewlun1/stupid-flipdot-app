@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Flipdot Controller</title>
+<style>
+  :root { --bg: #16181c; --panel: #23262c; --text: #e6e6e6; --muted: #8a8f98; --accent: #f2c94c; }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font: 15px system-ui, sans-serif; overscroll-behavior: none; }
+  body { display: flex; flex-direction: column; padding: 12px 16px calc(12px + env(safe-area-inset-bottom)); gap: 12px; user-select: none; -webkit-user-select: none; }
+  .top { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+  .top a { color: var(--muted); margin-left: auto; font-size: 13px; }
+  button { background: var(--panel); color: var(--text); border: 0; border-radius: 8px; padding: 9px 12px; font: inherit; touch-action: manipulation; }
+  button.active { background: var(--accent); color: #111; }
+  .wrap { background: #000; border-radius: 8px; padding: 6px; }
+  canvas { width: 100%; display: block; }
+  #status { color: var(--muted); font-size: 13px; min-height: 18px; text-align: center; }
+  .pad { flex: 1; display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 220px; }
+  .dpad { display: grid; grid-template-columns: repeat(3, 72px); grid-template-rows: repeat(3, 72px); gap: 6px; }
+  .dpad button, .ab button { font-size: 26px; padding: 0; touch-action: none; }
+  .dpad button:active, .ab button:active, .dpad button.down, .ab button.down { background: var(--accent); color: #111; }
+  .ab { display: flex; flex-direction: column; gap: 14px; align-items: center; }
+  .ab button { width: 84px; height: 84px; border-radius: 50%; font-weight: 700; }
+  .ab small { color: var(--muted); font-size: 11px; display: block; }
+</style>
+</head>
+<body>
+  <div class="top">
+    <button data-game="snake">Snake</button>
+    <button data-game="tetris">Tetris</button>
+    <button data-game="pong">Pong</button>
+    <button data-game="blackjack">Blackjack</button>
+    <span style="width:8px"></span>
+    <button data-player="1" class="active">P1</button>
+    <button data-player="2">P2</button>
+    <a href="/">Back to controls</a>
+  </div>
+  <div class="wrap"><canvas id="board"></canvas></div>
+  <div id="status"></div>
+  <div class="pad">
+    <div class="dpad">
+      <span></span><button data-key="up">▲</button><span></span>
+      <button data-key="left">◀</button><span></span><button data-key="right">▶</button>
+      <span></span><button data-key="down">▼</button><span></span>
+    </div>
+    <div class="ab">
+      <button data-key="a">A<small id="hintA"></small></button>
+      <button data-key="b">B<small id="hintB"></small></button>
+    </div>
+  </div>
+<script>
+const canvas = document.getElementById("board"), ctx = canvas.getContext("2d");
+let player = 1, runner = null;
+
+const statusEl = document.getElementById("status");
+let ws = null, wsOpen = false, retry = 500;
+
+function drawBits(W, H, isOn) {
+  const cell = 6;
+  if (canvas.width !== W * cell) { canvas.width = W * cell; canvas.height = H * cell; }
+  ctx.fillStyle = "#000"; ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = "#f4f4f0";
+  for (let y = 0, i = 0; y < H; y++) for (let x = 0; x < W; x++, i++) if (isOn(x, y, i)) ctx.fillRect(x * cell + 1, y * cell + 1, cell - 2, cell - 2);
+}
+
+const HINTS = { tetris: ["rotate", "drop"], blackjack: ["deal / hit", "stand"], snake: ["", ""], pong: ["", ""] };
+function showStatus() {
+  if (!runner) return;
+  const game = runner.interactive ? (runner.description || "").toLowerCase() : "";
+  const key = Object.keys(HINTS).find(k => game.includes(k) || runner.app === k);
+  const [ha, hb] = HINTS[key] || ["", ""];
+  document.getElementById("hintA").textContent = ha;
+  document.getElementById("hintB").textContent = hb;
+  statusEl.textContent = (runner.interactive ? runner.description : "No game running — pick one above") + (wsOpen ? "" : " (reconnecting…)");
+  document.querySelectorAll("[data-game]").forEach(b => b.classList.toggle("active", runner.interactive && runner.app === b.dataset.game));
+}
+
+// Live updates over a WebSocket; plain polling while it's down.
+function connect() {
+  ws = new WebSocket((location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/ws" + location.search);
+  ws.binaryType = "arraybuffer";
+  ws.onopen = () => { wsOpen = true; retry = 500; showStatus(); };
+  ws.onmessage = e => {
+    if (typeof e.data === "string") {
+      const m = JSON.parse(e.data);
+      if (m.type === "status") { runner = m.runner; showStatus(); }
+      return;
+    }
+    const dv = new DataView(e.data), W = dv.getUint16(4), H = dv.getUint16(6), bits = new Uint8Array(e.data, 8);
+    drawBits(W, H, (x, y, i) => bits[i >> 3] & (0x80 >> (i & 7)));
+  };
+  ws.onclose = () => { wsOpen = false; showStatus(); setTimeout(connect, retry); retry = Math.min(retry * 2, 5000); };
+}
+connect();
+
+let failures = 0;
+async function poll() {
+  if (!wsOpen) {
+    try {
+      const s = await (await fetch("/api/board", { cache: "no-store" })).json();
+      runner = s.runner; failures = 0;
+      drawBits(s.width, s.height, (x, y) => s.rows[y][x] === "1");
+      showStatus();
+    } catch { if (++failures >= 3) statusEl.textContent = "Can't reach the board — retrying…"; }
+  }
+  setTimeout(poll, wsOpen ? 1000 : 400);
+}
+poll();
+
+const send = (key, action) => {
+  const msg = { key, action, player };
+  if (wsOpen) ws.send(JSON.stringify({ type: "input", ...msg }));
+  else fetch("/api/input", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(msg) });
+};
+
+document.querySelectorAll("[data-key]").forEach(b => {
+  const key = b.dataset.key;
+  b.addEventListener("pointerdown", e => { e.preventDefault(); b.setPointerCapture(e.pointerId); b.classList.add("down"); send(key, "down"); navigator.vibrate?.(10); });
+  const up = () => { if (b.classList.contains("down")) { b.classList.remove("down"); send(key, "up"); } };
+  b.addEventListener("pointerup", up);
+  b.addEventListener("pointercancel", up);
+  b.addEventListener("contextmenu", e => e.preventDefault());
+});
+document.querySelectorAll("[data-game]").forEach(b => b.onclick = () => fetch("/api/run", {
+  method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ app: b.dataset.game }),
+}));
+document.querySelectorAll("[data-player]").forEach(b => b.onclick = () => {
+  player = +b.dataset.player;
+  document.querySelectorAll("[data-player]").forEach(x => x.classList.toggle("active", x === b));
+});
+
+const KEYS = { ArrowUp: "up", ArrowDown: "down", ArrowLeft: "left", ArrowRight: "right", w: "up", s: "down", a: "left", d: "right", " ": "a", Enter: "b" };
+addEventListener("keydown", e => { const k = KEYS[e.key]; if (k && !e.repeat) { e.preventDefault(); send(k, "down"); } });
+addEventListener("keyup", e => { const k = KEYS[e.key]; if (k) send(k, "up"); });
+</script>
+</body>
+</html>

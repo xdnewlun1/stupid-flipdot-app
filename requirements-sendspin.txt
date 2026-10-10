@@ -1,0 +1,4 @@
+# Optional: live music visualizer data from Music Assistant over Sendspin.
+# Must match the aiosendspin version Music Assistant pins (see sendspin_link.MA_AIOSENDSPIN);
+# the encryption handshake isn't compatible across major versions.
+aiosendspin==9.1.1

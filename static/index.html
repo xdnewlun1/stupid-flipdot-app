@@ -1,0 +1,389 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Flipdot Control</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<main>
+  <header class="top">
+    <h1>Flipdot Control</h1>
+    <div id="mode" class="mode">connecting…</div>
+    <div class="group">
+      <button id="btnStop" title="Stop whatever is running; the board keeps its current picture">Stop</button>
+      <button id="btnNext" title="Skip to the next playlist item">Next</button>
+      <button id="btnSchedule" title="Go back to the schedule">Resume schedule</button>
+    </div>
+  </header>
+
+  <div class="wrap boardWrap"><canvas id="board"></canvas></div>
+
+  <nav class="tabs" id="tabs">
+    <button data-tab="draw" class="active">Draw</button>
+    <button data-tab="media">Image &amp; video</button>
+    <button data-tab="apps">Apps</button>
+    <button data-tab="layers">Layers</button>
+    <button data-tab="playlists">Playlists &amp; schedule</button>
+    <button data-tab="scenes">Scenes</button>
+    <button data-tab="settings">Settings</button>
+  </nav>
+
+  <!-- ===================== DRAW ===================== -->
+  <section class="tab card" id="tab-draw">
+    <div class="bar targetBar">
+      <label class="muted">Draw on <select id="drawTarget"></select></label>
+      <button id="newDrawing" title="Start a blank drawing layer on top of whatever is running">New drawing layer</button>
+      <label id="layerOnlyBox" hidden><input type="checkbox" id="layerOnly"> Show only this layer</label>
+      <button id="showDrawing" hidden>Add to board</button>
+      <button id="renameDrawing" hidden>Rename</button>
+      <button id="deleteDrawing" class="danger" hidden>Delete</button>
+      <span class="muted" id="targetHint"></span>
+    </div>
+    <div class="bar">
+      <div class="group" id="drawTools">
+        <button data-tool="pencil" class="active" title="Pencil (P)">Pencil</button>
+        <button data-tool="line" title="Line (L)">Line</button>
+        <button data-tool="rect" title="Rectangle (R)">Rect</button>
+        <button data-tool="rectfill" title="Filled rectangle">Rect ■</button>
+        <button data-tool="circle" title="Circle (C)">Circle</button>
+        <button data-tool="circlefill" title="Filled circle">Circle ●</button>
+        <button data-tool="fill" title="Flood fill (F)">Fill</button>
+        <button data-tool="text" title="Text stamp (T)">Text</button>
+        <button data-tool="select" title="Select / copy / paste (S)">Select</button>
+      </div>
+      <div class="group" id="drawColor">
+        <button data-color="white" class="active">White</button>
+        <button data-color="black">Black</button>
+        <button data-color="toggle">Toggle</button>
+      </div>
+    </div>
+    <div class="bar">
+      <div class="group">
+        <button id="undo" title="Ctrl+Z">Undo</button>
+        <button id="redo" title="Ctrl+Y">Redo</button>
+      </div>
+      <div class="group">
+        <button id="allBlack">All black</button>
+        <button id="allWhite">All white</button>
+        <button id="invert">Invert</button>
+      </div>
+      <div class="group">
+        <button id="saveScene">Save as scene</button>
+        <button id="exportPng" title="84x42 PNG, one pixel per dot">Export PNG</button>
+        <button id="exportPretty" title="Picture of the board">Export picture</button>
+        <button id="importImg">Import image…</button>
+      </div>
+    </div>
+    <div class="bar" id="textOpts" hidden>
+      <input id="stampText" type="text" value="Hello" placeholder="Text to stamp">
+      <span id="stampFontBox"></span>
+      <label class="muted" id="stampScaleBox">scale <input id="stampScale" type="number" min="1" max="6" value="1" style="width:56px"></label>
+      <label class="muted" id="stampSizeBox" hidden>size <input id="stampSize" type="number" min="5" max="42" value="14" style="width:60px"> dots</label>
+      <span class="muted">Click the board to place the text.</span>
+    </div>
+    <div class="bar" id="selectOpts" hidden>
+      <div class="group">
+        <button id="selCopy">Copy</button>
+        <button id="selCut">Cut</button>
+        <button id="selPaste">Paste</button>
+        <button id="selFlipH">Flip ↔</button>
+        <button id="selFlipV">Flip ↕</button>
+      </div>
+      <span class="muted">Drag to select. Ctrl+C / Ctrl+X / Ctrl+V, then click to place a paste.</span>
+    </div>
+  </section>
+
+  <!-- ===================== MEDIA ===================== -->
+  <section class="tab card" id="tab-media" hidden>
+    <div class="grid2">
+      <div>
+        <div id="drop" class="drop">Drop an image, GIF or video here, click to choose, or paste an image</div>
+        <input type="file" id="file" accept="image/*,video/*" hidden>
+        <div class="row">
+          <button id="webcam">Use webcam</button>
+          <span class="muted" id="webcamNote"></span>
+        </div>
+        <div class="form">
+          <label for="mode">Sizing</label>
+          <select id="mode">
+            <option value="stretch">Stretch to fit (distorts)</option>
+            <option value="crop">Cut to fit (fills board, crops edges)</option>
+            <option value="fit">Fit inside (black bars)</option>
+          </select>
+          <label for="dither">Style</label>
+          <select id="dither">
+            <option value="threshold">Threshold (crisp)</option>
+            <option value="dither">Dither (shading)</option>
+          </select>
+          <label for="threshold">Brightness cutoff <span id="thVal"></span></label>
+          <input type="range" id="threshold" min="1" max="254" value="128">
+          <label for="invertImg">Invert</label>
+          <input type="checkbox" id="invertImg">
+          <label for="speed">Speed</label>
+          <select id="speed">
+            <option value="0.5">0.5×</option><option value="1" selected>1×</option>
+            <option value="1.5">1.5×</option><option value="2">2×</option><option value="3">3×</option>
+          </select>
+          <label for="loop">Loop</label>
+          <input type="checkbox" id="loop" checked>
+          <label for="fps">Video frames/sec</label>
+          <input type="number" id="fps" min="1" max="20" value="10">
+          <label for="clipSecs">Video clip length (s)</label>
+          <input type="number" id="clipSecs" min="1" max="60" value="10">
+        </div>
+      </div>
+      <div>
+        <div class="wrap"><canvas id="preview"></canvas></div>
+        <video id="video" playsinline muted hidden></video>
+        <p class="muted" id="imgInfo">Nothing loaded.</p>
+        <div class="row">
+          <button class="primary" id="send" disabled>Send to board</button>
+          <button id="saveMedia" disabled>Save as scene</button>
+          <button id="clip" disabled>Convert video clip</button>
+        </div>
+        <div class="row">
+          <button id="addAsLayer" disabled title="Combine it with what's on the board instead of replacing it">Add as layer</button>
+          <select id="layerPos">
+            <option value="top">on top of what's running</option>
+            <option value="bottom">behind what's running</option>
+          </select>
+        </div>
+        <div class="row">
+          <button id="live" disabled>Stream live</button>
+          <label class="muted">to <select id="streamTarget">
+            <option value="board">the whole board</option>
+            <option value="top">a layer on top of what's running</option>
+            <option value="bottom">a layer behind what's running</option>
+          </select></label>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="tab card spacedCard" id="tab-media-slides" hidden>
+    <h2>Slideshows</h2>
+    <p class="muted">A list of images and GIFs that plays in a loop: images stay up for a set time, GIFs play through and then it moves on.
+      Drop in files or a <b>.zip</b> (it's unpacked automatically). Slideshows can also go in playlists, the schedule and layers (the "Slideshow" app).</p>
+    <div class="bar">
+      <select id="ssSelect"></select>
+      <div class="group">
+        <button id="ssNew">New</button>
+        <button id="ssRename">Rename</button>
+        <button id="ssDelete">Delete</button>
+      </div>
+      <button id="ssPlay" class="primary">Play on board</button>
+      <button id="ssAddLayer" title="Combine the slideshow with what's on the board">Add as layer</button>
+      <select id="ssLayerPos">
+        <option value="bottom">behind what's running</option>
+        <option value="top">on top of what's running</option>
+      </select>
+    </div>
+    <div id="ssBody">
+      <div id="ssDrop" class="drop">Drop images, GIFs or a .zip here, or click to choose</div>
+      <input type="file" id="ssFile" accept="image/*,.zip,application/zip" multiple hidden>
+      <div class="row">
+        <label class="muted"><input type="checkbox" id="ssSkipCovers" checked> Skip cover/preview images in zips (e.g. <code>clip.png</code> next to <code>clip.gif</code>)</label>
+        <button id="ssRemoveCovers" title="Remove still images that are just covers for the GIFs already in this slideshow">Remove cover images</button>
+      </div>
+      <p class="muted" id="ssStatus"></p>
+      <div class="form ssSettings">
+        <label for="ssImageSecs">Image time (s)</label><input id="ssImageSecs" type="number" min="1" max="3600" step="1">
+        <label for="ssGifLoops">GIF plays</label><input id="ssGifLoops" type="number" min="1" max="100">
+        <label for="ssGifMin">GIF minimum time (s)</label><input id="ssGifMin" type="number" min="0" max="600" title="short GIFs repeat until this much time has passed">
+        <label for="ssTransition">Transition</label>
+        <div class="row tight"><select id="ssTransition"></select><input id="ssTransDur" type="number" min="0.1" max="10" step="0.1" style="width:70px"><span class="muted">s</span></div>
+        <label for="ssShuffle">Shuffle</label><input id="ssShuffle" type="checkbox">
+        <label for="ssMode">Sizing</label>
+        <select id="ssMode">
+          <option value="stretch">Stretch to fit</option>
+          <option value="crop">Cut to fit</option>
+          <option value="fit">Fit inside (black bars)</option>
+        </select>
+        <label for="ssDither">Style</label>
+        <select id="ssDither"><option value="false">Threshold (crisp)</option><option value="true">Dither (shading)</option></select>
+        <label for="ssThreshold">Brightness cutoff <span id="ssThVal"></span></label><input id="ssThreshold" type="range" min="1" max="254">
+        <label for="ssInvert">Invert</label><input id="ssInvert" type="checkbox">
+      </div>
+      <div id="ssItems" class="ssItems"></div>
+    </div>
+  </section>
+
+  <!-- ===================== APPS ===================== -->
+  <section class="tab card" id="tab-apps" hidden>
+    <div class="grid2 apps">
+      <div id="appList"></div>
+      <div id="appDetail"><p class="muted">Pick an app.</p></div>
+    </div>
+  </section>
+
+  <!-- ===================== LAYERS ===================== -->
+  <section class="tab card" id="tab-layers" hidden>
+    <div class="bar">
+      <select id="lyComp"></select>
+      <div class="group">
+        <button id="lyNew">New</button>
+        <button id="lySave">Save</button>
+        <button id="lySaveAs">Save as…</button>
+        <button id="lyRename">Rename</button>
+        <button id="lyDelete">Delete</button>
+      </div>
+      <button id="lyLoadRunning" title="Edit the layers that are on the board right now">Load what's on the board</button>
+    </div>
+    <div class="bar">
+      <button id="lyRun" class="primary">Run on board</button>
+      <label><input type="checkbox" id="lyLive" checked> Live edit</label>
+      <label class="muted">transition <select id="lyTransition"></select></label>
+      <label class="muted"><input type="number" id="lyTransDur" value="1" min="0.1" max="10" step="0.1" style="width:64px"> s</label>
+      <span class="muted" id="lyDirty"></span>
+    </div>
+    <p class="muted">Layers are listed top first. Each one keeps running on its own. <b>Invert</b> flips whatever is under its white dots,
+      so e.g. Game of Life over the weather still lets you read the weather. With <b>Live edit</b> on, changes apply to the board immediately
+      and layers you didn't touch keep running.</p>
+    <div id="lyList" class="items"></div>
+    <div class="row">
+      <select id="lyAddApp"></select>
+      <button id="lyAdd">Add layer</button>
+      <button id="lyAddDrawing" title="A blank layer you can draw on in the Draw tab">Add drawing layer</button>
+      <button id="lyAddBoard" title="Copy what's on the board now into an editable drawing layer">Add current board as a layer</button>
+    </div>
+
+    <h2 class="spaced">Transitions</h2>
+    <p class="muted">Click one to try it on the board (it switches between a few demo apps). Playlists, apps and notifications can use any of them.</p>
+    <div class="bar"><label class="muted">Duration <input type="number" id="trDur" value="1.2" min="0.1" max="10" step="0.1" style="width:64px"> s</label></div>
+    <div id="trGallery" class="trGallery"></div>
+  </section>
+
+  <!-- ===================== PLAYLISTS ===================== -->
+  <section class="tab card" id="tab-playlists" hidden>
+    <h2>Playlists</h2>
+    <div class="bar">
+      <select id="plSelect"></select>
+      <div class="group">
+        <button id="plNew">New</button>
+        <button id="plRename">Rename</button>
+        <button id="plDelete">Delete</button>
+        <button id="plPlay" class="primary">Play now</button>
+      </div>
+      <label class="muted">Transition <select id="plTransition"></select></label>
+      <label class="muted"><input type="number" id="plTransDur" min="0.1" max="10" step="0.1" value="1" style="width:64px"> s</label>
+    </div>
+    <div id="plItems"></div>
+    <div class="row">
+      <select id="plAddApp"></select>
+      <button id="plAdd">Add item</button>
+    </div>
+    <div id="plEditor"></div>
+
+    <h2 class="spaced">Schedule</h2>
+    <p class="muted">The first matching rule wins; otherwise the default playlist plays. Drawing or running an app pauses the schedule until you press <b>Resume schedule</b>.</p>
+    <div class="bar">
+      <label><input type="checkbox" id="schEnabled"> Schedule enabled</label>
+      <label class="muted">Default playlist <select id="schDefault"></select></label>
+    </div>
+    <div id="schRules"></div>
+    <div class="row"><button id="schAdd">Add rule</button></div>
+  </section>
+
+  <!-- ===================== SCENES ===================== -->
+  <section class="tab card" id="tab-scenes" hidden>
+    <div class="bar">
+      <button id="scSaveCurrent">Save current board</button>
+      <span class="muted">Scenes are saved drawings, images and animations. Use them in playlists via the "Saved scene" app.</span>
+    </div>
+    <div id="sceneGrid" class="sceneGrid"></div>
+  </section>
+
+  <!-- ===================== SETTINGS ===================== -->
+  <section class="tab card" id="tab-settings" hidden>
+    <h2>Weather</h2>
+    <div class="form">
+      <label>Location</label>
+      <div class="row tight">
+        <input id="wxSearch" type="text" placeholder="Search a city…">
+        <button id="wxFind">Search</button>
+      </div>
+      <label></label>
+      <div id="wxResults" class="muted"></div>
+      <label>Current</label>
+      <div id="wxCurrent" class="muted">not set</div>
+      <label for="wxUnits">Units</label>
+      <select id="wxUnits"><option value="fahrenheit">°F</option><option value="celsius">°C</option></select>
+    </div>
+
+    <h2 class="spaced">Display</h2>
+    <div class="form">
+      <label for="trFps">Transition frame rate</label>
+      <div class="row tight"><input id="trFps" type="number" min="5" max="30" step="1" style="width:80px"><span class="muted">frames/sec (15 matches typical flipdot GIFs)</span></div>
+    </div>
+
+    <h2 class="spaced">Fonts</h2>
+    <p class="muted">Pixel fonts are built in; installed system fonts are listed too. Upload your own <code>.ttf</code>/<code>.otf</code>
+      (pixel-art fonts made for small sizes look best, e.g. Silkscreen, Press Start 2P, VT323, Pixelify Sans) or classic
+      <code>.bdf</code>/<code>.pcf</code> bitmap fonts.</p>
+    <div class="row">
+      <button id="fontUploadBtn">Upload font…</button>
+      <input type="file" id="fontFile" accept=".ttf,.otf,.bdf,.pcf" hidden>
+    </div>
+    <div class="form">
+      <label>Preview</label>
+      <div class="row tight">
+        <span id="fontPreviewSel"></span>
+        <input id="fontPreviewText" type="text" value="Hello 123!">
+        <input id="fontPreviewSize" type="number" min="1" max="42" value="12" style="width:64px" title="scale for pixel fonts, size in dots for others">
+      </div>
+      <label></label>
+      <div class="wrap"><canvas id="fontPreview"></canvas></div>
+      <label>Your fonts</label>
+      <div id="fontUserList" class="muted">none</div>
+    </div>
+
+    <h2 class="spaced">Music Assistant</h2>
+    <p class="muted">For the "Now playing" app. Enter your Music Assistant server address (usually port 8095, e.g.
+      <code>http://homeassistant.local:8095</code>). If your server asks you to log in, create a long-lived token in
+      Music Assistant under <b>Settings → Security</b> and paste it here.</p>
+    <div class="form">
+      <label for="maUrl">Server URL</label><input id="maUrl" type="text" placeholder="http://homeassistant.local:8095">
+      <label for="maToken">Token (optional)</label><input id="maToken" type="password">
+      <label for="maPlayer">Default player</label><select id="maPlayer"><option value="">Whatever is playing</option></select>
+      <label>Status</label><div id="maStatus" class="muted">not tested</div>
+    </div>
+    <div class="row"><button id="maSave" class="primary">Save &amp; test</button></div>
+
+    <h2 class="spaced">Music Assistant visualizer (Sendspin)</h2>
+    <p class="muted">Lets Music Assistant stream live visualizer data (loudness, spectrum, beats) for what's playing to the board,
+      so the <b>Music visualizer</b> app follows the actual music. The board joins as a display-only Sendspin client: it plays no
+      audio and uses no microphone. Needs <code>pip install -r requirements-sendspin.txt</code> (Python 3.12+; the version must match Music Assistant's). Without it, the visualizer uses a generated beat.</p>
+    <div class="form">
+      <label for="ssEnabled">Enabled</label><input id="ssEnabled" type="checkbox">
+      <label for="ssName">Name in Music Assistant</label><input id="ssName" type="text">
+      <label for="ssUnpaired">Allow without pairing</label>
+      <div class="row tight"><input id="ssUnpaired" type="checkbox"><span class="muted">simplest on a trusted home network; otherwise pair below</span></div>
+      <label>Status</label><div id="ssStatusLine" class="muted"></div>
+    </div>
+    <div class="row">
+      <button id="ssSave">Save</button>
+      <button id="ssPair" title="Opens a short pairing window; Music Assistant then shows the code to enter, or the board displays it">Pair with Music Assistant</button>
+    </div>
+
+    <h2 class="spaced">MQTT / Home Assistant</h2>
+    <div class="form">
+      <label for="mqEnabled">Enabled</label><input id="mqEnabled" type="checkbox">
+      <label for="mqHost">Broker host</label><input id="mqHost" type="text" placeholder="homeassistant.local">
+      <label for="mqPort">Port</label><input id="mqPort" type="number" value="1883">
+      <label for="mqUser">Username</label><input id="mqUser" type="text">
+      <label for="mqPass">Password</label><input id="mqPass" type="password">
+      <label for="mqPrefix">Topic prefix</label><input id="mqPrefix" type="text" value="flipdot">
+      <label>Status</label><div id="mqStatus" class="muted"></div>
+    </div>
+    <div class="row"><button id="mqSave">Save</button></div>
+
+    <h2 class="spaced">Webhooks &amp; integrations</h2>
+    <div id="hooks" class="docs"></div>
+  </section>
+</main>
+<div id="toast" class="toast" hidden></div>
+<script type="module" src="/static/js/main.js"></script>
+</body>
+</html>

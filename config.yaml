@@ -1,0 +1,117 @@
+# Board settings
+panel_width: 28        # dots per panel, horizontally
+panel_height: 7        # dots per panel, vertically
+transport: tcp         # tcp or udp (how the RS485 converter on 192.168.11.100 is configured)
+invert: false          # set true if "white" and "black" come out swapped on the board
+password: ""           # set to require a password for the web page and API
+
+# Pasted from Maestro
+panels:
+  - column: "1"
+    row: "1"
+    ip: "192.168.11.100"
+    port: "5000"
+    address: "0"
+
+  - column: "2"
+    row: "1"
+    ip: "192.168.11.100"
+    port: "5001"
+    address: "0"
+
+  - column: "3"
+    row: "1"
+    ip: "192.168.11.100"
+    port: "5002"
+    address: "0"
+
+  - column: "1"
+    row: "2"
+    ip: "192.168.11.100"
+    port: "5000"
+    address: "1"
+
+  - column: "2"
+    row: "2"
+    ip: "192.168.11.100"
+    port: "5001"
+    address: "1"
+
+  - column: "3"
+    row: "2"
+    ip: "192.168.11.100"
+    port: "5002"
+    address: "1"
+
+  - column: "1"
+    row: "3"
+    ip: "192.168.11.100"
+    port: "5000"
+    address: "2"
+
+  - column: "2"
+    row: "3"
+    ip: "192.168.11.100"
+    port: "5001"
+    address: "2"
+
+  - column: "3"
+    row: "3"
+    ip: "192.168.11.100"
+    port: "5002"
+    address: "2"
+
+  - column: "1"
+    row: "4"
+    ip: "192.168.11.100"
+    port: "5000"
+    address: "3"
+
+  - column: "2"
+    row: "4"
+    ip: "192.168.11.100"
+    port: "5001"
+    address: "3"
+
+  - column: "3"
+    row: "4"
+    ip: "192.168.11.100"
+    port: "5002"
+    address: "3"
+
+  - column: "1"
+    row: "5"
+    ip: "192.168.11.100"
+    port: "5000"
+    address: "4"
+
+  - column: "2"
+    row: "5"
+    ip: "192.168.11.100"
+    port: "5001"
+    address: "4"
+
+  - column: "3"
+    row: "5"
+    ip: "192.168.11.100"
+    port: "5002"
+    address: "4"
+
+  - column: "1"
+    row: "6"
+    ip: "192.168.11.100"
+    port: "5000"
+    address: "5"
+
+  - column: "2"
+    row: "6"
+    ip: "192.168.11.100"
+    port: "5001"
+    address: "5"
+
+  - column: "3"
+    row: "6"
+    ip: "192.168.11.100"
+    port: "5002"
+    address: "5"
+
