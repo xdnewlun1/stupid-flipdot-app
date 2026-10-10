@@ -197,4 +197,5 @@ if __name__ == "__main__":
     asyncio.run(main())
     failed = [n for n, ok in results if not ok]
     print(f"\n{len(results) - len(failed)}/{len(results)} checks passed" + (f"; failed: {', '.join(failed)}" if failed else ""))
-    os._exit(1 if failed else 0)
+    sys.stdout.flush()
+    os._exit(1 if failed else 0)  # the link threads are daemons; don't wait for them

@@ -188,6 +188,8 @@ class Layers(App):
             if not layer.visible:
                 continue
             bits = layer.bitmap(now)
+            if getattr(layer.app, "hidden", False):
+                continue  # the app has nothing to show right now (e.g. a one-time song scroll that finished)
             req = getattr(layer.app, "request_transition", None)
             if req:  # pass a layer's whole-board transition request up to the runner
                 layer.app.request_transition = None

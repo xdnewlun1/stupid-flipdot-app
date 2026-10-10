@@ -75,6 +75,9 @@ class Music(Widget):
         P("font", "font", "normal", "Single line: font"),
         P("scale", "number", 1, "Single line: scale (pixel fonts)", min=1, max=4),
         P("font_size", "number", 9, "Single line: size in dots (other fonts)", min=5, max=20),
+        P("line_mode", "select", "always", "Single line: when to show it", options=[
+            ["always", "Always (keeps scrolling)"],
+            ["once", "Once per song (scrolls across when the song changes, then disappears)"]]),
         P("progress", "checkbox", True, "Single line: thin progress line under the text"),
         P("scroll_speed", "number", 20, "Single line: scroll speed (dots/sec)", min=4, max=60),
         P("art", "checkbox", True, "Show album art"),
@@ -91,6 +94,10 @@ class Music(Widget):
     def __init__(self, ctx, **params):
         super().__init__(ctx, **params)
         self.line = self.p["layout"] == "line"
+        self.once = self.line and self.p.get("line_mode") == "once"
+        self.hidden = False          # nothing on screen right now (layers then show what's underneath)
+        self.scroll_track = None     # the song the one-time scroll is for
+        self.scroll_start = None
         if self.line:
             self.p["art"] = False  # no album art in the one-line layout
             self.interval = 0.05
@@ -154,6 +161,23 @@ class Music(Widget):
         bar = 2 if self.p["progress"] and d and d.get("duration") else 0
         y = 0 if self.p["position"] == "top" else c.h - th - bar
         tw = font.width(text) * scale
+        if self.once:
+            # scroll across once, from just off the right edge to just off the left, then hide
+            if self.scroll_start is None:
+                self.hidden = True
+                return
+            x = c.w - int((now - self.scroll_start) * float(self.p["scroll_speed"]))
+            if x + tw < 0:
+                self.scroll_start = None
+                self.hidden = True
+                return
+            self.hidden = False
+            c.text(x, y, text, font, scale=scale)
+            if bar:
+                pos = d["elapsed"] + ((time.time() - d["at"]) if d["playing"] else 0)
+                c.line(0, y + th + 1, round((c.w - 1) * max(0.0, min(1.0, pos / d["duration"]))), y + th + 1)
+            return
+        self.hidden = False
         if tw <= c.w:
             c.text((c.w - tw) // 2, y, text, font, scale=scale)
         else:
@@ -173,6 +197,20 @@ class Music(Widget):
                 # new song: ask the runner to transition the whole board into this frame
                 self.request_transition = (self.p["song_transition"], float(self.p["song_transition_time"]))
             self.track = track
+        if self.line and self.once:
+            # start the one-time scroll whenever a new song starts playing
+            if d.get("playing"):
+                track = (d["title"], d["artist"])
+                if track != self.scroll_track:
+                    self.scroll_track = track
+                    self.scroll_start = now
+                self.last = d
+            shown = d if d.get("playing") else self.last
+            if shown is None:
+                self.hidden = True
+                return
+            text = shown["title"] + (f"  -  {shown['artist']}" if shown["artist"] else "")
+            return self.draw_line(c, now, text, shown)
         if self.line:
             if not d.get("playing"):
                 if self.p["idle"] == "last" and self.last:

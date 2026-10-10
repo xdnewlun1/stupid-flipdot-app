@@ -83,6 +83,20 @@ Then Settings → *Music Assistant visualizer (Sendspin)* → Enabled. The board
 port 8928; approve or pair it in Music Assistant. When it works the status shows *connected* and
 *receiving visualizer data ✓*, and the visualizer says *live from Music Assistant*.
 
+### Testing the Sendspin link
+
+`tests/sendspin_e2e.py` runs the board's link against a real aiosendspin server at the version Music
+Assistant pins (handshake, roles, song info, visualizer data, beats, refusing unapproved servers).
+mDNS is off, so it doesn't touch anything on your network:
+
+```sh
+python3 -m venv .venv-test && .venv-test/bin/pip install "aiosendspin[server]==9.1.1" pillow
+.venv-test/bin/python tests/sendspin_e2e.py      # exit code 0 = all checks passed
+```
+
+When Music Assistant moves to a new aiosendspin, update `requirements-sendspin.txt` and
+`sendspin_link.MA_AIOSENDSPIN`, then run this test with the new version.
+
 ## Run at boot (systemd user service)
 
 ```sh
