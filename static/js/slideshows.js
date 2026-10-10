@@ -1,5 +1,5 @@
 // Slideshows page: upload images / GIFs / zips, order them, set timings, play.
-import { $, api, ask, autosave, board, bus, catalog, confirmDelete, el, flushUndo, galleriesCache, icon, iconButton, renderDots, rowsToGrid, safe, toast, undoable } from "./common.js";
+import { $, api, ask, autosave, board, bus, catalog, confirmDelete, el, flushUndo, galleriesCache, icon, iconButton, renderDots, rowsToGrid, safe, toast, undoable, uploadFile } from "./common.js";
 
 let current = null, gallery = null, saveTimer = null;
 const thumbs = new Map();  // `${gid}/${file}/${settingsKey}` -> rows
@@ -54,6 +54,7 @@ function render() {
   $("ssImageSecs").value = st.image_seconds;
   $("ssGifLoops").value = st.gif_loops;
   $("ssGifMin").value = st.gif_min_seconds;
+  $("ssGifSpeed").value = String(st.gif_speed || 1);
   $("ssTransition").value = st.transition;
   $("ssTransDur").value = st.transition_duration;
   $("ssShuffle").checked = !!st.shuffle;
@@ -65,8 +66,8 @@ function render() {
   $("ssModeHelp").textContent = MODE_HELP[st.mode] || "";
   $("ssDitherHelp").textContent = DITHER_HELP[!!st.dither];
   renderFx(st);
-  const total = gallery.items.reduce((t, i) => t + (i.kind === "gif" ? (i.length_ms / 1000) * (i.loops || st.gif_loops) : (i.seconds || st.image_seconds)), 0);
-  $("ssStatus").textContent = gallery.items.length
+  const total = gallery.items.reduce((t, i) => t + (i.kind === "gif" ? (i.length_ms / 1000) / (i.speed || st.gif_speed || 1) * (i.loops || st.gif_loops) : (i.seconds || st.image_seconds)), 0);
+  if (!busy) $("ssStatus").textContent = gallery.items.length
     ? `${gallery.items.length} item${gallery.items.length === 1 ? "" : "s"} · about ${Math.round(total)} s per cycle`
     : "No images yet. Drop some above.";
   $("ssItems").replaceChildren(...gallery.items.map((item, i) => itemCard(item, i)));
@@ -93,6 +94,14 @@ function itemCard(item, i) {
     if (isGif) item.loops = v; else item.seconds = v;
     saveItems();
   };
+  // GIFs: their own speed, blank = the slideshow's
+  const speed = isGif ? el("select", { title: "Speed for this GIF", "aria-label": `Speed for ${item.name}` },
+    el("option", { value: "" }, `${gallery.settings.gif_speed || 1}× (default)`),
+    ...[0.5, 0.75, 1, 1.5, 2, 3, 4].map(v => el("option", { value: String(v) }, `${v}×`))) : null;
+  if (speed) {
+    speed.value = item.speed ? String(item.speed) : "";
+    speed.onchange = () => { item.speed = speed.value === "" ? null : Number(speed.value); saveItems(); };
+  }
   const move = d => () => {
     const j = i + d;
     if (j < 0 || j >= gallery.items.length) return;
@@ -104,7 +113,7 @@ function itemCard(item, i) {
     c,
     el("div", { class: "name", title: item.name }, (isGif ? `GIF · ${item.frames} frames · ` : "") + item.name),
     el("div", { class: "ctl" },
-      input, el("span", { class: "muted" }, isGif ? "plays" : "s"),
+      input, el("span", { class: "muted" }, isGif ? "plays" : "s"), speed,
       el("button", { title: "Show this picture now", "aria-label": `Show ${item.name} now`, class: "playNow", onclick: safe(async () => {
         await api(`/api/galleries/${current}/play`, { file: item.file });
         toast(`Showing ${item.name}`);
@@ -146,7 +155,7 @@ function saveItems(g = gallery, now = false) {
   clearTimeout(saveTimer);
   const go = safe(async () => {
     const saved = await autosave("ssSaved", () => api(`/api/galleries/${g.id}`, {
-      items: g.items.map(i => ({ file: i.file, seconds: i.seconds ?? null, loops: i.loops ?? null })),
+      items: g.items.map(i => ({ file: i.file, seconds: i.seconds ?? null, loops: i.loops ?? null, speed: i.speed ?? null })),
     }));
     const c = galleriesCache.list.find(x => x.id === g.id);
     if (c) { c.count = saved.items.length; renderSelect(); }
@@ -162,28 +171,66 @@ async function saveSettings(patch) {
 
 // ---- uploads ----
 
+let busy = false;
 async function upload(files) {
   if (!current) {
     const j = await api("/api/galleries", { name: "My slideshow" });
     current = j.id;
     await loadGalleries();
   }
-  let added = 0;
+  files = [...files];
+  const gid = current, total = files.reduce((t, f) => t + f.size, 0) || 1;
+  let added = 0, sent = 0;
   const skipped = [];
-  for (const [n, file] of [...files].entries()) {
-    $("ssStatus").textContent = `Uploading ${file.name} (${n + 1}/${files.length})…`;
-    try {
-      const covers = $("ssSkipCovers").checked ? "skip" : "keep";
-      const j = await api(`/api/galleries/${current}/upload?name=${encodeURIComponent(file.name)}&covers=${covers}`, file, { raw: true });
-      added += j.added;
-      skipped.push(...j.skipped);
-    } catch (e) {
-      skipped.push(`${file.name}: ${e.message}`);
+  const bar = $("ssProgress");
+  busy = true;
+  bar.hidden = false;
+  try {
+    for (const [n, file] of files.entries()) {
+      const show = loaded => {
+        const pct = Math.round(100 * (sent + loaded) / total);
+        $("ssStatus").textContent = `Uploading ${file.name} (${n + 1} of ${files.length}) · ${pct}%` +
+          (loaded >= file.size && /\.zip$/i.test(file.name) ? " · unpacking…" : "");
+        bar.firstChild.style.width = `${pct}%`;
+        bar.setAttribute("aria-valuenow", pct);
+      };
+      show(0);
+      try {
+        const covers = $("ssSkipCovers").checked ? "skip" : "keep";
+        const j = await uploadFile(`/api/galleries/${gid}/upload?name=${encodeURIComponent(file.name)}&covers=${covers}`, file, show);
+        added += j.added;
+        skipped.push(...j.skipped);
+      } catch (e) {
+        skipped.push(`${file.name}: ${e.message}`);
+      }
+      sent += file.size;
     }
+  } finally {
+    busy = false;
+    bar.hidden = true;
   }
   await loadGalleries();
-  toast(`Added ${added} item${added === 1 ? "" : "s"}` + (skipped.length ? ` · skipped: ${skipped.slice(0, 3).join("; ")}${skipped.length > 3 ? "…" : ""}` : ""), added === 0);
+  const msg = `Added ${added} item${added === 1 ? "" : "s"}` + (skipped.length ? ` · skipped: ${skipped.slice(0, 3).join("; ")}${skipped.length > 3 ? "…" : ""}` : "");
+  toast(msg, added === 0);
+  if (skipped.length && added) $("ssStatus").textContent += ` · skipped ${skipped.length}: ${skipped.slice(0, 3).join("; ")}`;
+  return added;
 }
+
+// From Import: a new slideshow from these files, shown open on the Slideshows page while they upload.
+export async function importToSlideshow(files, name) {
+  const { id } = await api("/api/galleries", { name });
+  current = id;
+  await loadGalleries();
+  const mark = () => { $("ssSelect").classList.add("justAdded"); $("ssItems").classList.add("justAdded"); };
+  mark();
+  $("ssSelect").scrollIntoView({ block: "center", behavior: "smooth" });
+  await upload(files);
+  mark();
+  $("ssItems").scrollIntoView({ block: "nearest", behavior: "smooth" });
+}
+bus.addEventListener("tabShown", e => {
+  if (e.detail !== "slideshows") { $("ssSelect").classList.remove("justAdded"); $("ssItems").classList.remove("justAdded"); }
+});
 
 const drop = $("ssDrop");
 drop.onclick = () => $("ssFile").click();
@@ -265,6 +312,7 @@ const num = id => Number($(id).value);
 $("ssImageSecs").onchange = safe(() => saveSettings({ image_seconds: Math.max(1, num("ssImageSecs") || 10) }));
 $("ssGifLoops").onchange = safe(() => saveSettings({ gif_loops: Math.max(1, num("ssGifLoops") || 1) }));
 $("ssGifMin").onchange = safe(() => saveSettings({ gif_min_seconds: Math.max(0, num("ssGifMin") || 0) }));
+$("ssGifSpeed").onchange = safe(() => saveSettings({ gif_speed: Number($("ssGifSpeed").value) || 1 }));
 $("ssTransition").onchange = safe(() => saveSettings({ transition: $("ssTransition").value }));
 $("ssTransDur").onchange = safe(() => saveSettings({ transition_duration: Math.max(0.1, num("ssTransDur") || 1) }));
 $("ssShuffle").onchange = safe(() => saveSettings({ shuffle: $("ssShuffle").checked }));

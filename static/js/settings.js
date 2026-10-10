@@ -11,11 +11,16 @@ export async function loadSettings() {
   fill("wxUnits", wx.units || "fahrenheit");
   fill("trFps", settings.display?.transition_fps ?? 15);
   const sp = settings.sendspin || {};
-  fill("ssEnabled", !!sp.enabled, "checked");
   fill("ssName", sp.name || "Flipdot board");
   fill("ssUnpaired", !!sp.unpaired, "checked");
   fill("ssServer", sp.server_url ?? "auto");
-  refreshSendspin().catch(() => {});
+  fill("vaSource", settings.visualizer?.source || "off");
+  const sc = settings.snapcast || {};
+  fill("scHost", sc.host ?? "auto");
+  fill("scPort", sc.port || 1704);
+  fill("scCtrl", sc.control_port || 1705);
+  fill("scName", sc.name || "Flipdot board");
+  showAudioSource();
   const ma = settings.music_assistant || {};
   fill("maUrl", ma.url || "");
   fill("maToken", ma.token || "");
@@ -53,7 +58,8 @@ export async function loadSettings() {
 
 // fields per settings section, so saving one section refreshes only those (drafts elsewhere stay)
 const FIELDS = {
-  weather: ["wxUnits"], display: ["trFps"], sendspin: ["ssEnabled", "ssName", "ssUnpaired", "ssServer"],
+  weather: ["wxUnits"], display: ["trFps"], sendspin: ["ssName", "ssUnpaired", "ssServer"],
+  visualizer: ["vaSource"], snapcast: ["scHost", "scPort", "scCtrl", "scName"],
   music_assistant: ["maUrl", "maToken"], ai: ["aiKey", "aiModel"],
   mqtt: ["mqEnabled", "mqHost", "mqPort", "mqUser", "mqPass", "mqPrefix", "mqDiscovery", "mqDiscPrefix"],
   gamepad: ["gpEnabled", "gpDeadzone", "gpMenu"], quiet_hours: ["qhEnabled", "qhStart", "qhEnd", "qhMax", "qhSlow"],
@@ -73,9 +79,15 @@ const SECTIONS = [
   { note: "aiSaved", ids: ["aiKey", "aiModel"], build: () => ({ ai: { api_key: $("aiKey").value.trim(), model: $("aiModel").value } }) },
   { note: "maSaved", ids: ["maUrl", "maToken", "maPlayer"], after: () => testMusic(),
     build: () => ({ music_assistant: { url: $("maUrl").value.trim(), token: $("maToken").value.trim(), player: (maPlayer = $("maPlayer").value) } }) },
-  { note: "spSaved", ids: ["ssEnabled", "ssName", "ssUnpaired", "ssServer"],
+  { note: "vaSaved", ids: ["vaSource"], after: () => setTimeout(showAudioSource, 1500),
+    build: () => ({ visualizer: { source: $("vaSource").value } }) },
+  { note: "scSaved", ids: ["scHost", "scPort", "scCtrl", "scName"],
+    after: () => setTimeout(() => refreshSnapcast().catch(() => {}), 2500),
+    build: () => ({ snapcast: { host: $("scHost").value.trim() || "auto", port: +$("scPort").value || 1704,
+                                control_port: +$("scCtrl").value || 1705, name: $("scName").value.trim() || "Flipdot board" } }) },
+  { note: "spSaved", ids: ["ssName", "ssUnpaired", "ssServer"],
     after: () => setTimeout(() => refreshSendspin().catch(() => {}), 1500),
-    build: () => ({ sendspin: { enabled: $("ssEnabled").checked, name: $("ssName").value.trim() || "Flipdot board",
+    build: () => ({ sendspin: { name: $("ssName").value.trim() || "Flipdot board",
                                 unpaired: $("ssUnpaired").checked, server_url: $("ssServer").value.trim() } }) },
   { note: "mqSaved", ids: ["mqEnabled", "mqHost", "mqPort", "mqUser", "mqPass", "mqPrefix", "mqDiscovery", "mqDiscPrefix"],
     after: () => setTimeout(() => loadSettings().catch(() => {}), 2500),  // show the connection result
@@ -127,6 +139,28 @@ async function testMusic() {
     $("maStatus").textContent = "Not connected: " + e.message;
   }
 }
+// only the chosen source's fields show; the status of a running link refreshes while it's on screen
+function showAudioSource() {
+  const source = $("vaSource").value;
+  $("ssBlock").hidden = source !== "sendspin";
+  $("scBlock").hidden = source !== "snapcast";
+  if (source === "sendspin") refreshSendspin().catch(() => {});
+  if (source === "snapcast") refreshSnapcast().catch(() => {});
+}
+async function refreshSnapcast() {
+  const j = await api("/api/snapcast");
+  const parts = [j.status];
+  if (j.codec) parts.push(`${j.codec} ${j.sample_format || ""}`.trim());
+  if (j.buffer_ms != null) parts.push(`buffer ${j.buffer_ms} ms, latency ${j.latency_ms} ms`);
+  if (j.version) parts.push(`snapclient ${j.version}`);
+  if (j.muted) parts.push("muted in Music Assistant, so no audio is sent");
+  if (j.name_note) parts.push(j.name_note);
+  $("scStatus").textContent = parts.join(" · ");
+}
+setInterval(() => {
+  if (document.body.dataset.tab === "settings" && !$("scBlock").hidden && !$("scBlock").closest(".setGroup").hidden)
+    refreshSnapcast().catch(() => {});
+}, 3000);
 async function refreshSendspin() {
   const j = await api("/api/sendspin");
   $("ssStatusLine").textContent = j.status + (j.receiving ? " · receiving visualizer data" : "")

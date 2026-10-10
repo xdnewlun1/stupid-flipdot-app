@@ -1,8 +1,9 @@
 """Music visualizer.
 
 Signal source, best first:
-  * Sendspin (Music Assistant streams loudness/spectrum/beats for what's playing), if the
-    optional link is connected — the dots follow the actual music;
+  * live audio from Music Assistant over the link picked in Settings → Music: Sendspin (loudness/
+    spectrum/beats for what's playing) or Snapcast (snapcast_link.py analyses the audio itself), if
+    connected and the music reaches it — the dots follow the actual music;
   * otherwise a generated beat at a set BPM (or a tempo picked per song), started and stopped
     by Music Assistant's play/pause and changed on every new song. Light enough for a Pi.
 """
@@ -60,15 +61,15 @@ class Visualizer(App):
     id = "visualizer"
     title = "Music visualizer"
     category = "Widgets"
-    description = ("Reacts to the music: real loudness/spectrum/beats from Music Assistant over Sendspin "
-                   "when connected (Settings), otherwise a generated beat that follows play/pause and song changes.")
+    description = ("Reacts to the music: real loudness/spectrum/beats from Music Assistant over Sendspin or "
+                   "Snapcast when connected (Settings → Music), otherwise a generated beat that follows play/pause and song changes.")
     params = [
         P("style", "select", "rain", options=[
             ["rain", "Rain (heavier with the music, bursts on beats)"], ["bars", "Spectrum bars"],
             ["rings", "Rings on the beat"], ["wave", "Waveform"], ["warp", "Warp speed starfield"],
             ["sparkle", "Sparkle"]]),
         P("source", "select", "auto", options=[
-            ["auto", "Sendspin if connected, else generated beat"], ["beat", "Always the generated beat"]]),
+            ["auto", "Live audio if connected (Settings → Music), else generated beat"], ["beat", "Always the generated beat"]]),
         P("bpm", "number", 0, "Generated beat tempo (0 = pick one per song)", min=0, max=220),
         P("song_change", "select", "flash", "When the song changes", options=[
             ["flash", "Flash (invert a few times)"], ["invert", "Invert until the next song"],
@@ -122,17 +123,31 @@ class Visualizer(App):
         return {"loudness": min(1.0, body * 0.6 + kick * 0.5), "spectrum": spectrum,
                 "beat_age": since, "downbeat": int(beat_no) % 4 == 0, "peak": kick if int(beat_no) % 4 == 0 else 0}
 
+    def _link(self):
+        """(name, link) for the live audio link chosen in Settings → Music; link is None when off."""
+        source = self.ctx.store.settings.get("visualizer", {}).get("source")
+        if source == "snapcast":
+            import snapcast_link
+            return source, snapcast_link.get_link()
+        if source == "sendspin":
+            import sendspin_link
+            return source, sendspin_link.get_link()
+        return source, None
+
     def _signal(self, now):
-        from sendspin_link import get_link
-        link = get_link()
-        if self.p["source"] != "beat" and link is not None and link.connected():
+        name, link = self._link() if self.p["source"] != "beat" else (None, None)
+        if link is not None and link.connected():
             s = link.signal()
             md = s.get("metadata") or {}
-            self._song((md.get("title"), md.get("artist")) if md.get("title") else None, now)
+            if name == "snapcast":  # Snapcast carries only audio: song changes come from Music Assistant's API
+                self.ma.poll()
+                self._song(self.ma.track, now)
+            else:
+                self._song((md.get("title"), md.get("artist")) if md.get("title") else None, now)
             if s["live"]:
-                self.source_name = "sendspin"
+                self.source_name = name
                 return s
-            playing = s["playing"]
+            playing = s["playing"] if s["playing"] is not None else self.ma.playing
         else:
             self.ma.poll()
             self._song(self.ma.track, now)
@@ -266,5 +281,6 @@ class Visualizer(App):
                 c.set(x, self.rng.randrange(c.h))
 
     def describe(self):
-        src = "live from Music Assistant" if self.source_name == "sendspin" else "generated beat"
+        src = {"sendspin": "live from Music Assistant (Sendspin)",
+               "snapcast": "live from Music Assistant (Snapcast)"}.get(self.source_name, "generated beat")
         return f"Music visualizer ({self.p['style']}, {src})"

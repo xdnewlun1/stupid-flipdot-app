@@ -2,7 +2,12 @@
 
 Frames are picked from the clock (frame = position x fps), so a slow tick skips frames instead of
 drifting. The display options (dither, cutoff, contrast, gamma, negative) are applied as it plays,
-so they can change while it's on the board.
+so they can change while it's on the board. A board-size ("native") video skips all of that: each pixel is
+one dot, lit from 128 up (Negative still applies if asked for).
+
+Whether the title scrolls by: this app's "show_title" option if it says yes or no, else the video's own
+choice (Videos page, player panel), else the "Show the title when a video starts" setting (off for
+board-size videos, so it doesn't draw over pixel art).
 """
 
 import time
@@ -22,6 +27,21 @@ def _auto(v):
     return v in (None, "", "auto")
 
 
+def title_wanted(param, entry, settings):
+    """Should the title scroll by? `param` is the app option (older saved items hold True/False: True was the
+    old default, so it follows the setting; False stays off)."""
+    if param is False or param == "off":
+        return False
+    if param == "on":
+        return True
+    own = entry.get("show_title")
+    if own in ("on", "off"):
+        return own == "on"
+    if entry.get("native"):
+        return False
+    return bool(settings.get("show_title", True))
+
+
 @register
 class Video(App):
     id = "video"
@@ -35,9 +55,10 @@ class Video(App):
         P("end", "number", 0, "End at (seconds, 0 = the end)", min=0, step=1),
         P("loop", "checkbox", False, "Loop"),
         P("speed", "number", 1.0, "Speed", min=0.5, max=2, step=0.25),
-        P("show_title", "checkbox", True, "Show title when it starts"),
+        P("show_title", "select", "auto", "Title when it starts", options=[
+            ["auto", "As set on the Videos page"], ["on", "Show it"], ["off", "Don't show it"]]),
         P("title_position", "select", "top", "Title position", options=[["top", "Top"], ["bottom", "Bottom"]],
-          show_if={"show_title": True}),
+          show_if={"show_title": {"not": "off"}}),
         P("dither", "select", "auto", "Style", options=[
             ["auto", "As set for this video"], ["ordered", "Ordered dither (fewer flips)"],
             ["diffusion", "Diffusion dither (more detail, more flips)"], ["threshold", "Threshold (crisp)"]]),
@@ -82,6 +103,7 @@ class Video(App):
         self.vid, self.entry = vid, v
         self.reader = lib.library.reader(vid)
         self.fps = float(v["fps"])
+        self.native = bool(v.get("native"))
         self.duration = float(v["duration"])
         self.rev = v.get("rev")
         self._checked = time.time()
@@ -136,6 +158,9 @@ class Video(App):
                 return end, True
         return pos, False
 
+    def title_on(self):
+        return title_wanted(self.p.get("show_title"), self.entry, lib.library.settings())
+
     def display(self):
         p = self.p
         explicit = {k: p[k] for k in ("dither", "threshold", "contrast", "gamma") if not _auto(p.get(k))}
@@ -174,21 +199,20 @@ class Video(App):
             return
         if self.anchor_t is None:
             self.anchor_t = now
-            if self.p["show_title"] and self.title_start is None:
+            if self.title_start is None and self.title_on():
                 self.title_start = now
         if self.pending_seek is not None:
             self.anchor_pos, self.anchor_t, self.pending_seek = self.pending_seek, now, None
-        if self.title_start is None and self.p["show_title"]:
+        if self.title_start is None and self.title_on():
             self.title_start = now  # after Next/Previous
         pos, done = self._position(now)
         self.pos = pos
-        i = min(self.reader.frames - 1, int(pos * self.fps))
-        gray = self.reader.frame(i)
+        gray = self.reader.frame(self.reader.index(pos))
         w, h = self.reader.w, self.reader.h
         if (c.w, c.h) != (w, h):
-            gray = lib.scale_gray(gray, w, h, c.w, c.h)
+            gray = lib.scale_gray(gray, w, h, c.w, c.h, nearest=self.native)
             w, h = c.w, c.h
-        c.px[:] = lib.to_dots(gray, w, h, self.display())
+        c.px[:] = lib.dots_for(self.entry, gray, w, h, self.display())
         self._draw_title(c, now)
         iv = 1 / (self.fps * self.speed)
         if self.p["quiet"] == "slow" and self._quiet_now(wall):
@@ -205,7 +229,7 @@ class Video(App):
         if not self.title_start:
             return
         text = (self.entry.get("title") or "").strip()
-        if not text or not self.p["show_title"]:
+        if not text or not self.title_on():
             self.title_start = False
             return
         th = NORMAL.height

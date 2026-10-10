@@ -21,16 +21,16 @@ The sidebar (a tab bar at the bottom on phones) has **Now playing**, **Create** 
 | **Everywhere** | **Show on board** always puts something on the board (**Show for N s** shows it briefly, then goes back; **Add as layer** puts it on top of what's running; **Add to playlist**). Every page except Now playing and Draw has a **Now showing** strip at the top: a small live preview (click it for a bigger one), what's showing and why ("Digital clock · You started it · the schedule is paused"), **Resume schedule** whenever the schedule is paused, Next and Stop, and a warning with a Settings button when the app on the board needs setup or can't load its data. Stop, Previous, Pause and Next say what they'll do; Next and Previous step through a slideshow's pictures, Pause freezes a slideshow or animation (or holds a playlist item). Playlists, schedule, automations, layer sets, slideshow options and settings save themselves, with "Saved" next to what you changed; removals can be undone from the toast; naming and deleting use one dialog. Errors stay until dismissed, next to the button that failed where possible, with a button to the setting that fixes them. |
 | **Now playing** (home) | the board large, what's on and why, Previous / Pause / Next / Stop / Resume schedule, a message box (**Show on board** or **Show for N s**), Clock, Weather and All black buttons, and the game controller link while a game runs. On a fresh install a **Getting started** list (set a location, show something, open the phone controller) sits here until you hide it |
 | **Draw** | the board stays in view above the tools (pinned at the top on a phone); **zoom** in with the buttons under it or a two-finger pinch, and pan with the Move tool or by dragging while not drawing; the preview is view-only until you tick **Draw on the board** (that stops what's running) or pick a drawing layer; pencil, line, rectangle, circle (outline/filled), flood fill, text stamp, select + copy/cut/paste/flip, undo/redo (Ctrl+Z / Ctrl+Y), save to Pictures, **animation mode** (frame strip: add / duplicate / delete / reorder frames, per-frame duration, onion skin, play on the board, save to Pictures or open one from there; tools, undo and copy/paste work on the current frame), **Draw me…** (Claude draws a picture or a short animation from a description; needs an Anthropic API key in Settings → AI drawing), export PNG, **export GIF** (timelapse of the last 1–30 minutes, sped up; recorded in memory) |
-| **Import** (was Image & video) | images and animated GIFs (stretch / cut / fit, threshold or dither), video files (stream live or convert a clip; while a stream runs every status view says "Live stream: name", from this browser or another one, it stops when the tab closes or after 4 s without frames, and Stop ends it), webcam (works on `http://localhost` or https only); show it, add it as a layer or save it to Pictures; on a phone the result and its buttons come right after the file picker |
+| **Import** (was Image & video) | the one place to drop, choose or paste files, and each goes where it belongs, then that page opens with it highlighted: a **photo or GIF** is converted with the options on the page (stretch / cut / fit, threshold or dither, cutoff, negative) and saved to **Pictures** (change the options afterwards, or press **Change conversion** on its card, and the saved picture is updated); a **video** uploads into **Videos** (with progress) and opens selected while it converts; **several images or a .zip** ask whether to make a new **slideshow** (it opens on Slideshows as it uploads) or save each to Pictures. **Stream without saving**: a video file or the webcam (webcam on `http://localhost` or https only) streamed live (while a stream runs every status view says "Live stream: name", from this browser or another one, it stops when the tab closes or after 4 s without frames, and Stop ends it), or a short clip converted and saved to Pictures |
 | **Pictures** (was Scenes) | one library for still pictures, animations and drawing layers (filter by kind), each with **Show on board**, **Add as layer**, **Edit** (opens it in Draw), Rename, PNG/JSON download and Delete; drawing layers on the board are marked |
 | **Apps** | a search box and category chips (Everyday, Widgets, Generative, Utilities, Used in playlists, Games); everyday apps come first and games last, grouped as on the phone controller; "Used in playlists" holds the apps that show something you made (a picture, drawing layer, layer set or slideshow); the **Show on board** button sits under the app's name, above its options; options of the app you started change it on the board as you edit them (and the form opens with the values that are on the board); fields that don't apply hide (e.g. pixel scale vs size in dots, scroll speed only for the ticker); clocks (digital, analog, countdown), text (static / ticker / typewriter), weather, **calendar** (iCal links: next events with today/tomorrow labels and a countdown; all-day events, time zones, simple repeats), crypto, stocks, sports scores, any JSON URL, now playing from Music Assistant, music visualizer, Game of Life, matrix rain, plasma, bouncing balls, starfield, fireworks, ripples, metaballs, tunnel, spiral, maze, Lissajous, fire, **random effects** (cycles through them all), Snake / Tetris / Pong / Breakout / Space Invaders / Tron light cycles (vs a CPU or a second player) / Flappy / **Platformer** (run, jump, stomp walkers, reach the flag) / Blackjack (dealt from deckofcardsapi.com), **Doom** (the real game; see below), **NES** (your own ROMs; see below), **arcade**: Asteroids, Galaxian, Missile Command, Centipede, Lunar Lander; **maze & action**: Pac-Man, Frogger, Qix, Bomberman (up to 4 players), Tank Combat; **runners & racing**: Dino Run, Road Racer (pseudo-3D road), Cave Copter, Stacker, Sky Jump, Pitfall Run; **two players** (or vs the computer): Connect Four, Tic-tac-toe, Artillery, Checkers, Battleship, Quick Draw, Air Hockey; **puzzles**: 2048, Minesweeper, Sokoban, Lights Out, Simon, Columns, Mastermind (every game plays a demo of itself when idle and keeps a best score), disc exerciser, **Guest wall** (a QR code to `/guest`, where guests leave a name and message from their phone, alternating with the approved messages as scrolling text; moderate on the Guest wall page, or approve automatically), **Wi-Fi QR code** (guests scan it to join; very long names/passwords switch to a full-height inverted code) |
 | **Layers** | stack apps with blend modes (On top, Add (light up), Halo, Invert where overlapping, Mask, Cut out), drawing layers you can keep editing live, position/size, scrolling, density, speed, Negative (swap a layer's lit and dark dots); saved **layer sets** (the API calls them compositions; usable in playlists) save themselves as you edit, and when the set you're editing is on the board, changes show there right away; picking a set only opens it, **Show on board** shows it; the editor follows the stack that's on the board |
-| **Slideshows** | a playlist of your own images and GIFs: drop files or a .zip, which is unpacked automatically, any time; the pictures come first and **Display options** explain sizing, dithering and the brightness cutoff; while it plays, Previous / Pause / Next work and the picture on the board is highlighted; option changes apply to the playing slideshow right away; images show for 10 s by default, GIFs play through, then it moves on and loops; optional **random effects** give some items an effect such as glitch, wave or Game of Life, for a short burst or the whole item, with a chance, effect list and strength per slideshow |
+| **Slideshows** | a playlist of your own images and GIFs: drop files or a .zip, which is unpacked automatically, any time; the pictures come first and **Display options** explain sizing, dithering and the brightness cutoff; while it plays, Previous / Pause / Next work and the picture on the board is highlighted; option changes apply to the playing slideshow right away; images show for 10 s by default, GIFs play through, then it moves on and loops; **GIF speed** (0.5×–4×) for the whole slideshow or per GIF, where fast GIFs at high speed skip frames the board can't flip in time; optional **random effects** give some items an effect such as glitch, wave or Game of Life, for a short burst or the whole item, with a chance, effect list and strength per slideshow |
 | **Playlists** | playlists of apps with durations and transitions (dissolve, wipe, slide); items that need setup (Weather without a location, Now playing without Music Assistant) are flagged and skipped; removing an item, rule, layer or slideshow image can be undone from the toast; renaming a playlist or composition updates the schedule, playlists and automations that use it, and deleting something lists what uses it first, then removes those items (automations are turned off); the **transitions** gallery (preview each one on the board) |
 | **Schedule** | time-of-day/day-of-week rules choosing a playlist or "off", the default playlist, and **quiet hours** (cap on dots flipped per second + slower transitions during a time window) |
 | **Automations** | when music starts/stops (Music Assistant), the weather turns rainy/snowy/clear, an event arrives, or the board has been idle N minutes → run an app or composition, play a playlist, show a notification, resume the schedule or go all black |
 | **Guest wall** | messages left at `/guest`: approve, hide or delete them, or approve automatically; the count of waiting messages shows in the navigation |
-| **Settings** | **Location & display** (theme, weather location and units, transition frame rate), **Fonts** (upload your own), **AI drawing**, **Music** (Music Assistant, Sendspin), **Smart home & API** (MQTT with optional Home Assistant discovery, webhook examples), **Controllers** (gamepads, button mapping), **Board hardware** (step through panels to check the mapping, edit column/row/ip/port/address/rotate, save to `config.yaml` without a restart), **Maintenance** (flips per disc as a heatmap, exercise rarely flipped discs now or daily), **Backup** (backup / restore of `storage.db`) |
+| **Settings** | **Location & display** (theme, weather location and units, transition frame rate), **Fonts** (upload your own), **AI drawing**, **Music** (Music Assistant, live audio for the visualizer over Sendspin or Snapcast), **Smart home & API** (MQTT with optional Home Assistant discovery, webhook examples), **Controllers** (gamepads, button mapping), **Board hardware** (step through panels to check the mapping, edit column/row/ip/port/address/rotate, save to `config.yaml` without a restart), **Maintenance** (flips per disc as a heatmap, exercise rarely flipped discs now or daily), **Backup** (backup / restore of `storage.db`) |
 
 `/play` is a phone game controller (pick any game from the grouped list; held sideways it puts the D-pad left and A/B right of the board; it reminds gamepad players that holding Start opens the game menu; D-pad + A/B with per-game labels, Start/X/Y/Z, player 1 or 2; Doom's extra buttons while Doom runs; Select / Start / Save / Load while the NES runs). USB gamepads work too; see below.
 
@@ -136,7 +136,17 @@ Longer clips play from the **Videos** page (Library). It needs ffmpeg on the ser
   handles on the timeline) mark a range to play or loop. Speed 0.5-2×. Display options (ordered dither,
   diffusion dither, threshold, cutoff, contrast, gamma, negative) are saved per video and apply while it
   plays. The title (from the file's metadata, else the video's name; editable, or clear it) scrolls across
-  once when a video starts, on a black band; set it off or at the bottom with the app's options.
+  once when a video starts, on a black band. **Show the title when a video starts** (top of the Videos page,
+  on by default) turns it off for every video; each video's player panel can say yes or no for that video,
+  and the Video app's "Title when it starts" option (playlists, layers) overrides both. Older saved items
+  with the old on/off box follow the setting when on and stay off when off.
+- **Board-size videos** (exactly 84×42) play exactly as uploaded: no scaling, cropping or filtering, every
+  frame kept at its own timing (a 60 fps file skips frames by timestamp as it plays, never blends them;
+  uneven timing such as a GIF's per-frame delays is kept), each pixel one dot, lit from 128 up. Display
+  options don't apply (Negative stays as an opt-in), the title is off unless turned on for that video,
+  and they're marked "84×42 · dot for dot". Lossy codecs (H.264 MP4, ordinary VP9) can shift pixels near
+  mid-grey; for exact pixel art upload lossless VP9 WebM (`ffmpeg -i frames%03d.png -c:v libvpx-vp9 -lossless 1 art.webm`)
+  or put a GIF in Pictures. Other sizes, even 168×84, are scaled like any video.
 - The **Video** app works in playlists (a video that isn't looping ends its item early) and as a layer.
   Pause, Previous and Next in the Now showing strip work for it, and the strip shows the position live.
 - **Flips**: video flips a lot of discs, and the discs are loud. Ordered dither flips far fewer than
@@ -146,7 +156,7 @@ Longer clips play from the **Videos** page (Library). It needs ffmpeg on the ser
 ```
 GET  /api/videos                        library, ffmpeg present?, options
 POST /api/videos/upload?name=F&mode=crop&keep=0   (raw file bytes)
-POST /api/videos/<id>                   {"name"|"title"|"display"|"range"}
+POST /api/videos/<id>                   {"name"|"title"|"show_title": "auto"|"on"|"off"|"display"|"range"}
 POST /api/videos/<id>/play              {"t":120,"speed":1.5}
 POST /api/videos/control                {"seek":s} | {"nudge":-10} | {"speed","loop","start","end"}
 GET  /api/videos/<id>/frame?t=12.5      that frame as dots (scrub preview)
@@ -172,7 +182,7 @@ venv/bin/pip install -r requirements-sendspin.txt  # needs Python 3.12+; pinned 
 venv/bin/python server.py                        # run the server with the venv's Python
 ```
 
-Then Settings → *Music Assistant visualizer (Sendspin)* → Enabled. The board advertises itself on
+Then Settings → Music → *Audio source* → Sendspin. The board advertises itself on
 port 8928; approve or pair it in Music Assistant. When it works the status shows *connected* and
 *receiving visualizer data ✓*, and the visualizer says *live from Music Assistant*.
 
@@ -205,6 +215,42 @@ python3 -m venv .venv-test && .venv-test/bin/pip install "aiosendspin[server]==9
 
 When Music Assistant moves to a new aiosendspin, update `requirements-sendspin.txt` and
 `sendspin_link.MA_AIOSENDSPIN`, then run this test with the new version.
+
+## Music visualizer over Snapcast (optional)
+
+The alternative to Sendspin: the board joins Music Assistant (2.7 or later) as a Snapcast player and
+analyses the audio it receives. On the Pi:
+
+```sh
+./scripts/setup-snapcast.sh          # --host ADDRESS if the Snapcast server isn't on the Music Assistant host
+```
+
+It installs `snapclient` with apt, turns off the snapclient system service that comes with the package
+(that one would play the music through the Pi's audio output) and sets Settings → Music → *Audio source*
+to Snapcast. In Music Assistant, add the provider (**Settings → Providers → Add → Snapcast**, built-in
+server), then play to the **Flipdot board** player or group it with the speaker that's playing.
+
+How it works (`snapcast_link.py`): the board's server runs `snapclient --player file --mixer none`, which
+writes the decoded audio to a pipe at the moment it's due to play, in sync with the other Snapcast
+speakers. Nothing goes to a sound card. The audio is analysed the same way as Sendspin's 2.7 mode
+(loudness, 16 spectrum bands and beats, pure Python, 20 frames a second). snapclient handles the
+codecs (flac by default; pcm, ogg and opus work too), clock sync and reconnecting; the link restarts it
+if it exits. Server *auto* means the host in the Music Assistant URL; ports 1704 (audio) and 1705
+(control, used once to name the player). Settings shows whether it's connected, receiving audio,
+the codec and the server buffer.
+
+Compared with Sendspin:
+
+- No Python 3.12 venv or version matching: Debian bookworm's snapclient 0.26 works, as do newer ones.
+- Audio only. Song changes come from the Music Assistant API (the Server URL above), so set that too.
+- Like Sendspin's 2.7 mode, audio flows only while the board plays: play to it or group it. Snapcast
+  sends nothing to muted players. Music Assistant's volume for the board doesn't affect the visualizer.
+- Light: in the test (flac) snapclient used 0.4% of a desktop core and the board's whole server 5% while
+  showing the visualizer. Expect several times that on a Pi.
+
+`tests/snapcast_e2e.py` runs the link against a local snapserver (127.0.0.1, flac and pcm, a 120 BPM
+test signal, restart and reconnect). It needs `snapserver` and `snapclient` (or `SNAPSERVER` /
+`SNAPCLIENT` pointing at them) and skips otherwise.
 
 ## Doom (optional)
 

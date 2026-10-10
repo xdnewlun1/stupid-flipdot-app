@@ -3,6 +3,7 @@
 On disk, under <data>/videos/<id>/:
     r<N>/seg00000.fdv …   the frames: 8-bit grey, already sized to the board, at a fixed fps
     r<N>/thumbs.bin       a few evenly spaced frames (zlib) for the library grid and the scrub strip
+    r<N>/times.json       only for a board-size video with uneven frame timing: each frame's start, in seconds
     original/part000 …    the uploaded file in 8 MB parts, only when "keep the original" was on
 The library itself (names, status, durations) is videos.json. Everything is a plain file in the data
 folder, so storage.py mirrors it into storage.db like the rest; the parts are small enough that the
@@ -12,10 +13,14 @@ A segment file (.fdv) holds up to SEG_CHUNKS chunks of CHUNK frames each:
     b"FDV1", u16 width, u16 height, u16 frames per chunk, u16 chunk count, u32 first frame,
     u32 offsets[chunk count + 1] (from the start of the file), then the chunks.
 A chunk is zlib(first frame + each following frame as a byte-wise difference from the one before).
+Board-size uploads (exactly the board's width x height) are "native": stored pixel for pixel at their own
+frame rate and shown dot for dot (lit from 128 up), with no scaling, filtering or display options.
+
 Frame i is in segment i // (CHUNK * SEG_CHUNKS), chunk (i // CHUNK) % SEG_CHUNKS: seeking is one read
 and one ~50 KB decompress, whatever the length of the video.
 """
 
+import bisect
 import json
 import logging
 import os
@@ -38,8 +43,10 @@ SEG_CHUNKS = 60  # chunks per segment file (a minute at 15 fps; a few hundred KB
 PART = 8 << 20  # kept originals are stored in parts of this size
 THUMBS = 24  # frames kept for the scrub strip
 # title_source: where the title that scrolls by at the start comes from: "metadata" only, or the file's
-# metadata falling back to its name in the library ("name")
-DEFAULTS = {"max_upload_mb": 1024, "keep_original": False, "fps": 15, "title_source": "name"}
+# metadata falling back to its name in the library ("name"). show_title: whether that title scrolls by when a
+# video starts (the default for every video; a video, or the Video app's options, can say otherwise)
+DEFAULTS = {"max_upload_mb": 1024, "keep_original": False, "fps": 15, "title_source": "name", "show_title": True}
+TITLE_MODES = ("auto", "on", "off")  # per video: follow the setting above, always, never
 DISPLAY_DEFAULTS = {"dither": "ordered", "threshold": 128, "contrast": 1.0, "gamma": 1.0, "invert": False}
 MODES = ("crop", "fit", "stretch")
 NO_FFMPEG = "Videos need ffmpeg, which isn't installed. On the Pi, run: sudo apt install ffmpeg"
@@ -122,8 +129,9 @@ class Writer:
 class Reader:
     """Random access to the frames of one converted video. Keeps the last decoded chunk."""
 
-    def __init__(self, folder, frames, w, h):
+    def __init__(self, folder, frames, w, h, fps=15.0, times=None):
         self.dir, self.frames, self.w, self.h = Path(folder), frames, w, h
+        self.fps, self.times = float(fps), times  # times: each frame's start (uneven timing), else frame = t * fps
         self.size = w * h
         self._tables = {}
         self._chunk = (None, None)
@@ -138,6 +146,17 @@ class Reader:
                     raise ValueError(f"{self.dir.name}: not a video segment this version can read")
                 t = self._tables[seg] = struct.unpack(f"<{k + 1}I", f.read(4 * (k + 1)))
         return t
+
+    def index(self, t):
+        """The frame showing at `t` seconds (later frames are dropped, never blended)."""
+        if self.times:
+            i = bisect.bisect_right(self.times, t) - 1
+        else:
+            i = int(t * self.fps + 1e-6)
+        return max(0, min(self.frames - 1, i))
+
+    def start(self, i):
+        return self.times[i] if self.times else i / self.fps
 
     def frame(self, i):
         """Grey bytes (w*h) of frame i (clamped to the video)."""
@@ -231,6 +250,21 @@ def to_dots(gray, w, h, d):
 _BIT = bytes([0] * 128 + [1] * 128)
 
 
+_INV = bytes([1] * 128 + [0] * 128)
+
+
+def native_dots(gray, invert=False):
+    """Board-size video: each pixel is one dot, lit from 128 up. Nothing else changes it."""
+    return gray.translate(_INV if invert else _BIT)
+
+
+def dots_for(v, gray, w, h, d):
+    """Grey bytes of video entry `v` -> dots: dot for dot when it's native, otherwise with display options `d`."""
+    if v.get("native"):
+        return native_dots(gray, d["invert"])
+    return to_dots(gray, w, h, d)
+
+
 def dots_rows(dots, w, h):
     s = dots.translate(_ROWCH).decode()
     return [s[y * w:(y + 1) * w] for y in range(h)]
@@ -239,10 +273,10 @@ def dots_rows(dots, w, h):
 _ROWCH = bytes([48, 49] + [49] * 254)  # 0 -> "0", anything else -> "1"
 
 
-def scale_gray(gray, w, h, cw, ch):
+def scale_gray(gray, w, h, cw, ch, nearest=False):
     """Resize grey frames for a layer of a different size."""
     from PIL import Image
-    return Image.frombytes("L", (w, h), gray).resize((cw, ch), Image.BILINEAR).tobytes()
+    return Image.frombytes("L", (w, h), gray).resize((cw, ch), Image.NEAREST if nearest else Image.BILINEAR).tobytes()
 
 
 # ---- the library ------------------------------------------------------------------------------
@@ -318,7 +352,13 @@ class Library:
         key = (vid, v.get("rev", 1))
         r = self._readers.get(key)
         if r is None:
-            r = self._readers[key] = Reader(self.frames_dir(vid), v["frames"], v["w"], v["h"])
+            times = None
+            if v.get("timed"):
+                try:
+                    times = json.loads((self.frames_dir(vid) / "times.json").read_text())
+                except (OSError, ValueError):
+                    times = None
+            r = self._readers[key] = Reader(self.frames_dir(vid), v["frames"], v["w"], v["h"], v["fps"], times)
             if len(self._readers) > 8:
                 self._readers.pop(next(iter(self._readers)))
         return r
@@ -327,7 +367,9 @@ class Library:
         v = self.videos[vid]
         out = {"id": vid, **{k: v.get(k) for k in ("name", "status", "error", "fps", "frames", "duration", "mode",
                                                     "bytes", "source_name", "source_bytes", "created", "display",
-                                                    "range", "title", "meta_title")}}
+                                                    "range", "title", "meta_title", "native", "source_w",
+                                                    "source_h")}}
+        out["show_title"] = v.get("show_title") if v.get("show_title") in TITLE_MODES else "auto"
         out["has_original"] = bool(v.get("original"))
         if vid in self.progress:
             out["progress"] = round(self.progress[vid], 3)
@@ -352,7 +394,7 @@ class Library:
             if not thumbs:
                 return None
             g = thumbs[min(len(thumbs) - 1, len(thumbs) // 5)]
-            self._posters[key] = dots_rows(to_dots(g, v["w"], v["h"], display_opts(v.get("display"))), v["w"], v["h"])
+            self._posters[key] = dots_rows(dots_for(v, g, v["w"], v["h"], display_opts(v.get("display"))), v["w"], v["h"])
         return self._posters[key]
 
     def strip(self, vid, display):
@@ -360,16 +402,17 @@ class Library:
         v = self.get(vid)
         d = display_opts({**(v.get("display") or {}), **(display or {})})
         thumbs = read_thumbs(self.frames_dir(vid), v["w"] * v["h"])
-        return [(round(i / v["fps"], 2), dots_rows(to_dots(g, v["w"], v["h"], d), v["w"], v["h"]))
+        r = self.reader(vid)
+        return [(round(r.start(i), 2), dots_rows(dots_for(v, g, v["w"], v["h"], d), v["w"], v["h"]))
                 for i, g in zip(v.get("thumb_frames") or [], thumbs)]
 
     def frame_rows(self, vid, t, display):
         """One frame as dots, as it would look on the board (the scrub preview)."""
         v = self.get(vid)
         r = self.reader(vid)
-        i = max(0, min(r.frames - 1, int(float(t) * v["fps"])))
+        i = r.index(float(t))
         d = display_opts({**(v.get("display") or {}), **(display or {})})
-        return round(i / v["fps"], 3), dots_rows(to_dots(r.frame(i), r.w, r.h, d), r.w, r.h)
+        return round(r.start(i), 3), dots_rows(dots_for(v, r.frame(i), r.w, r.h, d), r.w, r.h)
 
     def ready_ids(self):
         return [vid for vid, v in self.videos.items() if v.get("status") == "ready" and not v.get("deleted")]
@@ -430,6 +473,8 @@ class Library:
 
     def reconvert(self, vid, mode=None, fps=None):
         v = self.get(vid)
+        if v.get("native"):
+            raise ValueError("This video is board size and shown dot for dot, so there's nothing to convert differently.")
         if not v.get("original"):
             raise ValueError("The original file wasn't kept, so this video can't be converted again. Upload it again.")
         if v.get("status") in ("queued", "converting"):
@@ -465,15 +510,18 @@ class Library:
                 self.current = self.proc = None
 
     def _probe(self, src):
-        """(duration in seconds or None, title from the file's metadata or None)."""
+        """{"duration": seconds or None, "title": from the file's metadata or None, "w", "h", "fps": the first
+        video stream's size and frame rate (or None)}."""
+        none = {"duration": None, "title": None, "w": None, "h": None, "fps": None}
         if not shutil.which("ffprobe"):
-            return None, None
+            return none
         try:
-            out = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration:format_tags:stream_tags",
+            out = subprocess.run(["ffprobe", "-v", "error", "-show_entries",
+                                  "format=duration:format_tags:stream_tags:stream=codec_type,width,height,avg_frame_rate,r_frame_rate",
                                   "-of", "json", src], capture_output=True, text=True, timeout=60).stdout
             info = json.loads(out or "{}")
         except (ValueError, subprocess.SubprocessError, OSError):
-            return None, None
+            return none
         try:
             duration = float(info.get("format", {}).get("duration"))
         except (TypeError, ValueError):
@@ -483,7 +531,28 @@ class Library:
             title = next((str(v).strip() for k, v in tags.items() if k.lower() == "title" and str(v).strip()), None)
             if title:
                 break
-        return duration, title
+        vs = next((s for s in info.get("streams") or [] if s.get("codec_type") == "video" and s.get("width")), {})
+
+        def rate(r):
+            try:
+                a, _, b = str(r).partition("/")
+                f = float(a) / float(b or 1)
+                return f if 0 < f < 1000 else None
+            except (ValueError, ZeroDivisionError):
+                return None
+        return {"duration": duration, "title": title, "w": vs.get("width"), "h": vs.get("height"),
+                "fps": rate(vs.get("avg_frame_rate")) or rate(vs.get("r_frame_rate"))}
+
+    @staticmethod
+    def _frame_times(src):
+        """Each frame's timestamp (seconds), for a board-size video; None if ffprobe can't say."""
+        try:
+            out = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries",
+                                  "frame=best_effort_timestamp_time", "-of", "csv=p=0", src],
+                                 capture_output=True, text=True, timeout=600).stdout
+            return [float(x.strip().rstrip(",")) for x in out.split() if x.strip().rstrip(",") not in ("", "N/A")]
+        except (ValueError, subprocess.SubprocessError, OSError):
+            return None
 
     def _filter(self, mode, fps):
         w, h = self.w, self.h
@@ -491,6 +560,9 @@ class Library:
                 "fit": f"scale={w}:{h}:force_original_aspect_ratio=decrease:flags=area,pad={w}:{h}:(ow-iw)/2:(oh-ih)/2:color=black",
                 "crop": f"scale={w}:{h}:force_original_aspect_ratio=increase:flags=area,crop={w}:{h}"}[mode]
         return f"fps={fps},scale=iw*sar:ih,setsar=1,{size},format=gray"
+
+    # board-size video: every frame as it is (no fps filter, no resizing), full-range grey without dithering
+    NATIVE_FILTER = "scale=out_range=full:flags=neighbor+accurate_rnd+bitexact:sws_dither=none,format=gray"
 
     def _convert(self, vid):
         if not have_ffmpeg():
@@ -504,13 +576,17 @@ class Library:
             self.save()
         self.current = vid
         self.progress[vid] = 0.0
-        duration, meta_title = self._probe(src)
+        info = self._probe(src)
+        duration, meta_title = info["duration"], info["title"]
+        native = (info["w"], info["h"]) == (self.w, self.h)
         fps, rev = v["fps"], int(v.get("rev") or 0) + 1
+        if native:
+            fps = info["fps"] or fps  # its own frame rate: frames the board can't keep up with are skipped as it plays
         out_dir = self.folder(vid) / f"r{rev}"
         shutil.rmtree(out_dir, ignore_errors=True)
+        vf = ["-fps_mode", "passthrough", "-vf", self.NATIVE_FILTER] if native else ["-vf", self._filter(v["mode"], fps)]
         cmd = ["ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "error", "-nostats", "-progress", "pipe:2",
-               "-i", src, "-an", "-sn", "-dn", "-vf", self._filter(v["mode"], fps),
-               "-f", "rawvideo", "-pix_fmt", "gray", "pipe:1"]
+               "-i", src, "-an", "-sn", "-dn", *vf, "-f", "rawvideo", "-pix_fmt", "gray", "pipe:1"]
         self.proc = proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                             preexec_fn=lambda: os.nice(10))  # playback comes first
         errors = []
@@ -555,6 +631,22 @@ class Library:
         if len(thumbs) > THUMBS:  # no duration up front: thin out evenly
             thumbs = [thumbs[int(i * len(thumbs) / THUMBS)] for i in range(THUMBS)]
         write_thumbs(out_dir, [f for _, f in thumbs])
+        timed, length = False, round(total / fps, 3)
+        if native:
+            times = self._frame_times(src)
+            if times and len(times) == total:
+                t0 = times[0]
+                times = [round(t - t0, 4) for t in times]
+                step = times[-1] / (total - 1) if total > 1 else 1 / fps
+                even = total < 2 or all(abs(t - i * step) < 0.25 * step for i, t in enumerate(times))
+                if even and total > 1 and not (info["fps"] and abs(step * info["fps"] - 1) < 0.01):
+                    fps = 1 / step  # the stream's stated rate doesn't match its timestamps: go by the timestamps
+                elif not even:  # uneven timing (e.g. a GIF with its own delay per frame): keep every frame's start
+                    (out_dir / "times.json").write_text(json.dumps(times))
+                    timed = True
+                    length = round(times[-1] + (times[-1] - times[-2] if total > 1 else 1 / fps), 3)
+            if not timed:
+                length = round(total / fps, 3)
         # keep the original (in parts) if asked, then drop the upload
         tmp = self.incoming / f"{vid}.upload.tmp"
         if tmp.exists():
@@ -566,7 +658,8 @@ class Library:
             v["meta_title"] = meta_title
             if not v.get("title_set"):
                 v["title"] = meta_title or (clean_name(v["name"]) if self.settings()["title_source"] == "name" else "")
-            v.update(status="ready", error=None, rev=rev, frames=total, duration=round(total / fps, 3), w=w, h=h,
+            v.update(status="ready", error=None, rev=rev, frames=total, duration=length, w=w, h=h, fps=round(fps, 4),
+                     native=native, timed=timed, source_w=info["w"], source_h=info["h"],
                      bytes=writer.bytes, thumb_frames=[i for i, _ in thumbs],
                      original=bool(list((self.folder(vid) / "original").glob("part*"))))
             self.save()
@@ -592,9 +685,13 @@ class Library:
 
     # ---- rename / delete with undo ----
 
-    def update(self, vid, name=None, display=None, rng=None, title=None):
+    def update(self, vid, name=None, display=None, rng=None, title=None, show_title=None):
         v = self.get(vid)
+        if show_title is not None and show_title not in TITLE_MODES:
+            raise ValueError("show_title is auto, on or off")
         with self.lock:
+            if show_title is not None:
+                v["show_title"] = show_title
             if title is not None:  # "" clears it: nothing scrolls by
                 v["title"], v["title_set"] = str(title).strip()[:120], True
             if name is not None:

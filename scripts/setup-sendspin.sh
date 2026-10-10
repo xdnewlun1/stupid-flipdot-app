@@ -58,7 +58,7 @@ fi
 if $running_manually; then
   say "3/5  The server is running (not as a service) — enabling Sendspin through it"
   curl -s -m 5 -X POST "http://localhost:$PORT/api/settings" \
-    -d '{"sendspin": {"enabled": true, "unpaired": true, "server_url": "auto"}}' >/dev/null
+    -d '{"visualizer": {"source": "sendspin"}, "sendspin": {"enabled": true, "unpaired": true, "server_url": "auto"}}' >/dev/null
 else
   say "3/5  Enabling Sendspin in data/settings.json"
   venv/bin/python - <<'PY'
@@ -70,6 +70,7 @@ ss["enabled"] = True
 ss.setdefault("name", "Flipdot board")
 ss.setdefault("unpaired", True)          # Music Assistant approves it automatically
 ss.setdefault("server_url", "auto")      # find Music Assistant and connect to it
+d["visualizer"] = {**d.get("visualizer", {}), "source": "sendspin"}  # the visualizer's live audio source
 p.parent.mkdir(parents=True, exist_ok=True)
 p.write_text(json.dumps(d, indent=1))
 print("sendspin settings:", ss)

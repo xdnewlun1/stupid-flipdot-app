@@ -122,6 +122,44 @@ export function ask({ title, label = "Name", value = "", message = null, confirm
   });
 }
 export const confirmDialog = opts => ask({ ...opts, input: false });
+// choose({ title, message, choices: [[value, label, primary?]] }) resolves to the chosen value, or null on Cancel.
+export function choose({ title, message = null, choices }) {
+  dlg?.close();
+  const form = el("form", { method: "dialog" },
+    el("h2", { id: "dlgTitle" }, title),
+    message ? el("div", { class: "muted dlgMsg" }, message) : null,
+    el("div", { class: "row dlgButtons" },
+      el("button", { type: "button", onclick: () => d.close("") }, "Cancel"),
+      ...choices.map(([value, label, primary]) => el("button", { type: "submit", value, class: primary ? "primary" : "" }, label))));
+  const d = dlg = el("dialog", { class: "dlg", "aria-labelledby": "dlgTitle" }, form);
+  document.body.append(d);
+  return new Promise(resolve => {
+    d.addEventListener("close", () => {
+      d.remove();
+      if (dlg === d) dlg = null;
+      resolve(d.returnValue || null);
+    });
+    d.showModal();
+    form.querySelector("button.primary")?.focus();
+  });
+}
+
+// POST a file's bytes with upload progress: onprogress(loaded, total). Resolves to the JSON reply, throws its error.
+export function uploadFile(path, file, onprogress = null) {
+  return new Promise((resolve, reject) => {
+    const x = new XMLHttpRequest();
+    x.open("POST", path);
+    if (onprogress) x.upload.onprogress = e => onprogress(e.loaded, e.total || file.size);
+    x.onload = () => {
+      let j = {};
+      try { j = JSON.parse(x.responseText); } catch {}
+      if (x.status >= 400) reject(new Error(j.error || `upload failed (HTTP ${x.status})`));
+      else resolve(j);
+    };
+    x.onerror = () => reject(new Error("the upload was cut off. Check the connection and try again."));
+    x.send(file);
+  });
+}
 // Name validation shared by New / Rename / Save as: taken names are refused in the dialog itself.
 export const nameFree = (names, except = null) => v => (v !== except && names.includes(v) ? `"${v}" is already taken.` : null);
 

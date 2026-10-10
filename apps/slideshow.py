@@ -93,15 +93,24 @@ threading.Thread(target=_worker, daemon=True).start()
 
 # ---- the app --------------------------------------------------------------------
 
+def gif_speed(item, settings):
+    """Playback speed for a GIF: the item's own, else the slideshow's (0.25x-4x)."""
+    try:
+        v = float(item.get("speed") or settings.get("gif_speed") or 1)
+    except (TypeError, ValueError):
+        v = 1.0
+    return max(0.25, min(4.0, v))
+
+
 class Player:
     """Plays one item's frames from a start time; the frame is computed from the clock, so it never drifts."""
 
-    def __init__(self, item, frames, started):
+    def __init__(self, item, frames, started, speed=1.0):
         self.item, self.frames, self.started = item, frames, started
         self.cum = []
         t = 0.0
-        for _, d in frames:
-            t += d
+        for _, d in frames:  # GIF speed shortens/stretches every delay; frames faster than the board are skipped
+            t += d / speed
             self.cum.append(t)
         self.length = t if len(frames) > 1 else 0.0
 
@@ -243,7 +252,7 @@ class Slideshow(App):
                 self.jump_to = None
                 if not frames:
                     continue  # couldn't be converted; skip it
-                incoming = Player(nxt, frames, now)
+                incoming = Player(nxt, frames, now, gif_speed(nxt, settings))
                 cut, self.cut = self.cut, False
                 if self.cur is not None and tdur > 0 and not cut:
                     self.prev = self.cur

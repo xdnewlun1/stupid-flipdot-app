@@ -16,7 +16,7 @@ import { loadGuestWall } from "./guestwall.js";
 const PAGES = {
   now: ["now", "Now playing", "What the board shows right now and why. Stop it, skip ahead, or put something up quickly."],
   draw: ["create", "Draw", "Draw on the board, on a drawing layer that sits on top of what's running, or frame by frame as an animation."],
-  import: ["create", "Import", "Turn a picture, GIF, video or the webcam into dots, then show it, add it as a layer or keep it in Pictures."],
+  import: ["create", "Import", "Photos and GIFs are saved to Pictures, videos to Videos, and several images or a .zip can become a slideshow. Each opens where it lands."],
   pictures: ["library", "Pictures", "Everything you've drawn, imported or saved: still pictures, animations and drawing layers."],
   apps: ["library", "Apps", "Clocks, text, widgets, patterns and games. Pick one to set it up and show it."],
   layers: ["library", "Layers", "Stack apps and pictures so they play at the same time, like a clock over Game of Life."],

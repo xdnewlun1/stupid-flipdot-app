@@ -34,6 +34,7 @@ import panelsetup
 import refs
 import rules
 import sendspin_link
+import snapcast_link
 import storage as storage_mod
 import timelapse
 import video as video_mod
@@ -200,7 +201,11 @@ def save_settings(new):
         start_mqtt()
     else:
         ha_sync()
-    if merged.get("sendspin") != old.get("sendspin"):
+    source_changed = merged.get("visualizer") != old.get("visualizer")
+    if source_changed or (merged.get("snapcast") != old.get("snapcast")
+                          or merged.get("music_assistant", {}).get("url") != old.get("music_assistant", {}).get("url")):
+        start_snapcast()
+    if merged.get("sendspin") != old.get("sendspin") or source_changed:
         start_sendspin()
         link = sendspin_link.get_link()
         if link and merged["sendspin"].get("unpaired") != old.get("sendspin", {}).get("unpaired"):
@@ -358,9 +363,26 @@ def ws_message(msg):
         raise ValueError(f"unknown message type {msg.get('type')!r}")
 
 
+def audio_source():
+    """Where the music visualizer's live audio comes from: "sendspin", "snapcast" or "off"."""
+    return store.settings.get("visualizer", {}).get("source") or "off"
+
+
+def start_snapcast():
+    """(Re)start snapclient for the visualizer when Snapcast is the audio source, else stop it."""
+    if audio_source() != "snapcast":
+        snapcast_link.stop_link()
+        return
+    cfg = store.settings.get("snapcast", {})
+    host = snapcast_link.resolve_host(cfg.get("host", "auto"), store.settings.get("music_assistant", {}).get("url"))
+    snapcast_link.start_link(store.dir, host=host, port=int(cfg.get("port") or 1704),
+                             control_port=int(cfg.get("control_port") or 1705), name=cfg.get("name") or "Flipdot board")
+
+
 def start_sendspin():
     cfg = store.settings.get("sendspin", {})
-    if not cfg.get("enabled") or not sendspin_link.AVAILABLE:
+    # the Sendspin link can't be stopped while running; with another source the visualizer just ignores it
+    if audio_source() != "sendspin" or not sendspin_link.AVAILABLE:
         return
     def show_code(code):
         # Music Assistant is asking for the pairing code: put it on the board
@@ -626,7 +648,7 @@ def get_gallery(req, gid):
 
 @route("POST", "/api/galleries/(g[0-9]+)")
 def update_gallery(req, gid):
-    """Change name / settings / items (reorder, remove, per-item seconds or loops)."""
+    """Change name / settings / items (reorder, remove, per-item seconds, loops or GIF speed)."""
     g = store.gallery(gid)
     body = req.json()
     if body.get("name"):
@@ -642,9 +664,11 @@ def update_gallery(req, gid):
         for it in body["items"]:
             if it.get("file") in known:
                 item = dict(known.pop(it["file"]))
-                for k in ("seconds", "loops"):
+                for k in ("seconds", "loops", "speed"):
                     if it.get(k) in (None, ""):
                         item.pop(k, None)
+                    elif k == "speed":
+                        item[k] = max(0.25, min(4.0, float(it[k])))
                     else:
                         item[k] = float(it[k]) if k == "seconds" else int(it[k])
                 new_items.append(item)
@@ -782,10 +806,11 @@ def get_video(req, vid):
 
 @route("POST", "/api/videos/(v[0-9]+)")
 def update_video(req, vid):
-    """{"name", "title" ("" = none), "display": {dither, threshold, contrast, gamma, invert}, "range": {start, end, loop}}."""
+    """{"name", "title" ("" = none), "show_title": "auto"|"on"|"off", "display": {dither, threshold, contrast, gamma,
+    invert}, "range": {start, end, loop}}."""
     body = req.json()
     v = video_mod.library.update(vid, name=body.get("name"), title=body.get("title"), display=body.get("display"),
-                                 rng=body.get("range"))
+                                 rng=body.get("range"), show_title=body.get("show_title"))
     runner.wake.set()
     return v
 
@@ -1368,6 +1393,16 @@ def get_gamepad(req):
     return {**st, "defaults": gamepad_mod.DEFAULT_MAPPING}
 
 
+@route("GET", "/api/snapcast")
+def get_snapcast(req):
+    link = snapcast_link.get_link()
+    if link is not None:
+        return link.describe()
+    path = snapcast_link.binary()
+    return {"available": bool(path), "version": snapcast_link.snapclient_version(path) if path else None,
+            "connected": False, "status": "off" if path else "snapclient isn't installed (sudo apt install snapclient)"}
+
+
 @route("GET", "/api/sendspin")
 def get_sendspin(req):
     link = sendspin_link.get_link()
@@ -1688,6 +1723,7 @@ def main():
         runner.resume_schedule()
     start_mqtt()
     start_sendspin()
+    start_snapcast()  # snapcast_link stops snapclient at exit
     start_gamepad()
     atexit.register(stop_gamepad)
 
