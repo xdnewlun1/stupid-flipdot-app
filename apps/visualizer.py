@@ -82,6 +82,8 @@ STYLE_IDS = [s for s, _ in STYLES]
 IDLE = 0.18        # the idle ripple's height (0..1): what moves in silence
 IDLE_SPEED = 0.7   # the flow clock runs this fast in silence...
 FLOW_SPEED = 1.5   # ...plus this times the level
+LIVE_FPS = 25  # with Snapcast audio: draws a second, each exactly when an analysis frame comes due (the board's
+               # RS485 lines carry a whole steady picture in 34 ms at 57600 baud, so 25 leaves them headroom)
 GAIN = 0.8  # Scale x GAIN multiplies the display values, so the default Scale 1.5 puts loud parts at the edges
 ONE = b"\x01" * 256
 RAYS = 8  # sunburst rays per quarter
@@ -743,6 +745,7 @@ class Visualizer(App):
     description = ("Moves with the frequencies of the music: real loudness/spectrum from Music Assistant over Sendspin "
                    "or Snapcast when connected (Settings → Music), otherwise a generated beat that follows play/pause "
                    "and song changes.")
+    steady_timing = True  # the board keeps every change the same time behind the music (see flipdot.Board.steady)
     params = [
         P("style", "select", "rain", options=STYLES + [["mix", "Mix (changes style as the music plays)"]]),
         P("mix_styles", "checklist", list(STYLE_IDS), "Styles in the mix",
@@ -905,6 +908,19 @@ class Visualizer(App):
         self.flash_frames = max(0, self.flash_frames - 1)
         if (self.inverted + bool(self.p["invert"]) + flash + beat_flash) % 2:  # each one toggles
             c.invert()
+        self.interval = self._next_interval(now)
+
+    def _next_interval(self, now):
+        """Live Snapcast audio: draw next exactly when an analysis frame comes due, about 1/LIVE_FPS from now, so
+        the picture is always the same time behind the speakers (a free-running timer would add up to a whole
+        frame of wobble). Otherwise the display frame rate."""
+        if self.source_name == "snapcast":
+            step = 1 / LIVE_FPS
+            due = audio_signal.next_frame_due(self.ctx.store, now + step * 0.75)
+            if due is not None:
+                return max(0.005, due - now)
+            return step
+        return 1 / self.fps
 
     def _mix_step(self, r, now):
         live = self.source_name != "beat"

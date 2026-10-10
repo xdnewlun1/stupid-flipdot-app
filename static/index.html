@@ -853,6 +853,12 @@
         <label for="scPort">Audio port</label><input id="scPort" type="number" min="1" max="65535" placeholder="1704">
         <label for="scCtrl">Control port</label><input id="scCtrl" type="number" min="1" max="65535" placeholder="1705">
         <label for="scName">Name in Music Assistant</label><input id="scName" type="text">
+        <label for="scDelay">Board delay (ms)</label>
+        <input id="scDelay" type="number" min="50" max="2000" step="10" aria-describedby="scDelayHelp">
+        <span></span>
+        <div id="scDelayHelp" class="muted">The board always shows the music this long after the speakers play it, so it can stay in step:
+          delay the other speakers in the group by the same amount (plus the panels' own flip time) and they line up. Raise it if the
+          status below says the board is falling behind.</div>
         <label>Status</label><div id="scStatus" class="muted" role="status">Loading…</div>
       </div>
       <ol class="muted">

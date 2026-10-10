@@ -3,9 +3,16 @@
 Runs the stock `snapclient` binary (`sudo apt install snapclient`) with its file player writing raw
 PCM to a pipe instead of a sound card, so nothing comes out of the Pi's speakers. snapclient does the
 work that's hard to get right: the Snapcast protocol, clock sync with the server, every codec (flac,
-pcm, ogg, opus) and reconnecting. It writes each 10 ms of audio at the moment it's due to play, so the
-analysis here (sendspin_legacy._Analyzer: loudness + 16 spectrum bands, pure Python) lines up with the
-speakers in the same Snapcast group without any timestamp handling.
+pcm, ogg, opus) and reconnecting. It writes each 10 ms of audio at the moment it's due to play.
+
+The board shows the music a fixed delay (delay_ms) after the speakers play it, so the other speakers in
+the group can be delayed by the same amount and everything lines up. For that every analysis frame
+(sendspin_legacy._Analyzer: loudness + 16 spectrum bands, pure Python, 50 a second) is stamped with when
+its audio plays, from a sample clock: sample n plays at anchor + n / rate, where the anchor is the earliest
+any chunk has arrived relative to its sample position over the last few seconds (snapclient writes each
+chunk when it's due, so pipe and scheduling hiccups only ever make it later). A frame comes due delay_ms
+after its audio plays, however long the reading and the analysis took; a constant error in the anchor
+just moves everything by the same amount, which the speaker delay absorbs.
 
 In Music Assistant the board is a Snapcast player. Its id is the --hostID kept in data/snapcast/client_id;
 its name is set over the server's JSON-RPC control port (Client.SetName), since snapclient itself only
@@ -13,6 +20,7 @@ reports the Pi's hostname. snapclient is always given an explicit host: without 
 """
 
 import atexit
+import collections
 import json
 import logging
 import os
@@ -32,7 +40,11 @@ from sendspin_link import BINS, SendspinLink
 
 log = logging.getLogger("snapcast")
 
-FPS = 20            # analysis frames per second; the visualizer draws at 15 by default
+FPS = 50            # analysis frames per second: a 20 ms step, so the 21 ms FFT windows cover all the audio
+DELAY_MS = 150      # default board delay behind the speakers (Settings → Music); must cover reading + analysis
+CHUNK_S = 0.01      # snapclient writes this much audio at a time, when its start is due to play
+ANCHOR_WINDOW = 4.0  # seconds of arrivals the sample clock's anchor is the earliest of
+STALL_S = 0.25      # arrivals this much later than the clock for a while: snapclient restarted its stream
 SILENCE = 0.02      # loudness (0..1 on the -60..0 dB scale) below this counts as silence
 DEFAULT_FORMAT = "48000:16:2"  # what Music Assistant's Snapcast provider always streams
 
@@ -76,8 +88,10 @@ class _Clock:
 class SnapcastLink(SendspinLink):
     protocol = "Snapcast (snapclient)"
 
-    def __init__(self, data_dir, host="", port=1704, control_port=1705, name="Flipdot board", binary_path=None):
+    def __init__(self, data_dir, host="", port=1704, control_port=1705, name="Flipdot board", binary_path=None,
+                 delay_ms=DELAY_MS):
         super().__init__(data_dir, name=name)
+        self.set_delay(delay_ms)
         self.dir = Path(data_dir) / "snapcast"
         self.dir.mkdir(parents=True, exist_ok=True)
         self.host, self.port, self.control_port = host, int(port or 1704), int(control_port or 1705)
@@ -113,6 +127,46 @@ class SnapcastLink(SendspinLink):
         self.frame_bytes = bits // 8 * ch
         self.analyzer.configure(types.SimpleNamespace(sample_rate=rate, channels=ch, bit_depth=bits))
         self.analyzer.hop = max(1, round(self.analyzer.rate / FPS))
+        self.frame_dt = self.analyzer.hop / self.analyzer.rate
+        self.rate = rate
+        self._reset_clock()
+
+    def next_due(self, after):
+        """Wall time (s) the first analysis frame comes due at or after `after` (None if none is queued): the
+        visualizer draws exactly then, so what it shows is always the same time behind the speakers."""
+        after_us = after * 1e6 - self.delay_us
+        with self.lock:
+            at = next((t for t, _ in self._frames if t >= after_us), None)
+        return None if at is None else (at + self.delay_us) / 1e6
+
+    def set_delay(self, delay_ms):
+        self.delay_us = max(0, min(2000, int(delay_ms if delay_ms is not None else DELAY_MS))) * 1000
+
+    def _reset_clock(self):
+        self._pos = 0  # sample frames (at the stream's rate) read since the clock started
+        self._arrivals = collections.deque()  # (arrival time, implied anchor), last ANCHOR_WINDOW s
+        self._late = 0  # reads in a row well behind the clock
+        self.anchor = None
+
+    def _tick_clock(self, now, n):
+        """n sample frames just arrived at `now`; returns the play time of the first of them."""
+        start = self._pos
+        self._pos += n
+        # the last chunk in this read started at _pos - chunk and was written when due: it plays no later than now
+        implied = now - max(0.0, self._pos / self.rate - CHUNK_S)
+        a = self._arrivals
+        if self.anchor is not None and implied > self.anchor + STALL_S:
+            self._late += 1
+            if self._late >= 5:  # a stall or restart, not a hiccup: start the clock over from here
+                a.clear()
+                self._late = 0
+        else:
+            self._late = 0
+        a.append((now, implied))
+        while a and a[0][0] < now - ANCHOR_WINDOW:
+            a.popleft()
+        self.anchor = min(v for _, v in a)
+        return self.anchor + start / self.rate
 
     # ---- lifecycle --------------------------------------------------------------------------
 
@@ -158,6 +212,8 @@ class SnapcastLink(SendspinLink):
                      self.client_id)
             self.status = f"connecting to {self.host}:{self.port}"
             threading.Thread(target=self._read_log, args=(self.proc,), daemon=True, name="snapcast-log").start()
+            self._reset_clock()  # a new process: its stream starts a new timeline
+            self.analyzer.reset()
             self._read_audio(self.proc)  # returns when snapclient exits
             code = self.proc.wait()
             self.is_connected = False
@@ -215,13 +271,14 @@ class SnapcastLink(SendspinLink):
             if self.analyzer.bit_depth != 16:
                 self.last_error = f"unsupported sample format {self.sample_format} (16-bit only)"
                 continue
-            # the stream is continuous (silence included), so keep the analyzer's own clock: no gap resets
-            frames = self.analyzer.feed(int(self.analyzer.next_ts or 0), data)
+            # stamp the audio with when it plays (frames come due delay_ms later, see signal())
+            plays_at = self._tick_clock(now, len(data) // self.frame_bytes)
+            frames = self.analyzer.feed(int(plays_at * 1e6), data)
             if not frames:
                 continue
             with self.lock:
-                for _, f in frames:
-                    self._frames.append((now * 1e6, f))
+                for at, f in frames:
+                    self._frames.append((at, f))
                 while len(self._frames) > 400:
                     self._frames.popleft()
             if max(f.loudness for _, f in frames) / 65535 > SILENCE:

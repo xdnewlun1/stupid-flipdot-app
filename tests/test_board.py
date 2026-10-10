@@ -287,6 +287,37 @@ class SendTest(unittest.TestCase):
         t = self.first_times(buses, "refresh")
         self.assertLess(max(t) - min(t), 0.06)
 
+    def test_steady_timing_resends_the_whole_bus_in_a_fixed_order(self):
+        b, buses = self.run_board(sync_refresh=True, sweep_ms=150)
+        self.assertTrue(self.wait_for(lambda: self.board_matches(b, buses, 0x84)))
+        b.steady = True
+        time.sleep(0.8)  # long enough that a non-steady change would get the wave
+        for c in buses:
+            c.events.clear()
+        _, px = b.dots()
+        c = Canvas(b.width, b.height)
+        c.px = bytearray(px)
+        c.px[0] ^= 1  # one dot in the top-left panel (bus 0, address 0)
+        b.set_canvas(c)
+        self.assertTrue(self.wait_for(lambda: any(k == "refresh" for _, k in buses[0].events)))
+        time.sleep(0.2)
+        # bus 0 got every one of its panels, in address order, then the refresh; the others had no change
+        self.assertEqual([k for _, k in buses[0].events], [0, 1, 2, 3, 4, 5, "refresh"])
+        self.assertEqual(buses[1].events + buses[2].events, [])
+
+    def test_steady_timing_sends_at_the_presentation_time(self):
+        b, buses = self.run_board(sync_refresh=True)
+        self.assertTrue(self.wait_for(lambda: self.board_matches(b, buses, 0x84)))
+        b.steady = True
+        for c in buses:
+            c.events.clear()
+        at = time.monotonic() + 0.15
+        b.set_canvas(random_canvas(b.width, b.height, 31), present_at=at)
+        self.assertTrue(self.wait_for(lambda: all(any(k == "refresh" for _, k in c.events) for c in buses)))
+        first = min(t for c in buses for t, _ in c.events)
+        self.assertGreaterEqual(first, at - 0.002)
+        self.assertLess(first, at + 0.03)
+
     def test_timing_can_change_live(self):
         b, buses = self.run_board()
         self.assertEqual(b.set_timing(sweep_ms=40, sync_refresh=True)["sweep_ms"], 40)

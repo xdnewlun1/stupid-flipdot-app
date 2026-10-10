@@ -52,15 +52,23 @@ Frame = collections.namedtuple("Frame", "loudness spectrum is_downbeat peak_stre
 class _Analyzer:
     """PCM -> visualizer frames (loudness + 16 log-spaced spectrum bins, both on the uint16 dB scale).
 
-    Pure Python (no numpy on the Pi): one 512-point FFT per frame.
+    Pure Python (no numpy on the Pi): one 512-point FFT per frame, done as a 256-point complex FFT of the
+    samples taken in pairs (real input), then split back into the 512-point spectrum: half the work.
     """
 
     def __init__(self):
         self.rate = None
-        self.window = [0.5 - 0.5 * math.cos(2 * math.pi * i / (N - 1)) for i in range(N)]
-        bits = N.bit_length() - 1
-        self.rev = [int(f"{i:0{bits}b}"[::-1], 2) for i in range(N)]
-        self.tw = [cmath.exp(-2j * math.pi * k / N) for k in range(N // 2)]
+        w = [0.5 - 0.5 * math.cos(2 * math.pi * i / (N - 1)) for i in range(N)]
+        M = N // 2
+        self.wpair = [(w[2 * i], w[2 * i + 1]) for i in range(M)]
+        bits = M.bit_length() - 1
+        self.rev = [int(f"{i:0{bits}b}"[::-1], 2) for i in range(M)]
+        self.stages = []  # (size, half, twiddles) per butterfly stage
+        size = 2
+        while size <= M:
+            self.stages.append((size, size // 2, [cmath.exp(-2j * math.pi * k / size) for k in range(size // 2)]))
+            size *= 2
+        self.split = [cmath.exp(-2j * math.pi * k / N) for k in range(M)]
         self.reset()
 
     def reset(self):
@@ -116,20 +124,28 @@ class _Analyzer:
         buf = self.buf
         hop = buf[-self.hop:]
         rms = math.sqrt(sum(v * v for v in hop) / len(hop)) / 32768
-        x = [buf[i] * self.window[i] for i in self.rev]
-        size = 2
-        while size <= N:  # iterative radix-2 FFT
-            half, step = size // 2, N // size
-            tw = self.tw[::step][:half]
-            for start in range(0, N, size):
+        M = N // 2
+        wp = self.wpair
+        z = [complex(buf[2 * i] * wp[i][0], buf[2 * i + 1] * wp[i][1]) for i in range(M)]
+        x = [z[r] for r in self.rev]
+        for size, half, tw in self.stages:  # iterative radix-2 FFT
+            for start in range(0, M, size):
                 for k in range(half):
-                    a, b = start + k, start + k + half
+                    a = start + k
+                    b = a + half
                     t = tw[k] * x[b]
-                    x[b] = x[a] - t
-                    x[a] = x[a] + t
-            size *= 2
+                    xa = x[a]
+                    x[b] = xa - t
+                    x[a] = xa + t
+        # the 512-point spectrum of the real samples: X[k] = E[k] + e^(-2 pi i k / N) O[k], where
+        # E[k] = (Z[k] + conj Z[M-k]) / 2 and O[k] = (Z[k] - conj Z[M-k]) / 2i
+        sp = self.split
+        mags = [0.0] * M
+        for k in range(1, M):
+            zk, zc = x[k], x[M - k].conjugate()
+            mags[k] = abs((zk + zc) * 0.5 - 0.5j * sp[k] * (zk - zc))
         norm = 4 / N / 32768  # a full-scale sine reads 1.0 (Hann window gain 0.5)
-        spec = [_scale(max(abs(x[k]) for k in ks) * norm) for ks in self.bands]
+        spec = [_scale(max(mags[k] for k in ks) * norm) for ks in self.bands]
         return Frame(_scale(rms * 1.4142), spec, None, None)
 
 

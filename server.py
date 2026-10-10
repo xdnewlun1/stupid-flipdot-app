@@ -202,9 +202,12 @@ def save_settings(new):
     else:
         ha_sync()
     source_changed = merged.get("visualizer") != old.get("visualizer")
-    if source_changed or (merged.get("snapcast") != old.get("snapcast")
+    nodelay = lambda cfg: {k: v for k, v in (cfg or {}).items() if k != "delay_ms"}
+    if source_changed or (nodelay(merged.get("snapcast")) != nodelay(old.get("snapcast"))
                           or merged.get("music_assistant", {}).get("url") != old.get("music_assistant", {}).get("url")):
         start_snapcast()
+    elif merged.get("snapcast", {}).get("delay_ms") != old.get("snapcast", {}).get("delay_ms") and snapcast_link.get_link():
+        snapcast_link.get_link().set_delay(merged["snapcast"].get("delay_ms"))  # live, no reconnect: tune it by ear
     if merged.get("sendspin") != old.get("sendspin") or source_changed:
         start_sendspin()
         link = sendspin_link.get_link()
@@ -382,7 +385,8 @@ def start_snapcast():
     cfg = store.settings.get("snapcast", {})
     host = snapcast_link.resolve_host(cfg.get("host", "auto"), store.settings.get("music_assistant", {}).get("url"))
     snapcast_link.start_link(store.dir, host=host, port=int(cfg.get("port") or 1704),
-                             control_port=int(cfg.get("control_port") or 1705), name=cfg.get("name") or "Flipdot board")
+                             control_port=int(cfg.get("control_port") or 1705), name=cfg.get("name") or "Flipdot board",
+                             delay_ms=int(cfg.get("delay_ms") or snapcast_link.DELAY_MS))
 
 
 def start_sendspin():

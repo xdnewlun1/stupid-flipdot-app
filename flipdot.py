@@ -118,6 +118,12 @@ class Board:
         self._wave = False  # whether that change gets the sweep wave (False: every column flips together)
         self._changed_at = -1e9  # when the picture last changed
         self.interactive = False  # a game is on the board (set by the runner): no wave, every column at once
+        # steady timing (set by the runner for the music visualizer): every change takes the same time to reach the
+        # discs, so the board can be kept in step with speakers. No wave, and a bus with any change resends all its
+        # panels in a fixed order (unchanged ones get the same data again: no extra flips), so each panel's place
+        # in the send, and so its flip time, never varies
+        self.steady = False
+        self._present_at = None  # steady timing: when (monotonic) the latest picture is to go out, see set_canvas()
         self.dry_run = dry_run
 
         self.panels = parse_panels(config["panels"])
@@ -194,6 +200,11 @@ class Board:
             bus.wake.set()
         return self.timing()
 
+    def steady_interval(self):
+        """The shortest time between pictures that steady timing can keep: the busiest bus sending all its panels."""
+        most = max(self._bus_of.count(k) for k in set(self._bus_of))
+        return (most * (self.pw + 4) + len(REFRESH)) * 10 / (self.baud or 57600)
+
     def timing(self):
         return {"sweep_ms": round(self.sweep * 1000, 1), "sweep_mode": self.sweep_mode, "sync_refresh": self.sync_refresh,
                 "baud": self.baud}
@@ -208,7 +219,7 @@ class Board:
         self._check(x, y)
         return bool(self.px[y * self.width + x])
 
-    def _show(self, new=None, edit=None):
+    def _show(self, new=None, edit=None, present_at=None):
         """Make `new` (bytes of 0/1, one per dot) the picture, or `edit(current picture)` (worked out under the lock,
         so toggles don't race): mark the panels that changed and wake their buses."""
         W, ph, pw = self.width, self.ph, self.pw
@@ -228,11 +239,12 @@ class Board:
                             break
             self.px[:] = new
             self.version += 1
+            self._present_at = present_at
             now = time.monotonic()
             if dirty:
                 # moving content (a change while the last wave is still crossing) flips all columns together
                 # and so does a game: the first move after standing still mustn't wait for a wave
-                self._wave = not self.interactive and (self.sweep_mode == "always"
+                self._wave = not self.interactive and not self.steady and (self.sweep_mode == "always"
                                                        or now - self._changed_at >= self._wave_length())
                 self._changed_at = self._wave_start = now
             wake = set()
@@ -262,12 +274,13 @@ class Board:
             return new
         self._show(edit=edit)
 
-    def set_canvas(self, canvas):
-        """Show a canvas.Canvas (same size as the board)."""
+    def set_canvas(self, canvas, present_at=None):
+        """Show a canvas.Canvas (same size as the board). present_at (time.monotonic()), with steady timing: send it
+        then rather than as soon as possible, so how long the picture took to make doesn't change when it lands."""
         px = canvas.px
         if len(px) != len(self.px):
             raise ValueError(f"canvas must be {self.width}x{self.height}")
-        self._show(px.translate(_BITS))
+        self._show(px.translate(_BITS), present_at=present_at)
 
     def check_frame(self, rows):
         if len(rows) != self.height or any(len(r) != self.width for r in rows):
@@ -446,7 +459,12 @@ class Board:
             with self._lock:
                 mine = [i for i in self._dirty if self._bus_of[i] == bus.key]
                 self._dirty.difference_update(mine)
-                order = sorted(mine, key=lambda i: self._since.get(i, 0))
+                steady = self.steady and bool(mine)
+                present = self._present_at if steady else None
+                if steady:
+                    order = [i for i, k in enumerate(self._bus_of) if k == bus.key]  # all of them, always this order
+                else:
+                    order = sorted(mine, key=lambda i: self._since.get(i, 0))
                 panels = self.panels
                 px = bytes(self.px)
                 wave, staggered = self._wave_start, self._wave
@@ -458,7 +476,7 @@ class Board:
             batch, deferred, needed = [], [], 0
             for i in order:
                 frame = self._frame_for(panels[i], px, cmd)
-                if frame == self._sent.get(i):
+                if frame == self._sent.get(i) and not steady:
                     self._since.pop(i, None)
                     continue
                 short = self._take_budget(i, frame)
@@ -470,6 +488,8 @@ class Board:
             if batch:
                 # in sync mode with a sweep the refresh goes separately, when this column's turn in the wave comes
                 frames = [f for _, f in batch] + ([REFRESH] if sync and not sweep else [])
+                if present is not None:
+                    self._sleep_until(present)  # steady timing: the same time after every picture was started
                 try:
                     self._send(bus, frames)
                     if sync and sweep:

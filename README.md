@@ -297,11 +297,22 @@ server), then play to the **Flipdot board** player or group it with the speaker 
 How it works (`snapcast_link.py`): the board's server runs `snapclient --player file --mixer none`, which
 writes the decoded audio to a pipe at the moment it's due to play, in sync with the other Snapcast
 speakers. Nothing goes to a sound card. The audio is analysed the same way as Sendspin's 2.7 mode
-(loudness, 16 spectrum bands and beats, pure Python, 20 frames a second). snapclient handles the
+(loudness, 16 spectrum bands and beats, pure Python, 50 frames a second). snapclient handles the
 codecs (flac by default; pcm, ogg and opus work too), clock sync and reconnecting; the link restarts it
 if it exits. Server *auto* means the host in the Music Assistant URL; ports 1704 (audio) and 1705
 (control, used once to name the player). Settings shows whether it's connected, receiving audio,
 the codec and the server buffer.
+
+**Keeping the board in step with the speakers.** The board shows the music a fixed time after the
+speakers play it: **Board delay** in Settings → Music (150 ms by default; changes apply at once, without
+reconnecting). Each analysis frame is stamped with when its audio plays (a sample clock anchored to when
+snapclient hands the audio over) and comes due exactly that delay later; the visualizer then draws 25
+times a second, each time just as a frame comes due, and while it runs the board sends every picture the
+same way at a fixed time after it was started (no sweep wave; a bus with any change gets all its panels in
+the same order). So every beat reaches the discs the same time behind the speakers, give or take the
+40 ms between pictures, and you can delay the other speakers in the group (their latency in Snapcast /
+Music Assistant) to match. Set the delay so the board keeps up on the Pi, then tune the speakers' latency
+by ear; for the tightest timing turn on `sync_refresh: true` in `config.yaml`.
 
 Compared with Sendspin:
 

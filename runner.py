@@ -15,6 +15,7 @@ log = logging.getLogger("runner")
 
 OFF = "__off__"  # schedule target meaning "all black"
 LIVE_TIMEOUT = 4  # seconds without a frame before a browser's live stream counts as gone
+STEADY_BUDGET = 0.025  # steady timing (music visualizer): frames go to the board this long after they're started
 
 
 @dataclass
@@ -160,7 +161,7 @@ class Runner:
             self.mode = "manual"
             self.playlist = None
             self.paused_at = None
-            self.board.interactive = False  # drawing by hand gets the wave again
+            self.board.interactive = self.board.steady = False  # drawing by hand gets the wave again
             self._changed()
 
     # ---- live streams from a browser ------------------------------------------------
@@ -482,6 +483,7 @@ class Runner:
             ticked = False
             with self.lock:
                 now = time.time()
+                started = time.monotonic()
                 try:
                     if self.paused_at is None:
                         self._advance(now)
@@ -528,7 +530,9 @@ class Runner:
                     else:
                         out = c
                     self.board.interactive = bool(app.interactive)
-                    self.board.set_canvas(out)
+                    self.board.steady = bool(getattr(app, "steady_timing", False))
+                    # steady timing: the picture goes out a fixed time after this frame started, whatever the render took
+                    self.board.set_canvas(out, started + STEADY_BUDGET if self.board.steady else None)
                     tick = getattr(app, "status_tick", None) if app is self.app else None
                     if tick is not None and tick != self._tick:
                         self._tick = tick

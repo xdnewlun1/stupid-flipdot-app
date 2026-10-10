@@ -69,7 +69,7 @@ DEFAULT_SETTINGS = {
     # live audio for the music visualizer: "sendspin", "snapcast" or "off"
     "visualizer": {"source": "off"},
     # host "auto" = the Music Assistant URL's host (its built-in Snapserver)
-    "snapcast": {"host": "auto", "port": 1704, "control_port": 1705, "name": "Flipdot board"},
+    "snapcast": {"host": "auto", "port": 1704, "control_port": 1705, "name": "Flipdot board", "delay_ms": 150},
     "mqtt": {"enabled": False, "host": "", "port": 1883, "username": "", "password": "", "prefix": "flipdot",
              "discovery": False, "discovery_prefix": "homeassistant"},
     "quiet_hours": {"enabled": False, "start": "22:00", "end": "07:00", "max_flips": 150, "slowdown": 3},
