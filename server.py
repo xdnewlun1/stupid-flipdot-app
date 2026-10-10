@@ -1477,10 +1477,10 @@ def get_board_timing(req):
 
 @route("POST", "/api/board/timing")
 def post_board_timing(req):
-    """{"sweep_ms": 40, "sync_refresh": true}: change how panel columns are timed, live, to tune it by eye. Not saved:
-    put the values that look right in config.yaml."""
+    """{"sweep_ms": 40, "sync_refresh": true, "sweep_mode": "auto"}: change how panel columns are timed, live, to tune
+    it by eye. Not saved: put the values that look right in config.yaml."""
     body = req.json()
-    return board.set_timing(body.get("sweep_ms"), body.get("sync_refresh"))
+    return board.set_timing(body.get("sweep_ms"), body.get("sync_refresh"), body.get("sweep_mode"))
 
 
 @route("POST", "/api/panels/identify")

@@ -212,12 +212,65 @@ class SendTest(unittest.TestCase):
         # write-and-refresh frames: each column's data is held back by one sweep instead
         b, buses = self.run_board(sweep_ms=150)
         self.assertTrue(self.wait_for(lambda: self.board_matches(b, buses)))
-        time.sleep(0.4)
+        time.sleep(0.6)  # longer than a wave: the next change stands on its own
         for c in buses:
             c.events.clear()
         b.set_canvas(random_canvas(b.width, b.height, 6))
         self.assertTrue(self.wait_for(lambda: self.board_matches(b, buses)))
         t = self.first_times(buses, 0)
+        for a, z in zip(t, t[1:]):
+            self.assertAlmostEqual(z - a, 0.15, delta=0.04)
+
+    def play(self, b, frames=25, every=0.04):
+        """Moving content: a new picture every `every` seconds. Returns when the last one was shown."""
+        for seed in range(frames):
+            b.set_canvas(random_canvas(b.width, b.height, 50 + seed))
+            time.sleep(every)
+        return time.monotonic()
+
+    def last_refreshes(self, buses):
+        return [max(t for t, k in c.events if k == "refresh") for c in buses]
+
+    def test_moving_content_flips_columns_together(self):
+        # sweep 150 ms: a wave would put the right column 300 ms behind the left one
+        b, buses = self.run_board(sync_refresh=True, sweep_ms=150)
+        self.assertTrue(self.wait_for(lambda: self.board_matches(b, buses, 0x84)))
+        time.sleep(0.6)
+        self.play(b)
+        self.assertTrue(self.wait_for(lambda: self.board_matches(b, buses, 0x84)))
+        time.sleep(0.1)
+        t = self.last_refreshes(buses)
+        self.assertLess(max(t) - min(t), 0.06)
+
+    def test_moving_content_without_sync_refresh(self):
+        b, buses = self.run_board(sweep_ms=150)
+        self.assertTrue(self.wait_for(lambda: self.board_matches(b, buses)))
+        time.sleep(0.6)
+        self.play(b)
+        self.assertTrue(self.wait_for(lambda: self.board_matches(b, buses)))
+        t = [max(t for t, k in c.events if k == 0) for c in buses]
+        self.assertLess(max(t) - min(t), 0.06)
+
+    def test_sweep_mode_always_keeps_the_wave(self):
+        b, buses = self.run_board(sync_refresh=True, sweep_ms=150, sweep_mode="always")
+        self.assertTrue(self.wait_for(lambda: self.board_matches(b, buses, 0x84)))
+        self.play(b, frames=5)
+        self.assertTrue(self.wait_for(lambda: self.board_matches(b, buses, 0x84)))
+        time.sleep(0.5)
+        t = self.last_refreshes(buses)
+        for a, z in zip(t, t[1:]):
+            self.assertAlmostEqual(z - a, 0.15, delta=0.05)
+
+    def test_standalone_change_after_moving_content_gets_the_wave(self):
+        b, buses = self.run_board(sync_refresh=True, sweep_ms=150)
+        self.assertTrue(self.wait_for(lambda: self.board_matches(b, buses, 0x84)))
+        self.play(b, frames=10)
+        time.sleep(0.8)  # the content stops; then one picture on its own
+        for c in buses:
+            c.events.clear()
+        b.set_canvas(random_canvas(b.width, b.height, 99))
+        self.assertTrue(self.wait_for(lambda: all(any(k == "refresh" for _, k in c.events) for c in buses)))
+        t = self.first_times(buses, "refresh")
         for a, z in zip(t, t[1:]):
             self.assertAlmostEqual(z - a, 0.15, delta=0.04)
 

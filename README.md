@@ -84,7 +84,9 @@ Each bus (ip:port) is sent to on its own thread, so one that is unreachable does
 instead of queuing up lag; `sync_refresh: true` writes every panel first and then flips them all at once.
 Panels flip their columns left to right, so on a big change a panel's right edge lands after the left edge of the
 panel beside it. `sweep_ms:` (how long one panel takes to sweep) starts each column of panels that much after the
-one to its left, so the change crosses the board as one wave. Tune it by eye with the disc exerciser running and
+one to its left, so the change crosses the board as one wave. Moving content (video, games, transitions) would
+tear across the seams that way, so with `sweep_mode: auto` (the default) only a change that stands on its own gets
+the wave; a change arriving while the last wave is still crossing flips every column together. Tune it by eye with the disc exerciser running and
 `POST /api/board/timing {"sweep_ms": 40, "sync_refresh": true}` (live, not saved), then put it in `config.yaml`.
 `python3 tests/bench_core.py` times the per-frame paths (worth running on the Pi).
 Flip counts are saved to `data/wear.json` every two minutes and on shutdown.

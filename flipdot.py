@@ -9,7 +9,9 @@ written with 0x84 ("write, don't refresh yet") and then one 0x80 0x82 0x8F per b
 A panel doesn't flip all its columns at once: it sweeps across them left to right. With every bus starting
 together, the right edge of one panel flips well after the left edge of the panel next to it. With `sweep_ms:`
 set to how long that sweep takes, each column of panels starts that much after the one to its left, so a big
-change runs across the whole board as one wave.
+change runs across the whole board as one wave. That only suits a change that stands on its own: in moving
+content (video, games, transitions) the columns would show different moments and tear, so with `sweep_mode: auto`
+a change arriving before the previous wave has finished flips every column together.
 
 Each bus (ip, port) has its own sender thread, so a bus that is down or slow never holds up the others.
 With `baud:` set, a bus is never handed data faster than its RS485 line can carry it: changes wait here
@@ -111,7 +113,10 @@ class Board:
         self.baud = int(config.get("baud") or 0)  # RS485 speed, to pace sends (0 = don't pace)
         self.sync_refresh = bool(config.get("sync_refresh", False))
         self.sweep = max(0.0, float(config.get("sweep_ms") or 0)) / 1000  # see the module docstring
+        self.sweep_mode = self._sweep_mode(config.get("sweep_mode"))
         self._wave_start = 0.0  # when the latest change was made: the sweep wave is timed from it
+        self._wave = False  # whether that change gets the sweep wave (False: every column flips together)
+        self._changed_at = -1e9  # when the picture last changed
         self.dry_run = dry_run
 
         self.panels = parse_panels(config["panels"])
@@ -162,9 +167,21 @@ class Board:
         # its data, so the wave isn't broken by a bus still busy receiving
         most = max(self._bus_of.count(k) for k in set(self._bus_of))
         self._lead = most * (self.pw + 4) * 10 / (self.baud or 57600)
+        self._cols = max(p.col for p in panels) + 1
 
-    def set_timing(self, sweep_ms=None, sync_refresh=None):
+    @staticmethod
+    def _sweep_mode(mode):
+        mode = str(mode or "auto").lower()
+        return mode if mode in ("auto", "always") else "auto"
+
+    def _wave_length(self):
+        """From a change until its wave has crossed the board (data in, then every column's sweep)."""
+        return self._lead + self._cols * self.sweep
+
+    def set_timing(self, sweep_ms=None, sync_refresh=None, sweep_mode=None):
         """Change the sweep wave and refresh mode while running (to tune them by eye on the real board)."""
+        if sweep_mode is not None:
+            self.sweep_mode = self._sweep_mode(sweep_mode)
         if sweep_ms is not None:
             self.sweep = max(0.0, min(1000.0, float(sweep_ms))) / 1000
         if sync_refresh is not None:
@@ -177,7 +194,8 @@ class Board:
         return self.timing()
 
     def timing(self):
-        return {"sweep_ms": round(self.sweep * 1000, 1), "sync_refresh": self.sync_refresh, "baud": self.baud}
+        return {"sweep_ms": round(self.sweep * 1000, 1), "sweep_mode": self.sweep_mode, "sync_refresh": self.sync_refresh,
+                "baud": self.baud}
 
     # ---- framebuffer -----------------------------------------------------
 
@@ -211,7 +229,9 @@ class Board:
             self.version += 1
             now = time.monotonic()
             if dirty:
-                self._wave_start = now
+                # moving content (a change while the last wave is still crossing) flips all columns together
+                self._wave = self.sweep_mode == "always" or now - self._changed_at >= self._wave_length()
+                self._changed_at = self._wave_start = now
             wake = set()
             for i in dirty:
                 if i not in self._dirty:
@@ -401,6 +421,13 @@ class Board:
         if wait > 0:
             time.sleep(wait)
 
+    def _wait_turn(self, bus, t):
+        """Wait for this column's turn in a wave, unless moving content arrives meanwhile: that flips every column
+        together, so it mustn't queue behind the wave (the wake stays set, so the loop picks it up next)."""
+        wait = t - time.monotonic()
+        if wait > 0 and bus.wake.wait(wait) and self._wave:
+            self._sleep_until(t)  # another standalone change: its own wave comes later anyway
+
     def _bus_loop(self, bus):
         while True:
             bus.wake.wait()
@@ -409,19 +436,20 @@ class Board:
             wait = max(bus.last_flush + COALESCE, bus.free_at) - time.monotonic()
             if wait > 0:
                 time.sleep(wait)
+            if self.sweep and self._wave and not self.sync_refresh:
+                # no separate refresh: hold this column's data back until its turn in the wave (the picture is
+                # taken after the wait, so it's the newest)
+                self._wait_turn(bus, self._wave_start + bus.col * self.sweep)
             with self._lock:
                 mine = [i for i in self._dirty if self._bus_of[i] == bus.key]
                 self._dirty.difference_update(mine)
                 order = sorted(mine, key=lambda i: self._since.get(i, 0))
                 panels = self.panels
                 px = bytes(self.px)
-                wave = self._wave_start
+                wave, staggered = self._wave_start, self._wave
             if not order:
                 continue
-            sweep, sync = self.sweep, self.sync_refresh
-            if sweep and not sync:
-                # no separate refresh: hold this column's data back until its turn in the wave
-                self._sleep_until(wave + bus.col * sweep)
+            sweep, sync = (self.sweep if staggered else 0.0), self.sync_refresh
             bus.last_flush = time.monotonic()
             cmd = CMD_WRITE if sync else CMD_WRITE_REFRESH
             batch, deferred, needed = [], [], 0
@@ -444,7 +472,7 @@ class Board:
                     if sync and sweep:
                         self._pace(bus, frames)
                         frames = [REFRESH]
-                        self._sleep_until(wave + self._lead + bus.col * sweep)
+                        self._wait_turn(bus, wave + self._lead + bus.col * sweep)
                         self._send(bus, frames)
                 except OSError as e:
                     log.warning("send to %s:%d failed: %s", *bus.key, e)
