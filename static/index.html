@@ -419,6 +419,7 @@
       <button data-set="general" aria-pressed="true">General</button>
       <button data-set="board" aria-pressed="false">Board care</button>
       <button data-set="music" aria-pressed="false">Music</button>
+      <button data-set="controllers" aria-pressed="false">Controllers</button>
       <button data-set="home" aria-pressed="false">Smart home &amp; API</button>
       <button data-set="guests" aria-pressed="false">Guest wall <span class="count" id="gwBadge" hidden></span></button>
       <button data-set="storage" aria-pressed="false">Storage</button>
@@ -531,6 +532,28 @@
       </div>
       <div class="tableWrap"><table class="panelTable"><thead><tr><th>#</th><th>Column</th><th>Row</th><th>IP</th><th>Port</th><th>Address</th><th>Rotate</th><th><span class="sr">Actions</span></th></tr></thead><tbody id="psRows"></tbody></table></div>
       <div class="row"><button id="psAdd"><svg class="i" aria-hidden="true"><use href="#i-plus"/></svg>Add panel</button><button id="psSave" class="primary">Save to config.yaml</button><span id="psMsg" class="muted"></span></div>
+    </div>
+
+    <!-- ---------- Controllers ---------- -->
+    <div class="setGroup" data-set="controllers" hidden>
+      <h2>Gamepad</h2>
+      <p class="lede">Plug USB gamepads or a Mayflash GameCube adapter (PC mode) into the server to play the board's games. Each
+        adapter port is a player, port 1 = player 1. The stick and D-pad steer, A and B are the game buttons. In Doom, L/R strafe,
+        X switches weapon, Y toggles run, Z opens doors and Start pauses.</p>
+      <div class="form">
+        <label for="gpEnabled">Gamepads</label><input id="gpEnabled" type="checkbox">
+        <label for="gpDeadzone">Stick dead zone</label>
+        <div class="row tight"><input id="gpDeadzone" type="range" min="0.1" max="0.9" step="0.05"><output id="gpDeadzoneVal" for="gpDeadzone" class="rangeVal"></output></div>
+        <label>Status</label><div id="gpStatus" class="muted">Loading…</div>
+        <label>Controllers</label><div id="gpPads" class="items"></div>
+        <label>Last inputs</label><div id="gpEvents" class="muted">None yet</div>
+      </div>
+      <div class="row"><button id="gpSave" class="primary">Save</button></div>
+
+      <h2 class="spaced">Button mapping</h2>
+      <p class="lede">Press a button and its code name shows under Last inputs. Pick what each code does; Off ignores it.</p>
+      <div class="tableWrap"><table class="panelTable"><thead><tr><th>Code</th><th>Does</th></tr></thead><tbody id="gpMap"></tbody></table></div>
+      <div class="row"><button id="gpAddCode"><svg class="i" aria-hidden="true"><use href="#i-plus"/></svg>Add code</button><button id="gpMapSave" class="primary">Save mapping</button><button id="gpMapReset">Reset to defaults</button></div>
     </div>
 
     <!-- ---------- Music ---------- -->

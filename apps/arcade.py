@@ -544,6 +544,14 @@ class Tron(Arcade):
 
 BIRD = ([".XXX..", "XXX.X.", "XXXXXX", ".XXX.."],
         ["......", "XXX.X.", "XXXXXX", "XXXX.."])
+# The bird tilted, hand-drawn (a 6x4 sprite doesn't survive real rotation): (wings up, wings down)
+BIRD_TILT = {
+    "up": (["...XX.", ".XX.XX", "XXXXX.", ".XX..."],    # rising: head above the tail
+           ["...XX.", "XXX.XX", "XXXXX.", "XX...."]),
+    "level": BIRD,
+    "down": ([".XX...", "XXXXX.", ".XX.XX", "...XX."],  # falling: head dips below the tail
+             ["......", "XXXXX.", "XXX.XX", "X..XX."]),
+}
 
 
 @register
@@ -623,12 +631,18 @@ class Flappy(Arcade):
             fill(c, x, c.h - 1, 2, 1)
         flapping = now - self.flap_at < 0.15 or (self.ready and int(now * 4) % 2)
         if not self.dying_at or int(now * 8) % 2:
-            sprite(c, self.BIRD_X, int(self.y), BIRD[1 if flapping else 0])
+            sprite(c, self.BIRD_X, int(self.y), BIRD_TILT[self.tilt()][1 if flapping else 0])
         if not self.ready:
             s = str(self.score)
             tw = SMALL.width(s)
             fill(c, (c.w - tw) // 2 - 1, 0, tw + 2, 7, 0)
             c.text_center(1, s, SMALL)
+
+    def tilt(self):
+        """Nose up while rising, level near the top of the arc, nose down once it's falling."""
+        if self.ready or -12 < self.vy < 18:
+            return "level"
+        return "up" if self.vy < 0 else "down"
 
     def draw_title(self, c, now):
         sprite(c, 39, 24 + int(math.sin(now * 4) * 2), BIRD[int(now * 4) % 2])

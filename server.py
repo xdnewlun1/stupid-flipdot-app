@@ -26,6 +26,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, quote, urlparse
 
 import aidraw
+import gamepad as gamepad_mod
 import apps
 import guestwall
 import media_upload
@@ -59,6 +60,7 @@ store: Store = None
 runner: Runner = None
 password = ""
 mqtt_client = None
+gamepad: gamepad_mod.GamepadManager = None  # USB gamepads / GameCube adapter
 hub: Hub = None
 care: BoardCare = None
 recorder: timelapse.Recorder = None
@@ -201,6 +203,8 @@ def save_settings(new):
         link = sendspin_link.get_link()
         if link and merged["sendspin"].get("unpaired") != old.get("sendspin", {}).get("unpaired"):
             link.set_unpaired_access(bool(merged["sendspin"].get("unpaired")))
+    if merged.get("gamepad") != old.get("gamepad"):
+        start_gamepad()
 
 
 def start_mqtt():
@@ -365,6 +369,24 @@ def start_sendspin():
                                     port=int(cfg.get("port") or 8928), on_pair_code=show_code,
                                     server_url=cfg.get("server_url", "auto"))
     link.set_unpaired_access(bool(cfg.get("unpaired")))
+
+
+def start_gamepad():
+    global gamepad
+    if gamepad:
+        gamepad.stop()
+        gamepad = None
+    cfg = store.settings.get("gamepad", {})
+    if cfg.get("enabled"):
+        gamepad = gamepad_mod.GamepadManager(lambda key, action, player: runner.input(key, action, player),
+                                             mapping=cfg.get("mapping") or {},
+                                             deadzone=float(cfg.get("deadzone") or 0.35))
+        gamepad.start()
+
+
+def stop_gamepad():
+    if gamepad:
+        gamepad.stop()
 
 
 def publish_status():
@@ -1008,6 +1030,12 @@ def post_image(req):
     return {"frames": len(frames), **state()}
 
 
+@route("GET", "/api/gamepad")
+def get_gamepad(req):
+    st = gamepad.status() if gamepad else {"running": False, "message": "Off", "pads": [], "events": []}
+    return {**st, "defaults": gamepad_mod.DEFAULT_MAPPING}
+
+
 @route("GET", "/api/sendspin")
 def get_sendspin(req):
     link = sendspin_link.get_link()
@@ -1320,6 +1348,8 @@ def main():
         runner.resume_schedule()
     start_mqtt()
     start_sendspin()
+    start_gamepad()
+    atexit.register(stop_gamepad)
 
     logging.info("%dx%d board, %d panels%s", board.width, board.height, len(board.panels),
                  " (dry run)" if args.dry_run else "")

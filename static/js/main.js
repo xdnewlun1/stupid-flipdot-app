@@ -68,6 +68,7 @@ $("btnSchedule").onclick = safe(async () => { await api("/api/schedule/resume", 
 const KEYS = {
   ArrowUp: "up", ArrowDown: "down", ArrowLeft: "left", ArrowRight: "right",
   w: "up", s: "down", a: "left", d: "right", " ": "a", Enter: "b", x: "a", z: "b",
+  q: "strafe_left", e: "strafe_right", r: "weapon", Shift: "run",  // Doom only; other games ignore them
 };
 function gameKey(e, action) {
   if (!board.runner?.interactive || e.target.closest("input, textarea, select") || e.ctrlKey || e.metaKey) return;

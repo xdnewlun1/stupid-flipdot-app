@@ -71,6 +71,7 @@ DEFAULT_SETTINGS = {
     "quiet_hours": {"enabled": False, "start": "22:00", "end": "07:00", "max_flips": 150, "slowdown": 3},
     "board_health": {"auto_exercise": False, "exercise_time": "12:00"},
     "ai": {"api_key": "", "model": "claude-opus-5-5"},
+    "gamepad": {"enabled": True, "deadzone": 0.35, "mapping": {}},
 }
 
 

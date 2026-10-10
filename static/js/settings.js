@@ -1,4 +1,4 @@
-// Settings tab: weather location, quiet hours/board health/setup (boardcare.js), fonts, Music Assistant, MQTT, storage, webhook docs.
+// Settings tab: weather location, gamepads, quiet hours/board health/setup (boardcare.js), fonts, Music Assistant, MQTT, storage, webhook docs.
 import { $, api, bus, el, fontCache, fontSelect, loadFonts, renderDots, rowsToGrid, safe, toast } from "./common.js";
 import { loadBoardCare } from "./boardcare.js";
 import { loadGuestWall } from "./guestwall.js";
@@ -38,6 +38,13 @@ export async function loadSettings() {
   aiModels().then(models => {
     $("aiModel").replaceChildren(...models.map(([v, label]) => el("option", { value: v, selected: v === (ai.model || models[0][0]) }, label)));
   }).catch(() => {});
+  const gp = settings.gamepad || {};
+  $("gpEnabled").checked = gp.enabled !== false;
+  $("gpDeadzone").value = gp.deadzone ?? 0.35;
+  $("gpDeadzoneVal").textContent = (+$("gpDeadzone").value).toFixed(2);
+  gpMapping = { ...(gp.mapping || {}) };
+  gpTableDrawn = false;
+  refreshGamepad().catch(() => {});
   refreshStorage().catch(() => {});
   loadGuestWall().catch(() => {});
   await loadBoardCare(settings);
@@ -234,6 +241,64 @@ $("stRestoreFile").onchange = safe(async e => {
   await refreshStorage();
 });
 
+// ---- gamepads (gamepad.py): status, live inputs, button mapping ----
+const GP_KEYS = ["up", "down", "left", "right", "a", "b", "x", "y", "z", "l", "r", "start"];
+let gpMapping = {}, gpDefaults = {}, gpTableDrawn = false;
+
+function gpKeySelect(value) {
+  return el("select", { "aria-label": "Game key" }, el("option", { value: "", selected: !value }, "Off"),
+    ...GP_KEYS.map(k => el("option", { value: k, selected: k === value }, k === "start" ? "Start" : k.length === 1 ? k.toUpperCase() : k)));
+}
+function gpMapRow(code, value, editable) {
+  const name = editable ? el("input", { type: "text", placeholder: "BTN_0x12c", "aria-label": "Code" }) : el("code", {}, code);
+  return el("tr", { "data-code": code }, el("td", {}, name), el("td", {}, gpKeySelect(value)));
+}
+function drawGamepadMap() {
+  const codes = [...new Set([...Object.keys(gpDefaults), ...Object.keys(gpMapping)])];
+  $("gpMap").replaceChildren(...codes.map(c => gpMapRow(c, c in gpMapping ? gpMapping[c] : gpDefaults[c])));
+  gpTableDrawn = true;
+}
+function gamepadMapFromTable() {
+  const out = {};
+  $("gpMap").querySelectorAll("tr").forEach(tr => {
+    const input = tr.querySelector("input");
+    const code = input ? input.value.trim() : tr.dataset.code;
+    const key = tr.querySelector("select").value;
+    if (code && (gpDefaults[code] ?? "") !== key) out[code] = key;
+  });
+  return out;
+}
+const timeAgo = t => { const s = Math.max(0, Math.round(Date.now() / 1000 - t)); return s < 60 ? `${s} s ago` : `${Math.round(s / 60)} min ago`; };
+async function refreshGamepad() {
+  const j = await api("/api/gamepad");
+  gpDefaults = j.defaults || {};
+  if (!gpTableDrawn) drawGamepadMap();
+  $("gpStatus").textContent = j.message || (j.running ? "Running" : "Off");
+  const pads = j.pads || [];
+  $("gpPads").replaceChildren(...(pads.length ? pads.map(p => el("div", { class: "item" },
+    el("span", { class: "name" }, p.connected ? `Player ${p.player}: ${p.name || "Gamepad"}` : p.path,
+      el("small", {}, p.connected ? (p.held?.length ? `Holding ${p.held.join(", ")}` : p.last_input ? `Last input ${timeAgo(p.last_input)}` : "No input yet")
+        : p.error || "Can't read"))))
+    : [el("span", { class: "muted" }, j.running ? "None detected" : "Gamepads are off")]));
+  const ev = (j.events || []).slice(-8).reverse();
+  $("gpEvents").replaceChildren(...(ev.length ? ev.map(e => el("div", {},
+    `Player ${e.player}: ${e.code} ${e.value ? (String(e.code).startsWith("ABS") ? e.value : "pressed") : "released"}${e.key ? ` → ${e.key}` : " (not mapped)"}`))
+    : ["None yet"]));
+}
+// poll about once a second, only while the Controllers group is on screen
+setInterval(() => {
+  const group = document.querySelector('.setGroup[data-set="controllers"]');
+  if (!document.hidden && !$("tab-settings").hidden && group && !group.hidden) refreshGamepad().catch(() => {});
+}, 1000);
+$("gpDeadzone").oninput = () => { $("gpDeadzoneVal").textContent = (+$("gpDeadzone").value).toFixed(2); };
+$("gpSave").onclick = safe(() => save({ gamepad: { enabled: $("gpEnabled").checked, deadzone: +$("gpDeadzone").value } }));
+$("gpAddCode").onclick = () => $("gpMap").append(gpMapRow("", "a", true));
+$("gpMapSave").onclick = safe(() => save({ gamepad: { mapping: gamepadMapFromTable() } }));
+$("gpMapReset").onclick = safe(async () => {
+  if (!confirm("Use the default button mapping?")) return;
+  await save({ gamepad: { mapping: {} } });
+});
+
 // ---- sub-navigation: one group of settings at a time, remembered per browser ----
 function showSettingsGroup(name) {
   const groups = [...document.querySelectorAll(".setGroup")];
@@ -241,6 +306,7 @@ function showSettingsGroup(name) {
   groups.forEach(g => { g.hidden = g.dataset.set !== name; });
   document.querySelectorAll("#setNav [data-set]").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.set === name)));
   try { localStorage.setItem("settingsGroup", name); } catch {}
+  if (name === "controllers") refreshGamepad().catch(() => {});
 }
 $("setNav").addEventListener("click", e => { const b = e.target.closest("[data-set]"); if (b) showSettingsGroup(b.dataset.set); });
 let savedGroup = "general";

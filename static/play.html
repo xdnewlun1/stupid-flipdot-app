@@ -28,6 +28,10 @@
   .pad button:active, .pad button.down { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
   .ab { display: flex; flex-direction: column; gap: var(--s4); align-items: center; }
   .ab button { width: 84px; height: 84px; border-radius: 50%; flex-direction: column; gap: 2px; font: 700 22px/1 var(--font); }
+  .extra { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--s2); }
+  .extra[hidden] { display: none; }
+  .extra button { min-height: 48px; padding: 0 var(--s2); touch-action: none; background: var(--surface-2); border-color: var(--line-strong); }
+  .extra button:active, .extra button.down, .extra button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
   .ab small { font: 500 var(--fs-xs)/1 var(--font); color: inherit; opacity: 0.8; min-height: 12px; }
   @media (max-width: 360px) { .dpad { grid-template-columns: repeat(3, 60px); grid-template-rows: repeat(3, 60px); } .ab button { width: 72px; height: 72px; } }
 </style>
@@ -53,6 +57,8 @@
       <button data-game="invaders">Invaders</button>
       <button data-game="tron">Tron</button>
       <button data-game="flappy">Flappy</button>
+      <button data-game="platformer">Platformer</button>
+      <button data-game="doom">Doom</button>
     </div>
     <div class="group" role="group" aria-label="Player">
       <button data-player="1" class="active" aria-pressed="true">Player 1</button>
@@ -72,9 +78,17 @@
       <button data-key="b">B<small id="hintB"></small></button>
     </div>
   </div>
+  <div class="extra" id="doomKeys" role="group" aria-label="Doom" hidden>
+    <button data-key="strafe_left">Strafe left</button>
+    <button data-key="strafe_right">Strafe right</button>
+    <button data-key="weapon">Next weapon</button>
+    <button data-key="run" id="runKey" aria-pressed="false">Run</button>
+  </div>
 <script>
 const canvas = document.getElementById("board"), ctx = canvas.getContext("2d");
 let player = 1, runner = null;
+const runKey = document.getElementById("runKey");
+const toggleRun = () => runKey.setAttribute("aria-pressed", String(runKey.getAttribute("aria-pressed") !== "true"));
 
 const statusEl = document.getElementById("status");
 let ws = null, wsOpen = false, retry = 500;
@@ -88,7 +102,7 @@ function drawBits(W, H, isOn) {
 }
 
 const HINTS = { tetris: ["rotate", "drop"], blackjack: ["deal / hit", "stand"], snake: ["", ""], pong: ["", ""],
-  breakout: ["launch", "launch"], invaders: ["fire", "fire"], tron: ["", ""], flappy: ["flap", "flap"] };
+  breakout: ["launch", "launch"], invaders: ["fire", "fire"], tron: ["", ""], flappy: ["flap", "flap"], platformer: ["jump", "run"], doom: ["fire", "use"] };
 function showStatus() {
   if (!runner) return;
   const game = runner.interactive ? (runner.description || "").toLowerCase() : "";
@@ -96,6 +110,10 @@ function showStatus() {
   const [ha, hb] = HINTS[key] || ["", ""];
   document.getElementById("hintA").textContent = ha;
   document.getElementById("hintB").textContent = hb;
+  // Doom-only buttons; "Run" is a toggle in the game, so it resets whenever Doom isn't running
+  const doom = !!runner.interactive && runner.app === "doom";
+  document.getElementById("doomKeys").hidden = !doom;
+  if (!doom) runKey.setAttribute("aria-pressed", "false");
   statusEl.textContent = (runner.interactive ? runner.description : "No game running. Pick one above.") + (wsOpen ? "" : " (reconnecting…)");
   document.querySelectorAll("[data-game]").forEach(b => {
     const on = !!runner.interactive && runner.app === b.dataset.game;
@@ -144,7 +162,7 @@ const send = (key, action) => {
 
 document.querySelectorAll("[data-key]").forEach(b => {
   const key = b.dataset.key;
-  b.addEventListener("pointerdown", e => { e.preventDefault(); b.setPointerCapture(e.pointerId); b.classList.add("down"); send(key, "down"); navigator.vibrate?.(10); });
+  b.addEventListener("pointerdown", e => { e.preventDefault(); if (key === "run") toggleRun(); b.setPointerCapture(e.pointerId); b.classList.add("down"); send(key, "down"); navigator.vibrate?.(10); });
   const up = () => { if (b.classList.contains("down")) { b.classList.remove("down"); send(key, "up"); } };
   b.addEventListener("pointerup", up);
   b.addEventListener("pointercancel", up);
@@ -161,8 +179,9 @@ document.querySelectorAll("[data-player]").forEach(b => b.onclick = () => {
   document.querySelectorAll("[data-player]").forEach(x => { x.classList.toggle("active", x === b); x.setAttribute("aria-pressed", String(x === b)); });
 });
 
-const KEYS = { ArrowUp: "up", ArrowDown: "down", ArrowLeft: "left", ArrowRight: "right", w: "up", s: "down", a: "left", d: "right", " ": "a", Enter: "b" };
-addEventListener("keydown", e => { const k = KEYS[e.key]; if (k && !e.repeat) { e.preventDefault(); send(k, "down"); } });
+const KEYS = { ArrowUp: "up", ArrowDown: "down", ArrowLeft: "left", ArrowRight: "right", w: "up", s: "down", a: "left", d: "right", " ": "a", Enter: "b",
+  q: "strafe_left", e: "strafe_right", r: "weapon", Shift: "run" };
+addEventListener("keydown", e => { const k = KEYS[e.key]; if (k && !e.repeat) { e.preventDefault(); if (k === "run") toggleRun(); send(k, "down"); } });
 addEventListener("keyup", e => { const k = KEYS[e.key]; if (k) send(k, "up"); });
 </script>
 </body>

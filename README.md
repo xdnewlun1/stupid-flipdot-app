@@ -18,13 +18,13 @@ Close Maestro first — the Ethernet box only accepts one connection per port.
 |---|---|
 | **Draw** | pencil, line, rectangle, circle (outline/filled), flood fill, text stamp, select + copy/cut/paste/flip, undo/redo (Ctrl+Z / Ctrl+Y), save as scene, **animation mode** (frame strip: add / duplicate / delete / reorder frames, per-frame duration, onion skin, play on the board, save as a scene or open a saved one; tools, undo and copy/paste work on the current frame), **Draw me…** (Claude draws a picture or a short animation from a description; needs an Anthropic API key in Settings → AI drawing), export PNG, **export GIF** (timelapse of the last 1–30 minutes, sped up; recorded in memory) |
 | **Image & video** | images and animated GIFs (stretch / cut / fit, threshold or dither), video files (stream live or convert a clip), webcam (works on `http://localhost` or https only); **slideshows** of images/GIFs (upload files or a .zip, which is unpacked automatically; images show for 10 s by default, GIFs play through, then it moves on and loops; optional **random effects** give some items an effect such as glitch, wave or Game of Life, for a short burst or the whole item, with a chance, effect list and strength per slideshow) |
-| **Apps** | clocks (digital, analog, countdown), text (static / ticker / typewriter), weather, **calendar** (iCal links: next events with today/tomorrow labels and a countdown; all-day events, time zones, simple repeats), crypto, stocks, sports scores, any JSON URL, now playing from Music Assistant, music visualizer, Game of Life, matrix rain, plasma, bouncing balls, starfield, fireworks, ripples, metaballs, tunnel, spiral, maze, Lissajous, fire, **random effects** (cycles through them all), Snake / Tetris / Pong / Breakout / Space Invaders / Tron light cycles (vs a CPU or a second player) / Flappy / Blackjack (dealt from deckofcardsapi.com), disc exerciser, **Guest wall** (a QR code to `/guest`, where guests leave a name and message from their phone, alternating with the approved messages as scrolling text; moderate in Settings → Guest wall, or approve automatically), **Wi-Fi QR code** (guests scan it to join; very long names/passwords switch to a full-height inverted code) |
+| **Apps** | clocks (digital, analog, countdown), text (static / ticker / typewriter), weather, **calendar** (iCal links: next events with today/tomorrow labels and a countdown; all-day events, time zones, simple repeats), crypto, stocks, sports scores, any JSON URL, now playing from Music Assistant, music visualizer, Game of Life, matrix rain, plasma, bouncing balls, starfield, fireworks, ripples, metaballs, tunnel, spiral, maze, Lissajous, fire, **random effects** (cycles through them all), Snake / Tetris / Pong / Breakout / Space Invaders / Tron light cycles (vs a CPU or a second player) / Flappy / **Platformer** (run, jump, stomp walkers, reach the flag) / Blackjack (dealt from deckofcardsapi.com), **Doom** (the real game; see below), disc exerciser, **Guest wall** (a QR code to `/guest`, where guests leave a name and message from their phone, alternating with the approved messages as scrolling text; moderate in Settings → Guest wall, or approve automatically), **Wi-Fi QR code** (guests scan it to join; very long names/passwords switch to a full-height inverted code) |
 | **Layers** | stack apps with blend modes (normal, add, halo, invert/XOR, mask, cut), drawing layers you can keep editing live, position/size, scrolling, density, speed; live editing; saved compositions (usable in playlists); transition gallery |
 | **Playlists & schedule** | playlists of apps with durations and transitions (dissolve, wipe, slide); time-of-day/day-of-week rules choosing a playlist or "off"; **automations**: when music starts/stops (Music Assistant), the weather turns rainy/snowy/clear, an event arrives, or the board has been idle N minutes → run an app or composition, play a playlist, show a notification, resume the schedule or go all black |
 | **Scenes** | saved drawings, images and animations |
 | **Settings** | weather location, **quiet hours** (cap on dots flipped per second + slower transitions during a time window), **board health** (flips per disc as a heatmap, exercise rarely flipped discs now or daily), **board setup** (step through panels to check the mapping, edit column/row/ip/port/address/rotate, save to `config.yaml` without a restart), fonts (upload your own), Music Assistant, MQTT (with optional Home Assistant discovery), **storage** (backup / restore of `storage.db`), webhook examples |
 
-`/play` is a phone game controller (D-pad + A/B, player 1 or 2).
+`/play` is a phone game controller (D-pad + A/B, player 1 or 2; extra buttons while Doom runs). USB gamepads work too; see below.
 
 Drawing or running an app pauses the schedule; **Resume schedule** goes back to it.
 
@@ -159,6 +159,58 @@ python3 -m venv .venv-test && .venv-test/bin/pip install "aiosendspin[server]==9
 When Music Assistant moves to a new aiosendspin, update `requirements-sendspin.txt` and
 `sendspin_link.MA_AIOSENDSPIN`, then run this test with the new version.
 
+## Doom (optional)
+
+The *Doom* app (Apps → Games) runs the real Doom engine and shrinks each frame to 84×42: the 3D view
+on top (status bar cut off, ordered dithering by default) and health, armor and ammo in a strip at the
+bottom. Set it up on the Pi once:
+
+```sh
+sudo apt install build-essential git curl unzip
+./scripts/setup-doom.sh                               # build the engine + download Freedoom
+./scripts/setup-doom.sh --shareware /path/to/DOOM1.WAD  # optional: the DOOM shareware episode
+```
+
+The script fetches [doomgeneric](https://github.com/ozkl/doomgeneric) at a pinned commit into
+`native/doom/build/` and builds it with our platform file `native/doom/doomgeneric_flipdot.c` (it
+writes small gray frames + player stats to stdout and reads key events from stdin). It downloads
+[Freedoom: Phase 1](https://freedoom.github.io/) into `data/doom/`, so it's kept in `storage.db`;
+pick the shareware WAD in the app's settings if you installed it. Neither the engine source nor
+any WAD is in this repo.
+
+Controls on `/play`: up/down walk, left/right turn, **A** fires, **B** opens doors and respawns
+after dying; *Strafe left/right*, *Next weapon* and *Run* (toggle) appear while Doom runs.
+Keyboard on the main page: arrows/WASD, Space fire, Enter use, Q/E strafe, R next weapon, Shift run.
+It starts straight in E1M1 (level and skill are settings); there's no menu and no sound.
+
+Settings: updates per second (default 10), dithering (ordered / threshold / error diffusion),
+contrast stretch, gamma, brightness, and what to do in quiet hours (default: refuse to run;
+or run at 3 updates per second). One Doom runs at a time; stopping the app ends the process.
+
+Be aware: at 10 updates per second Doom flips a few hundred dots per frame. That's loud and wears
+the discs far faster than clocks or text. It's a fun demo, not something to leave running.
+At 84×42 you can make out walls, doorways, light and dark areas and big sprites up close; small
+enemies at a distance are a few dots.
+
+Licences: doomgeneric is GPL-2.0 (built locally from its source, not distributed here);
+Freedoom is under a BSD-style licence (`data/doom/FREEDOOM-COPYING.txt`); the DOOM shareware WAD
+is id Software's and only installed if you provide it.
+
+## Gamepads and the GameCube adapter
+
+Plug USB gamepads or a Mayflash GameCube adapter (PC mode, the switch on the side) into the Pi. Each
+adapter port is a player (port 1 = player 1). Stick or D-pad steer, A and B are the game buttons; in Doom,
+L/R strafe, X switches weapon, Y toggles run, Z opens doors and Start pauses. The server reads
+`/dev/input` directly, so its user must be in the `input` group:
+
+```sh
+sudo usermod -aG input $USER   # then log out and back in, or restart the service
+```
+
+Settings → Controllers turns gamepads on or off, sets the stick dead zone, lists the connected
+controllers with their player numbers, shows the last inputs live, and remaps buttons (code name →
+game key). `GET /api/gamepad` returns the same status.
+
 ## Run at boot (systemd user service)
 
 ```sh
@@ -181,3 +233,4 @@ journalctl --user -u flipdot -f       # logs
 - `rules.py` – automations; `qr.py` – QR code encoder (byte mode, ECC L/M/Q/H, versions 1–40)
 - `store.py` – JSON files in `data/`; `storage.py` – the `storage.db` they're kept in; `mqtt.py` – tiny MQTT client + Home Assistant discovery; `ws.py` – WebSocket push; `server.py` – HTTP
 - `static/` – web UI
+- `native/doom/` – Doom platform file + Makefile (`scripts/setup-doom.sh` fetches and builds the engine); `apps/doom.py` – the Doom app
