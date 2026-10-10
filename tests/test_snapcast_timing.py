@@ -112,5 +112,43 @@ class SmoothingTest(unittest.TestCase):
         self.assertAlmostEqual(link.spectrum[0], 0.65)
 
 
+class SyncTestAppTest(unittest.TestCase):
+    def test_every_click_flips_the_whole_board(self):
+        import apps
+        import audio_signal
+        from canvas import Canvas
+        from runner import Context
+        clicks = [1.0, 2.013, 3.026]
+        audio_signal.inject(lambda now: {"live": True, "loudness": 0.0, "spectrum": [0.0] * 16,
+                                         "raw_peak": 0.9 if any(0 <= now - c < 0.02 for c in clicks) else 0.0})
+        try:
+            store = type("S", (), {"settings": {}, "dir": tempfile.mkdtemp()})()
+            app = apps.create(Context(84, 42, store), {"app": "sync_test"})
+            seen = []
+            for i in range(200):  # 4 s at one draw per 20 ms
+                c = Canvas(84, 42)
+                app.render(c, i * 0.02)
+                seen.append(c.px.count(1))
+            self.assertEqual(app.clicks, 3)
+            self.assertEqual(set(seen), {0, 84 * 42})  # always the whole board, one way or the other
+            flips = [i * 0.02 for i in range(1, 200) if seen[i] != seen[i - 1]]
+            for got, want in zip(flips, clicks):
+                self.assertAlmostEqual(got, want, delta=0.021)
+        finally:
+            audio_signal.inject(None)
+
+    def test_click_track(self):
+        import io
+        import wave
+        from apps import synctest
+        w = wave.open(io.BytesIO(synctest.click_wav(period=1.013, seconds=10)))
+        s = array.array("h", w.readframes(w.getnframes()))
+        rate = w.getframerate()
+        starts = [i for i in range(1, len(s)) if s[i] and not any(s[max(0, i - 100):i])]
+        self.assertEqual(len(starts), 9)  # at 1, 2.013, ... 9.104 s
+        for k, i in enumerate(starts):
+            self.assertAlmostEqual(i / rate, 1 + k * 1.013, delta=0.001)
+
+
 if __name__ == "__main__":
     unittest.main()

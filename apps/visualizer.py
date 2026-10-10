@@ -915,11 +915,7 @@ class Visualizer(App):
         the picture is always the same time behind the speakers (a free-running timer would add up to a whole
         frame of wobble). Otherwise the display frame rate."""
         if self.source_name == "snapcast":
-            step = 1 / LIVE_FPS
-            due = audio_signal.next_frame_due(self.ctx.store, now + step * 0.75)
-            if due is not None:
-                return max(0.005, due - now)
-            return step
+            return audio_signal.steady_interval(self.ctx.store, now, LIVE_FPS) or 1 / LIVE_FPS
         return 1 / self.fps
 
     def _mix_step(self, r, now):

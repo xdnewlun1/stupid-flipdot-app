@@ -1537,6 +1537,15 @@ def get_timelapse_gif(req):
     return Raw(gif, "image/gif", {"Content-Disposition": 'attachment; filename="flipdot-timelapse.gif"'})
 
 
+@route("GET", r"/api/sync/click\.wav")
+def get_click_track(req):
+    """?period=1.013&seconds=120 — the click track for the Sync test app (play it to the board's Snapcast group)."""
+    from apps import synctest
+    q = lambda k, d: float(req.query.get(k, [d])[0])
+    wav = synctest.click_wav(q("period", synctest.CLICK_PERIOD), q("seconds", 120))
+    return Raw(wav, "audio/wav", {"Content-Disposition": 'attachment; filename="flipdot-click-track.wav"'})
+
+
 @route("GET", "/api/storage")
 def get_storage(req):
     return persist.info()

@@ -314,6 +314,15 @@ the same order). So every beat reaches the discs the same time behind the speake
 Music Assistant) to match. Set the delay so the board keeps up on the Pi, then tune the speakers' latency
 by ear; for the tightest timing turn on `sync_refresh: true` in `config.yaml`.
 
+**Measuring the exact delay: the Sync test app** (Apps → Utilities). Download the click track from
+`/api/sync/click.wav` (a 10 ms 2 kHz click every 1.013 s for 2 minutes; `?period=` and `?seconds=` change it),
+play it in Music Assistant to a group with the board and a speaker, and run Sync test: every click flips
+every disc. Film the speaker and the board together in slow motion and count the frames from a click to
+the flip (in the middle of a panel: panels flip left to right). That's everything, panels included; delay
+the other speakers by it. Clicks land at different points between the board's 25 pictures a second, so
+average a few. It reads each click from the raw loudness and drives the board exactly like the visualizer
+(same delay, draw timing and steady timing); the visualizer's bars also take about 25 ms to rise.
+
 Compared with Sendspin:
 
 - No Python 3.12 venv or version matching: Debian bookworm's snapclient 0.26 works, as do newer ones.

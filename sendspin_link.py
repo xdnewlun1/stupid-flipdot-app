@@ -105,6 +105,7 @@ class SendspinLink:
         self.delay_us = 0  # frames come due this long after their audio plays (a fixed delay for the board)
         self.frame_dt = None  # seconds between frames if not REF_DT: the smoothing below is scaled to it
         self._bass_hist = collections.deque(maxlen=8)
+        self.raw_loudness = 0.0  # the latest frame's loudness, unsmoothed (0..1)
         self.metadata = {}
         self.playing = None
         # current signal, updated as frames come due
@@ -315,15 +316,20 @@ class SendspinLink:
         """Advance through frames that are due now; return the current music signal."""
         client = getattr(self, "_clock", None)
         now = time.time()
+        peak = None  # the loudest frame (unsmoothed) that came due in this call: a click is never smoothed away
         if client is not None:
             now_us = client.now_us() - self.delay_us
             with self.lock:
                 while self._frames and self._frames[0][0] <= now_us:
                     _, f = self._frames.popleft()
                     self._apply(f, now)
+                    if f.loudness is not None:
+                        self.raw_loudness = f.loudness / UNIT
+                        peak = max(peak or 0.0, self.raw_loudness)
         fresh = now - self.updated < 1.0
         return {
             "live": fresh, "loudness": self.loudness if fresh else 0.0,
+            "raw_peak": (self.raw_loudness if peak is None else peak) if fresh else 0.0,
             "spectrum": list(self.spectrum) if fresh else [0.0] * BINS,
             "beat_age": now - self.beat_at, "downbeat": self.downbeat, "peak": self.peak,
             "playing": self.playing, "metadata": self.metadata,
