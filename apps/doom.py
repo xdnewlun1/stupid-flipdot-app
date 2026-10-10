@@ -133,7 +133,10 @@ class Doom(App):
             self.proc = subprocess.Popen(args, cwd=str(BINARY.parent), stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                          stderr=subprocess.PIPE, bufsize=0)
         except OSError as e:
-            self.error = f"Couldn't start Doom: {e}"
+            if e.errno == 8:  # ENOEXEC: built on another machine (e.g. copied from an x86 PC)
+                self.error = f"The Doom build is for a different CPU. Run {SETUP_HINT.split()[-1]} again on this machine."
+            else:
+                self.error = f"Couldn't start Doom: {e}"
             return
         self.started_once = True
         self.running = False

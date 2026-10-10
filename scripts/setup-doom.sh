@@ -55,7 +55,15 @@ fi
 echo "doomgeneric at $(git -C "$SRC" rev-parse --short HEAD)"
 
 say "3/5  Building native/doom/build/doomgeneric_flipdot"
+# A build copied over from another machine (e.g. an x86 PC to the Pi) looks up to date to make but
+# can't run here, so rebuild from scratch whenever it was made for a different CPU.
+arch="$(uname -m)"
+if [ -f "$BUILD/doomgeneric_flipdot" ] && [ "$(cat "$BUILD/.arch" 2>/dev/null)" != "$arch" ]; then
+  echo "existing build isn't for $arch, rebuilding"
+  make -C native/doom --no-print-directory clean >/dev/null
+fi
 make -C native/doom -j"$(nproc)" --no-print-directory >"$BUILD/make.log" 2>&1 || { tail -30 "$BUILD/make.log"; exit 1; }
+echo "$arch" > "$BUILD/.arch"
 echo "built: $(ls -l "$BUILD/doomgeneric_flipdot" | awk '{print $5}') bytes"
 
 say "4/5  Game data in $DATA/doom"
