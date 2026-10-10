@@ -1,5 +1,5 @@
-// Automations (Playlists tab): "when <trigger>, do <action>" rules, saved on the server in rules.json.
-import { $, api, catalog, compCache, el, iconButton, paramForm, safe, scenesCache, toast } from "./common.js";
+// Automations page: "when <trigger>, do <action>" rules, saved on the server in rules.json.
+import { $, api, appOptions, autosave, catalog, compCache, el, flushUndo, iconButton, paramForm, safe, scenesCache, toast, undoable } from "./common.js";
 import { playlistNames } from "./playlists.js";
 
 let rules = [], info = {}, editing = null, draft = null;
@@ -12,10 +12,10 @@ const TRIGGERS = [
   ["idle", "The board is idle"],
 ];
 const ACTIONS = [
-  ["app", "Run an app"],
-  ["composition", "Run a layer composition"],
+  ["app", "Show an app"],
+  ["composition", "Show a layer set"],
   ["playlist", "Play a playlist"],
-  ["notify", "Show a notification"],
+  ["notify", "Show something for a few seconds"],
   ["schedule", "Resume the schedule"],
   ["black", "Turn all black"],
 ];
@@ -35,11 +35,11 @@ function triggerText(t) {
 }
 
 function actionText(a) {
-  if (a.type === "app") return `run ${catalog.byId[a.app]?.title || a.app}`;
-  if (a.type === "composition") return `run composition "${a.composition}"`;
+  if (a.type === "app") return `show ${catalog.byId[a.app]?.title || a.app}`;
+  if (a.type === "composition") return `show the layer set "${a.composition}"`;
   if (a.type === "playlist") return `play "${a.playlist}"`;
   if (a.type === "notify") {
-    const what = a.text ? `"${a.text}"` : a.scene ? `scene ${scenesCache.list.find(s => s.id === a.scene)?.name || a.scene}` : "image";
+    const what = a.text ? `"${a.text}"` : a.scene ? `picture ${scenesCache.list.find(s => s.id === a.scene)?.name || a.scene}` : "image";
     return `show ${what} for ${a.duration || 10} s`;
   }
   return a.type === "schedule" ? "resume the schedule" : "turn all black";
@@ -53,11 +53,14 @@ function ago(t) {
   return new Date(t * 1000).toLocaleDateString();
 }
 
-async function save(list = rules) {
-  info = await api("/api/rules", { rules: list });
+// keepEditor: the editor is saving what you type, so it isn't redrawn under you
+async function save(list = rules, { keepEditor = false } = {}) {
+  info = await autosave("autoSaved", () => api("/api/rules", { rules: list }));
   rules = info.rules;
-  render();
+  keepEditorOpen = keepEditor;
+  try { render(); } finally { keepEditorOpen = false; }
 }
+let keepEditorOpen = false;
 
 function render() {
   const music = info.music == null ? "not checked (no music rule, or Music Assistant isn't set up)" : info.music ? "playing" : "not playing";
@@ -73,11 +76,14 @@ function render() {
       el("div", { class: "name" }, r.name || `${triggerText(r.trigger)} → ${actionText(r.action)}`,
         el("small", {}, (r.name ? `${triggerText(r.trigger)} → ${actionText(r.action)}` : "") + (r.name && detail ? " · " : "") + detail)),
       el("div", { class: "group" },
-        iconButton("play", "Run the action now", safe(async () => { await api(`/api/rules/${r.id}/run`, {}); await loadAutomations(); })),
+        iconButton("play", "Try it now", safe(async () => { await api(`/api/rules/${r.id}/run`, {}); await loadAutomations(); })),
         iconButton("edit", editing === i ? "Close editor" : "Edit", () => openEditor(editing === i ? null : i)),
         iconButton("x", "Delete", safe(async () => {
-          if (!confirm("Delete this automation?")) return;
-          rules.splice(i, 1); editing = null; await save();
+          flushUndo();
+          const [gone] = rules.splice(i, 1);
+          editing = null; draft = null;
+          await save();
+          undoable(`Deleted ${r.name || "the automation"}`, { undo: async () => { rules.splice(i, 0, gone); await save(); } });
         }), "danger")));
   })));
   renderEditor();
@@ -94,11 +100,12 @@ const newRule = () => ({ name: "", enabled: true, cooldown: 60, trigger: { type:
 
 const select = (opts, value, onchange) => {
   const s = el("select", {}, opts.map(([v, label]) => el("option", { value: v, selected: v === value }, label)));
-  s.onchange = () => onchange(s.value);
+  s.onchange = () => { pendingSave = true; onchange(s.value); };
   return s;
 };
 
 function renderEditor() {
+  if (keepEditorOpen) return;
   const box = $("autoEditor");
   if (editing === null || !draft) return box.replaceChildren();
   const t = draft.trigger, a = draft.action;
@@ -132,22 +139,24 @@ function renderEditor() {
 
   row("Do", select(ACTIONS, a.type, v => { draft.action = { type: v, ...(v === "notify" ? { text: "", duration: 10 } : {}) }; rerender(); }));
   if (a.type === "app") {
-    a.app ||= catalog.apps[0]?.id;
-    row("App", select(catalog.apps.map(x => [x.id, `${x.category}: ${x.title}`]), a.app, v => { a.app = v; a.params = {}; rerender(); }));
+    a.app ||= "clock";
+    const pick = el("select", {}, appOptions(a.app));
+    pick.onchange = () => { pendingSave = true; a.app = pick.value; a.params = {}; rerender(); };
+    row("App", pick);
   } else if (a.type === "composition") {
     a.composition ??= compCache.names[0] || "";
-    row("Composition", select(compCache.names.map(n => [n, n]), a.composition, v => { a.composition = v; }));
+    row("Layer set", select(compCache.names.map(n => [n, n]), a.composition, v => { a.composition = v; }));
   } else if (a.type === "playlist") {
     a.playlist ??= playlistNames()[0] || "";
     row("Playlist", select(playlistNames().map(n => [n, n]), a.playlist, v => { a.playlist = v; }));
   } else if (a.type === "notify") {
     const kind = a.scene != null ? "scene" : a.url != null ? "url" : "text";
-    row("Show", select([["text", "Text"], ["scene", "Saved scene"], ["url", "Image from a URL"]], kind, v => {
+    row("Show", select([["text", "Text"], ["scene", "Saved picture"], ["url", "Image from a URL"]], kind, v => {
       delete a.text; delete a.scene; delete a.url;
       a[v] = v === "scene" ? (scenesCache.list[0]?.id || "") : "";
       rerender();
     }));
-    if (kind === "scene") row("Scene", select(scenesCache.list.map(s => [s.id, s.name]), a.scene, v => { a.scene = v; }));
+    if (kind === "scene") row("Picture", select(scenesCache.list.map(s => [s.id, s.name]), a.scene, v => { a.scene = v; }));
     else {
       const input = el("input", { type: "text", value: a[kind] || "", placeholder: kind === "url" ? "https://…/picture.png" : "Message" });
       input.oninput = () => { a[kind] = input.value; };
@@ -162,20 +171,43 @@ function renderEditor() {
   row("Wait between runs (s)", cool);
 
   if (a.type === "app" && catalog.byId[a.app]) appForm = paramForm(catalog.byId[a.app], a.params || {});
-  box.replaceChildren(
-    el("h3", {}, editing < rules.length ? "Edit automation" : "New automation"), form,
+  const note = el("span", { class: "muted", role: "status" });
+  const wrap = el("div", {},
+    el("h3", {}, "Edit automation"), form,
     appForm ? el("div", {}, el("h3", {}, `${catalog.byId[a.app].title} settings`), appForm.el) : "",
     el("div", { class: "row" },
-      el("button", { class: "primary", onclick: safe(async () => {
-        if (appForm) a.params = appForm.values();
-        const next = rules.slice();
-        next[editing] = draft;
-        await save(next);  // on an error the editor stays open with the draft
-        editing = null; draft = null; render();
-        toast("Saved");
-      }) }, "Save automation"),
-      el("button", { onclick: () => openEditor(null) }, "Cancel")));
+      el("button", { onclick: () => openEditor(null) }, "Done"),
+      note));
+  box.replaceChildren(wrap);
+  // every change saves itself; one the server refuses (say, an event with no name) is explained here
+  let timer = null;
+  const index = editing;
+  const changed = () => {
+    clearTimeout(timer);
+    timer = setTimeout(async () => {
+      if (editing !== index || !draft) return;
+      if (appForm) a.params = appForm.values();
+      const next = rules.slice();
+      next[index] = JSON.parse(JSON.stringify(draft));
+      try {
+        await save(next, { keepEditor: true });
+        draft.id = rules[index]?.id;
+        note.textContent = "";
+      } catch (e) {
+        note.textContent = `Not saved yet: ${e.message.replace(/^rule \d+: /, "")}`;
+      }
+    }, 400);
+  };
+  wrap.addEventListener("input", changed);
+  wrap.addEventListener("change", changed);
+  if (pendingSave) { pendingSave = false; changed(); }  // a select that redrew the editor
 }
+let pendingSave = false;
 
-$("autoAdd").onclick = () => { editing = rules.length; draft = newRule(); render(); };
+$("autoAdd").onclick = safe(async () => {
+  flushUndo();
+  await save([...rules, newRule()]);
+  openEditor(rules.length - 1);
+  $("autoEditor").scrollIntoView({ block: "nearest" });
+});
 $("autoRefresh").onclick = safe(loadAutomations);

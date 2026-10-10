@@ -138,12 +138,14 @@ class Slideshow(App):
     id = "slideshow"
     title = "Slideshow"
     category = "Media"
-    description = "Cycles through your uploaded images and GIFs (set them up in the Image & video tab)."
+    description = "Cycles through your uploaded images and GIFs (set them up on the Slideshows page)."
     params = [P("gallery", "gallery", "", "Slideshow"), P("start", "hidden", None)]
     interval = 0.05
+    pausable = True
 
     def __init__(self, ctx, **params):
         super().__init__(ctx, **params)
+        self.cut = False  # the next jump skips the transition (stepping through while paused)
         self.gid = self.p["gallery"]
         ctx.store.gallery(self.gid)  # raises if it doesn't exist
         self.order = []
@@ -163,9 +165,27 @@ class Slideshow(App):
     def _path(self, item):
         return self.ctx.store.gallery_dir(self.gid) / item["file"]
 
-    def jump(self, file):
-        """Play this item now (with the usual transition), then carry on from there."""
+    def jump(self, file, cut=False):
+        """Play this item now (with the usual transition, unless cut), then carry on from there."""
         self.jump_to = file
+        self.cut = cut
+
+    def skip(self, delta, cut=False):
+        """Next (+1) or previous (-1) item in play order."""
+        try:
+            items = self.ctx.store.gallery(self.gid)["items"]
+        except KeyError:
+            return
+        if not items:
+            return
+        order = self.order if len(self.order) == len(items) else list(range(len(items)))
+        k = (max(self.pos, 0) + delta) % len(order)
+        self.jump(items[order[k]]["file"], cut)
+
+    def reload(self):
+        """Conversion settings changed: show the current item again with them (no transition)."""
+        if self.cur is not None:
+            self.jump(self.cur.item["file"], cut=True)
 
     def _peek_next(self, items, settings):
         """(position, item) that plays next; reshuffles/rebuilds the order at the end of each pass."""
@@ -224,7 +244,8 @@ class Slideshow(App):
                 if not frames:
                     continue  # couldn't be converted; skip it
                 incoming = Player(nxt, frames, now)
-                if self.cur is not None and tdur > 0:
+                cut, self.cut = self.cut, False
+                if self.cur is not None and tdur > 0 and not cut:
                     self.prev = self.cur
                     self.prev_start_index = self.prev.index(now)
                     self.trans = Transition(settings["transition"], self.prev.frame(now), c.w, c.h, tdur)

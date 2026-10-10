@@ -36,6 +36,32 @@
   .extra button { min-height: 48px; padding: 0 var(--s2); touch-action: none; background: var(--surface-2); border-color: var(--line-strong); }
   .extra button:active, .extra button.down, .extra button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
   .ab small { font: 500 var(--fs-xs)/1 var(--font); color: inherit; opacity: 0.8; min-height: 12px; }
+  .pick .group button { min-height: 44px; }
+  .head a { display: inline-flex; align-items: center; min-height: 44px; padding: 0 var(--s2); }
+  #padHint { margin: 0; text-align: center; color: var(--text-2); font-size: var(--fs-xs); }
+  .screen { display: flex; flex-direction: column; gap: var(--s2); min-width: 0; }
+  /* phone held sideways: D-pad left, board in the middle, A/B right, all on one screen */
+  @media (orientation: landscape) and (max-height: 500px) {
+    body { max-width: none; height: 100dvh; padding: max(var(--s2), env(safe-area-inset-top)) max(var(--s4), env(safe-area-inset-right))
+           max(var(--s2), env(safe-area-inset-bottom)) max(var(--s4), env(safe-area-inset-left));
+           display: grid; grid-template-columns: auto minmax(0, 1fr) auto; grid-template-rows: auto minmax(0, 1fr) auto; gap: var(--s2) var(--s4); }
+    .head { display: contents; }
+    .head h1 { display: none; }
+    .head a { grid-column: 3; grid-row: 1; justify-self: end; min-height: 40px; }
+    .pick { grid-column: 2; grid-row: 1; flex-wrap: nowrap; }
+    .pick .group button { min-height: 40px; }
+    .pad { display: contents; }
+    .dpad { grid-column: 1; grid-row: 1 / 4; align-self: center; grid-template-columns: repeat(3, 64px); grid-template-rows: repeat(3, 64px); }
+    .ab { grid-column: 3; grid-row: 2 / 4; align-self: center; flex-direction: row-reverse; align-items: flex-end; gap: var(--s3); }
+    .ab button { width: 76px; height: 76px; }
+    .ab button[data-key=b] { margin-bottom: 40px; }
+    .screen { grid-column: 2; grid-row: 2; min-height: 0; justify-content: center; }
+    .screen .wrap { min-height: 0; flex: 0 1 auto; padding: 4px; }
+    .screen canvas { width: auto; max-width: 100%; max-height: calc(100dvh - 150px); margin: 0 auto; }
+    .extras { grid-column: 2; grid-row: 3; }
+    .extra { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    .extra button { min-height: 40px; }
+  }
   @media (max-width: 360px) { .dpad { grid-template-columns: repeat(3, 60px); grid-template-rows: repeat(3, 60px); } .ab button { width: 72px; height: 72px; } }
 </style>
 </head>
@@ -59,8 +85,11 @@
       <button data-player="2" aria-pressed="false">Player 2</button>
     </div>
   </div>
+  <div class="screen">
   <div class="wrap"><canvas id="board" aria-label="The board"></canvas></div>
   <p id="status" role="status" aria-live="polite">Connecting…</p>
+  <p id="padHint" hidden>Game menu: hold Start on a controller to switch games.</p>
+  </div>
   <div class="pad">
     <div class="dpad">
       <span></span><button data-key="up" aria-label="Up"><svg class="i" aria-hidden="true"><use href="#i-up"/></svg></button><span></span>
@@ -72,6 +101,7 @@
       <button data-key="b">B<small id="hintB"></small></button>
     </div>
   </div>
+  <div class="extras">
   <div class="extra" id="gameKeys" role="group" aria-label="More buttons" hidden>
     <button data-key="start">Start</button>
     <button data-key="x">X</button>
@@ -84,7 +114,9 @@
     <button data-key="weapon">Next weapon</button>
     <button data-key="run" id="runKey" aria-pressed="false">Run</button>
   </div>
-<script>
+  </div>
+<script type="module">
+import { GAME_GROUPS as GAMES } from "/static/js/games.js";
 const canvas = document.getElementById("board"), ctx = canvas.getContext("2d");
 let player = 1, runner = null;
 const runKey = document.getElementById("runKey");
@@ -101,20 +133,7 @@ function drawBits(W, H, isOn) {
   for (let y = 0, i = 0; y < H; y++) for (let x = 0; x < W; x++, i++) if (isOn(x, y, i)) ctx.fillRect(x * cell + 1, y * cell + 1, cell - 2, cell - 2);
 }
 
-// the picker: [id, name], grouped
-const GAMES = {
-  "Classics": [["snake", "Snake"], ["tetris", "Tetris"], ["pong", "Pong"], ["breakout", "Breakout"], ["invaders", "Space Invaders"],
-    ["tron", "Tron"], ["flappy", "Flappy"], ["platformer", "Platformer"], ["blackjack", "Blackjack"], ["doom", "Doom"]],
-  "Arcade": [["asteroids", "Asteroids"], ["galaxian", "Galaxian"], ["missile_command", "Missile Command"], ["centipede", "Centipede"],
-    ["lunar_lander", "Lunar Lander"]],
-  "Maze & action": [["pacman", "Pac-Man"], ["frogger", "Frogger"], ["qix", "Qix"], ["bomberman", "Bomberman"], ["tanks", "Tank Combat"]],
-  "Runners & racing": [["dino", "Dino Run"], ["racer", "Road Racer"], ["copter", "Cave Copter"], ["stacker", "Stacker"],
-    ["skyjump", "Sky Jump"], ["pitfall", "Pitfall Run"]],
-  "Two players": [["connect4", "Connect Four"], ["tictactoe", "Tic-tac-toe"], ["artillery", "Artillery"], ["checkers", "Checkers"],
-    ["battleship", "Battleship"], ["quickdraw", "Quick Draw"], ["air_hockey", "Air Hockey"]],
-  "Puzzles": [["game2048", "2048"], ["minesweeper", "Minesweeper"], ["sokoban", "Sokoban"], ["lights_out", "Lights Out"],
-    ["simon", "Simon"], ["columns", "Columns"], ["mastermind", "Mastermind"]],
-};
+// the picker: [id, name], grouped as on the Apps page
 const gamePick = document.getElementById("gamePick");
 for (const [group, games] of Object.entries(GAMES)) {
   const og = document.createElement("optgroup");
@@ -193,6 +212,11 @@ document.querySelectorAll("[data-key]").forEach(b => {
   b.addEventListener("pointercancel", up);
   b.addEventListener("contextmenu", e => e.preventDefault());
 });
+// gamepads plugged into the server can open the game menu on the board, unless that's turned off
+fetch("/api/settings").then(r => r.json()).then(s => {
+  document.getElementById("padHint").hidden = s.gamepad?.enabled === false || s.gamepad?.menu_button === "off";
+}).catch(() => {});
+
 gamePick.onchange = async () => {
   const id = gamePick.value;
   if (!id) return;

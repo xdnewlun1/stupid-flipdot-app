@@ -1,0 +1,178 @@
+--- a/agnes.c
++++ b/agnes.c
+@@ -107,6 +107,8 @@
+     uint8_t palette[32];
+ 
+     uint8_t screen_buffer[AGNES_SCREEN_HEIGHT * AGNES_SCREEN_WIDTH];
++    uint8_t layer_buffer[AGNES_SCREEN_HEIGHT * AGNES_SCREEN_WIDTH];
++    uint16_t scroll_mid; /* v and fine x at the start of line 120: changes when the game scrolls */
+ 
+     int scanline;
+     int dot;
+@@ -220,6 +222,20 @@
+     uint8_t chr_ram[8 * 1024];
+ } mapper4_t;
+ 
++typedef struct mapper3 {
++    struct agnes *agnes;
++
++    unsigned prg_bank_offsets[2];
++    unsigned chr_bank_offset;
++} mapper3_t;
++
++typedef struct mapper7 {
++    struct agnes *agnes;
++
++    unsigned prg_bank_offset;
++    uint8_t chr_ram[8 * 1024];
++} mapper7_t;
++
+ /********************************* GAMEPACK **********************************/
+ 
+ typedef struct {
+@@ -253,6 +269,8 @@
+         mapper1_t m1;
+         mapper2_t m2;
+         mapper4_t m4;
++        mapper3_t m3;
++        mapper7_t m7;
+     } mapper;
+ 
+     mirroring_mode_t mirroring_mode;
+@@ -583,6 +601,8 @@
+         case 1: out_res->agnes.mapper.m1.agnes = NULL; break;
+         case 2: out_res->agnes.mapper.m2.agnes = NULL; break;
+         case 4: out_res->agnes.mapper.m4.agnes = NULL; break;
++        case 3: out_res->agnes.mapper.m3.agnes = NULL; break;
++        case 7: out_res->agnes.mapper.m7.agnes = NULL; break;
+     }
+ }
+ 
+@@ -597,6 +617,8 @@
+         case 1: agnes->mapper.m1.agnes = agnes; break;
+         case 2: agnes->mapper.m2.agnes = agnes; break;
+         case 4: agnes->mapper.m4.agnes = agnes; break;
++        case 3: agnes->mapper.m3.agnes = agnes; break;
++        case 7: agnes->mapper.m7.agnes = agnes; break;
+     }
+     return true;
+ }
+@@ -1172,6 +1194,7 @@
+ 
+     if (x < 8 && !ppu->masks.show_leftmost_bg && !ppu->masks.show_leftmost_sprites) {
+         set_pixel_color_ix(ppu, x, y, 63); // 63 is black in my default colour palette
++        ppu->layer_buffer[y * AGNES_SCREEN_WIDTH + x] = 0;
+         return;
+     }
+ 
+@@ -1195,6 +1218,13 @@
+ 
+     uint8_t output_color_ix = ppu_read8(ppu, color_addr);
+     set_pixel_color_ix(ppu, x, y, output_color_ix);
++    {
++        uint8_t l = color_addr & 0x1f;
++        if (bg_color_addr) l |= 0x20;
++        if (sp_color_addr) l |= (bg_color_addr && behind_bg) ? 0x40 : 0x80;
++        ppu->layer_buffer[y * AGNES_SCREEN_WIDTH + x] = l;
++        if (x == 0 && y == 120) ppu->scroll_mid = (uint16_t)((ppu->regs.v & 0x7bff) ^ (ppu->regs.x << 12));
++    }
+ }
+ 
+ static uint16_t get_bg_color_addr(ppu_t *ppu) {
+@@ -2182,12 +2212,67 @@
+ #include "mapper4.h"
+ #endif
+ 
++/* mapper 3 (CNROM): fixed PRG like NROM, 8 KB CHR ROM bank chosen by any write to $8000-$FFFF */
++static void mapper3_init(mapper3_t *mapper, agnes_t *agnes) {
++    mapper->agnes = agnes;
++    mapper->prg_bank_offsets[0] = 0;
++    mapper->prg_bank_offsets[1] = agnes->gamepack.prg_rom_banks_count > 1 ? (16 * 1024) : 0;
++    mapper->chr_bank_offset = 0;
++}
++
++static uint8_t mapper3_read(mapper3_t *mapper, uint16_t addr) {
++    const gamepack_t *gp = &mapper->agnes->gamepack;
++    if (addr < 0x2000) {
++        return gp->chr_rom_banks_count ? gp->data[gp->chr_rom_offset + mapper->chr_bank_offset + addr] : 0;
++    } else if (addr >= 0x8000) {
++        return gp->data[gp->prg_rom_offset + mapper->prg_bank_offsets[(addr >> 14) & 0x1] + (addr & 0x3fff)];
++    }
++    return 0;
++}
++
++static void mapper3_write(mapper3_t *mapper, uint16_t addr, uint8_t val) {
++    int banks = mapper->agnes->gamepack.chr_rom_banks_count;
++    if (addr >= 0x8000 && banks > 0) {
++        mapper->chr_bank_offset = (val % banks) * (8 * 1024);
++    }
++}
++
++/* mapper 7 (AxROM): 32 KB PRG bank and single-screen nametable chosen by writes to $8000-$FFFF, CHR RAM */
++static void mapper7_init(mapper7_t *mapper, agnes_t *agnes) {
++    mapper->agnes = agnes;
++    mapper->prg_bank_offset = 0;
++    agnes->mirroring_mode = MIRRORING_MODE_SINGLE_LOWER;
++}
++
++static uint8_t mapper7_read(mapper7_t *mapper, uint16_t addr) {
++    const gamepack_t *gp = &mapper->agnes->gamepack;
++    if (addr < 0x2000) {
++        return mapper->chr_ram[addr];
++    } else if (addr >= 0x8000) {
++        unsigned mask = gp->prg_rom_banks_count >= 2 ? 0x7fff : 0x3fff;  /* a 16 KB image is mirrored */
++        return gp->data[gp->prg_rom_offset + mapper->prg_bank_offset + (addr & mask)];
++    }
++    return 0;
++}
++
++static void mapper7_write(mapper7_t *mapper, uint16_t addr, uint8_t val) {
++    if (addr < 0x2000) {
++        mapper->chr_ram[addr] = val;
++    } else if (addr >= 0x8000) {
++        int banks = mapper->agnes->gamepack.prg_rom_banks_count / 2;
++        mapper->prg_bank_offset = (banks > 0 ? (val & 0x7) % banks : 0) * (32 * 1024);
++        mapper->agnes->mirroring_mode = (val & 0x10) ? MIRRORING_MODE_SINGLE_UPPER : MIRRORING_MODE_SINGLE_LOWER;
++    }
++}
++
+ bool mapper_init(agnes_t *agnes) {
+     switch (agnes->gamepack.mapper) {
+         case 0: mapper0_init(&agnes->mapper.m0, agnes); return true;
+         case 1: mapper1_init(&agnes->mapper.m1, agnes); return true;
+         case 2: mapper2_init(&agnes->mapper.m2, agnes); return true;
+         case 4: mapper4_init(&agnes->mapper.m4, agnes); return true;
++        case 3: mapper3_init(&agnes->mapper.m3, agnes); return true;
++        case 7: mapper7_init(&agnes->mapper.m7, agnes); return true;
+         default: return false;
+     }
+ }
+@@ -2198,6 +2283,8 @@
+         case 1: return mapper1_read(&agnes->mapper.m1, addr);
+         case 2: return mapper2_read(&agnes->mapper.m2, addr);
+         case 4: return mapper4_read(&agnes->mapper.m4, addr);
++        case 3: return mapper3_read(&agnes->mapper.m3, addr);
++        case 7: return mapper7_read(&agnes->mapper.m7, addr);
+         default: return 0;
+     }
+ }
+@@ -2208,6 +2295,8 @@
+         case 1: mapper1_write(&agnes->mapper.m1, addr, val); break;
+         case 2: mapper2_write(&agnes->mapper.m2, addr, val); break;
+         case 4: mapper4_write(&agnes->mapper.m4, addr, val); break;
++        case 3: mapper3_write(&agnes->mapper.m3, addr, val); break;
++        case 7: mapper7_write(&agnes->mapper.m7, addr, val); break;
+     }
+ }
+ 
+@@ -2581,3 +2670,10 @@
+     }
+ }
+ //FILE_END
++
++const uint8_t *agnes_fd_color(const agnes_t *a) { return a->ppu.screen_buffer; }
++const uint8_t *agnes_fd_layer(const agnes_t *a) { return a->ppu.layer_buffer; }
++const uint8_t *agnes_fd_oam(const agnes_t *a) { return a->ppu.oam_data; }
++const uint8_t *agnes_fd_palette(const agnes_t *a) { return a->ppu.palette; }
++uint16_t agnes_fd_scroll(const agnes_t *a) { return a->ppu.scroll_mid; }
++int agnes_fd_mapper(const agnes_t *a) { return a->gamepack.mapper; }

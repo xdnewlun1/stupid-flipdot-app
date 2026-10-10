@@ -9,9 +9,10 @@ SIZES = {"small": ("small", 1), "normal": ("normal", 1), "large": ("normal", 2),
 
 FONT_PARAMS = [
     P("font", "font", "normal", "Font"),
-    P("scale", "number", 2, "Scale (pixel fonts)", min=1, max=6),
-    P("font_size", "number", 14, "Size in dots (other fonts)", min=5, max=42),
+    P("scale", "number", 2, "Scale (pixel fonts)", min=1, max=6, show_if={"font": "pixel"}),
+    P("font_size", "number", 14, "Size in dots (other fonts)", min=5, max=42, show_if={"font": {"not": "pixel"}}),
 ]
+STILL = ["static", "typewriter"]  # styles that lay text out in lines (not the one-line ticker)
 
 
 def resolve_font(p, raw):
@@ -35,14 +36,15 @@ class Text(App):
         P("text", "textarea", "Hello, world!"),
         P("style", "select", "scroll", options=[["static", "Static"], ["scroll", "Scrolling ticker"], ["typewriter", "Typewriter"]]),
         *FONT_PARAMS,
-        P("fit", "checkbox", False, "Auto-size to fill the board (static/typewriter)"),
-        P("align", "select", "center", options=[["left", "Left"], ["center", "Center"], ["right", "Right"]]),
-        P("line_gap", "number", 1, "Space between lines (dots)", min=0, max=10),
-        P("speed", "number", 20, "Scroll speed (dots/sec)", min=2, max=60),
-        P("chars_per_sec", "number", 8, "Typewriter speed (chars/sec)", min=1, max=40),
-        P("repeat", "number", 0, "Repeat count (0 = forever)", min=0, max=100),
-        P("invert", "checkbox", False, "Invert"),
-        *CHAR_PARAMS,
+        P("fit", "checkbox", False, "Auto-size to fill the board", show_if={"style": STILL}),
+        P("align", "select", "center", options=[["left", "Left"], ["center", "Center"], ["right", "Right"]], show_if={"style": STILL}),
+        P("line_gap", "number", 1, "Space between lines (dots)", min=0, max=10, show_if={"style": STILL}),
+        P("speed", "number", 20, "Scroll speed (dots/sec)", min=2, max=60, show_if={"style": "scroll"}),
+        P("chars_per_sec", "number", 8, "Typewriter speed (chars/sec)", min=1, max=40, show_if={"style": "typewriter"}),
+        P("repeat", "number", 0, "Repeat count (0 = forever)", min=0, max=100, show_if={"style": ["scroll", "typewriter"]}),
+        P("invert", "checkbox", False, "Negative (swap lit and dark dots)"),
+        # character transitions animate changed letters, which only happens in static text
+        *[{**p, "show_if": {**p.get("show_if", {}), "style": "static"}} for p in CHAR_PARAMS],
     ]
     interval = 0.05
 

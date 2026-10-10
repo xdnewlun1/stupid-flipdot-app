@@ -1,28 +1,35 @@
-// Playlists & schedule tab.
-import { $, api, bus, catalog, describeItem, el, iconButton, paramForm, safe, toast } from "./common.js";
+// Playlists and Schedule pages.
+import { $, api, appOptions, ask, autosave, bus, catalog, confirmDelete, describeItem, el, flushUndo, iconButton, nameFree, paramForm, safe, toast, undoable } from "./common.js";
 
 let playlists = {}, current = null, editing = null;
+let draft = null;      // an item being added: it joins the playlist only on "Add to playlist"
+let warnings = {};     // playlist -> { item index: "needs setup" message }
 let schedule = { enabled: false, default: "", rules: [] }, OFF = "__off__";
 const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
 export const playlistNames = () => Object.keys(playlists);
 
 export async function loadPlaylists() {
-  playlists = (await api("/api/playlists")).playlists;
+  const j = await api("/api/playlists");
+  playlists = j.playlists; warnings = j.warnings || {};
   const s = await api("/api/schedule");
   schedule = s.schedule; OFF = s.off;
   if (!current || !playlists[current]) current = Object.keys(playlists)[0] || null;
   render();
 }
 
-async function savePlaylists() {
-  playlists = (await api("/api/playlists", { playlists })).playlists;
+// keepEditor: the item editor stays as it is (it's saving what you type), only the list redraws
+async function savePlaylists({ keepEditor = false } = {}) {
+  const j = await autosave("plSaved", () => api("/api/playlists", { playlists }));
+  playlists = j.playlists; warnings = j.warnings || {};
   bus.dispatchEvent(new Event("playlists"));
-  render();
+  keepEditorOpen = keepEditor;
+  try { render(); } finally { keepEditorOpen = false; }
 }
+let keepEditorOpen = false;
 
 async function saveSchedule() {
-  schedule = (await api("/api/schedule", { schedule })).schedule;
+  schedule = (await autosave("schSaved", () => api("/api/schedule", { schedule }))).schedule;
   renderSchedule();
 }
 
@@ -37,13 +44,19 @@ function render() {
   $("plTransition").replaceChildren(...catalog.transitions.map(t =>
     el("option", { value: t, selected: playlists[current]?.transition === t }, t)));
   $("plTransDur").value = playlists[current]?.transition_duration ?? 1;
-  $("plAddApp").replaceChildren(...catalog.apps.map(a => el("option", { value: a.id }, `${a.category}: ${a.title}`)));
+  if (!$("plAddApp").options.length) $("plAddApp").replaceChildren(...appOptions());
   const pl = playlists[current];
   const box = $("plItems");
-  if (!pl) { box.replaceChildren(el("p", { class: "muted" }, "No playlists yet. Press New to make one.")); renderSchedule(); return; }
-  if (!pl.items.length) box.replaceChildren(el("p", { class: "muted" }, "This playlist is empty. Add items below or from the Apps tab."));
+  for (const id of ["plRename", "plDelete", "plPlay", "plAdd"]) $(id).disabled = !pl;
+  if (!pl) {
+    box.replaceChildren(el("div", { class: "empty" }, el("p", { class: "muted" }, "No playlists yet. A playlist shows apps and pictures one after another."),
+      el("button", { class: "primary", onclick: () => $("plNew").click() }, "New playlist")));
+    renderSchedule(); return;
+  }
+  if (!pl.items.length) box.replaceChildren(el("p", { class: "muted" }, "This playlist is empty. Pick an app below and press Add item, or use Add to playlist on the Apps page."));
   else box.replaceChildren(el("div", { class: "items" }, pl.items.map((item, i) => {
     const { title, detail } = describeItem(item);
+    const warn = warnings[current]?.[i];
     const dur = el("input", { type: "number", min: 1, value: item.duration, title: "Seconds on the board", "aria-label": "Seconds on the board" });
     const trans = el("select", { title: "Transition into this item", "aria-label": "Transition into this item" },
       el("option", { value: "" }, "Playlist transition"),
@@ -57,31 +70,65 @@ function render() {
       await savePlaylists();
     });
     return el("div", { class: "item" + (editing === i ? " editing" : "") },
-      el("div", { class: "name" }, title, el("small", {}, detail)),
+      el("div", { class: "name" }, title, el("small", {}, detail),
+        warn ? el("small", { class: "warnText" }, `Needs setup: ${warn}. It's skipped until then.`) : null),
       el("label", { class: "muted" }, dur, " s"), trans,
       el("div", { class: "group" },
         iconButton("up", "Move up", move(-1)),
         iconButton("down", "Move down", move(1)),
-        iconButton("edit", editing === i ? "Close editor" : "Edit settings", () => { editing = editing === i ? null : i; render(); }),
-        iconButton("play", "Run this item now", safe(() => api("/api/run", { app: item.app, params: item.params }))),
-        iconButton("x", "Remove from playlist", safe(async () => { pl.items.splice(i, 1); editing = null; await savePlaylists(); }), "danger")));
+        iconButton("edit", editing === i ? "Close editor" : "Edit settings", () => { editing = editing === i ? null : i; draft = null; render(); }),
+        iconButton("play", "Show this item on the board now", safe(() => api("/api/run", { app: item.app, params: item.params }))),
+        iconButton("x", "Remove from playlist", safe(async () => {
+          const [gone] = pl.items.splice(i, 1);
+          editing = null;
+          await savePlaylists();
+          const name = current;  // saving swaps in fresh objects from the server, so look the playlist up again
+          undoable(`Removed ${title}`, { undo: async () => { playlists[name]?.items.splice(i, 0, gone); await savePlaylists(); } });
+        }), "danger")));
   })));
   renderEditor();
   renderSchedule();
 }
 
 function renderEditor() {
+  if (keepEditorOpen) return;
   const pl = playlists[current];
   const box = $("plEditor");
-  if (editing === null || !pl?.items[editing]) return box.replaceChildren();
-  const item = pl.items[editing];
+  const item = draft || (editing !== null && pl?.items[editing]);
+  if (!item) return box.replaceChildren();
   const app = catalog.byId[item.app];
   const form = paramForm(app, item.params);
-  box.replaceChildren(
-    el("h3", {}, `Edit: ${app.title}`), form.el,
+  if (draft) {
+    // a new item joins the playlist only when you add it
+    box.replaceChildren(el("h3", {}, `New item: ${app.title}`), form.el,
+      el("div", { class: "row" },
+        el("button", { class: "primary", onclick: safe(async () => {
+          draft.params = form.values();
+          pl.items.push(draft); draft = null;
+          await savePlaylists();
+          toast(`Added ${app.title}`);
+        }) }, "Add to playlist"),
+        el("button", { onclick: () => { draft = null; render(); } }, "Cancel")));
+    return;
+  }
+  // an item that's already in the playlist saves itself as you change it
+  let timer = null;
+  const name = current, index = editing;
+  const changed = () => {
+    clearTimeout(timer);
+    timer = setTimeout(safe(async () => {
+      const live = playlists[name]?.items[index];  // saving swaps in fresh objects from the server
+      if (!live || editing !== index || current !== name) return;
+      live.params = form.values();
+      await savePlaylists({ keepEditor: true });
+    }), 400);
+  };
+  form.el.addEventListener("input", changed);
+  form.el.addEventListener("change", changed);
+  box.replaceChildren(el("h3", {}, `Edit: ${app.title}`), form.el,
     el("div", { class: "row" },
-      el("button", { class: "primary", onclick: safe(async () => { item.params = form.values(); editing = null; await savePlaylists(); toast("Saved"); }) }, "Save item"),
-      el("button", { onclick: () => { editing = null; render(); } }, "Cancel")));
+      el("button", { onclick: () => { editing = null; render(); } }, "Done"),
+      el("span", { class: "muted" }, "Changes save as you make them.")));
 }
 
 function renderSchedule() {
@@ -108,46 +155,54 @@ function renderSchedule() {
         }),
       }, d))),
       start, el("span", { class: "muted" }, "to"), end, el("span", { class: "muted" }, "play"), target,
-      iconButton("x", "Remove rule", safe(() => { schedule.rules.splice(i, 1); return saveSchedule(); }), "danger"));
+      iconButton("x", "Remove rule", safe(async () => {
+        const [gone] = schedule.rules.splice(i, 1);
+        await saveSchedule();
+        undoable("Removed the rule", { undo: async () => { schedule.rules.splice(i, 0, gone); await saveSchedule(); } });  // `schedule` is the live one
+      }), "danger"));
   })));
 }
 
-$("plSelect").onchange = () => { current = $("plSelect").value; editing = null; render(); };
+$("plSelect").onchange = () => { flushUndo(); current = $("plSelect").value; editing = null; draft = null; render(); };
 $("plTransition").onchange = safe(async () => { playlists[current].transition = $("plTransition").value; await savePlaylists(); });
 $("plTransDur").onchange = safe(async () => { playlists[current].transition_duration = Math.max(0.1, +$("plTransDur").value || 1); await savePlaylists(); });
 $("plNew").onclick = safe(async () => {
-  const name = prompt("Playlist name?");
+  const name = await ask({ title: "New playlist", label: "Name", confirmText: "Create", validate: nameFree(Object.keys(playlists)) });
   if (!name) return;
-  if (playlists[name]) return toast("That name is taken", true);
   playlists[name] = { transition: "dissolve", items: [] };
   current = name;
   await savePlaylists();
 });
 $("plRename").onclick = safe(async () => {
   if (!current) return;
-  const name = prompt("New name?", current);
+  const name = await ask({ title: "Rename playlist", label: "Name", value: current, confirmText: "Rename", validate: nameFree(Object.keys(playlists), current) });
   if (!name || name === current) return;
-  playlists[name] = playlists[current];
-  delete playlists[current];
-  if (schedule.default === current) schedule.default = name;
-  schedule.rules.forEach(r => { if (r.playlist === current) r.playlist = name; });
+  flushUndo();
+  // the server updates the schedule and automations that use the old name too
+  const j = await api("/api/playlists/rename", { old: current, new: name });
   current = name;
-  await savePlaylists();
-  await saveSchedule();
+  await loadPlaylists();
+  bus.dispatchEvent(new Event("playlists"));
+  bus.dispatchEvent(new Event("refs"));
+  toast(j.updated ? `Renamed. Updated ${j.updated} place${j.updated === 1 ? "" : "s"} that used it.` : "Renamed");
 });
 $("plDelete").onclick = safe(async () => {
-  if (!current || !confirm(`Delete playlist "${current}"?`)) return;
-  delete playlists[current];
-  current = Object.keys(playlists)[0] || null;
-  await savePlaylists();
+  if (!current || !await confirmDelete("playlist", current, `the playlist "${current}"`)) return;
+  flushUndo();
+  await api("/api/playlists/delete", { name: current });
+  current = null;
+  await loadPlaylists();
+  bus.dispatchEvent(new Event("playlists"));
+  bus.dispatchEvent(new Event("refs"));
 });
 $("plPlay").onclick = safe(async () => { if (current) { await api("/api/playlist/play", { name: current }); toast(`Playing "${current}"`); } });
 $("plAdd").onclick = safe(async () => {
   if (!current) return toast("Create a playlist first", true);
   const app = catalog.byId[$("plAddApp").value];
-  playlists[current].items.push({ app: app.id, params: paramForm(app).values(), duration: 30 });
-  editing = playlists[current].items.length - 1;
-  await savePlaylists();
+  draft = { app: app.id, params: paramForm(app).values(), duration: 30 };
+  editing = null;
+  render();
+  $("plEditor").scrollIntoView({ block: "nearest" });
 });
 $("schEnabled").onchange = safe(() => { schedule.enabled = $("schEnabled").checked; return saveSchedule(); });
 $("schDefault").onchange = safe(() => { schedule.default = $("schDefault").value; return saveSchedule(); });
@@ -156,3 +211,4 @@ $("schAdd").onclick = safe(() => {
   return saveSchedule();
 });
 bus.addEventListener("scenes", () => render());
+bus.addEventListener("refs", () => loadPlaylists().catch(e => toast(e.message, true)));

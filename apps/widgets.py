@@ -8,7 +8,7 @@ import urllib.parse
 
 from fonts import NORMAL, SMALL
 
-from .base import P, Widget, http_get, register
+from .base import NeedsSetup, P, Widget, http_get, register
 
 
 # ---- weather -----------------------------------------------------------------
@@ -112,6 +112,12 @@ class Weather(Widget):
     ]
     refresh = 600
 
+    @classmethod
+    def needs_setup(cls, store, params):
+        if not (params.get("location") or store.settings.get("weather", {}).get("lat") is not None):
+            return "a weather location (Settings, Location)"
+        return None
+
     def fetch(self):
         settings = self.ctx.store.settings.get("weather", {})
         if self.p["location"]:
@@ -122,7 +128,7 @@ class Weather(Widget):
         elif settings.get("lat") is not None:
             loc = settings
         else:
-            raise ValueError("Set a weather location in Settings")
+            raise NeedsSetup("Set a location in Settings")
         units = self.p["units"] or settings.get("units", "fahrenheit")
         q = urllib.parse.urlencode({
             "latitude": loc["lat"], "longitude": loc["lon"], "timezone": "auto", "forecast_days": 4,
@@ -192,7 +198,7 @@ class Ticker(Widget):
 
     common_params = [
         P("style", "select", "pages", options=[["pages", "One per page with chart"], ["scroll", "Scrolling ticker"]]),
-        P("page_seconds", "number", 6, "Seconds per page", min=2, max=60),
+        P("page_seconds", "number", 6, "Seconds per page", min=2, max=60, show_if={"style": "pages"}),
     ]
     refresh = 120
     interval = 0.05
@@ -361,8 +367,8 @@ class JsonWidget(Widget):
         P("refresh_seconds", "number", 60, min=5, max=86400),
         P("style", "select", "static", options=[["static", "Static"], ["scroll", "Scrolling"]]),
         P("font", "font", "normal", "Font"),
-        P("scale", "number", 1, "Scale (pixel fonts)", min=1, max=6),
-        P("font_size", "number", 14, "Size in dots (other fonts)", min=5, max=42),
+        P("scale", "number", 1, "Scale (pixel fonts)", min=1, max=6, show_if={"font": "pixel"}),
+        P("font_size", "number", 14, "Size in dots (other fonts)", min=5, max=42, show_if={"font": {"not": "pixel"}}),
         P("char_transition", "select", "push-up", "Character transition when a value changes",
           options=[["none", "None"], ["push-up", "Roll up"], ["push-down", "Roll down"], ["flip", "Flip"],
                    ["dissolve", "Dissolve"], ["wipe-down", "Wipe down"], ["random", "Random"]]),

@@ -13,7 +13,7 @@ import urllib.request
 from canvas import Canvas
 from fonts import NORMAL, SMALL
 
-from .base import P, UA, Widget, http_get, register
+from .base import NeedsSetup, P, UA, Widget, http_get, register
 from .media import convert_image
 from .text import resolve_font
 from transitions import NAMES as TRANSITIONS
@@ -27,7 +27,7 @@ def ma_command(store, command, args=None, timeout=8):
     cfg = _cfg(store)
     url = (cfg.get("url") or "").rstrip("/")
     if not url:
-        raise ValueError("Set the Music Assistant URL in Settings")
+        raise NeedsSetup("Set the Music Assistant URL in Settings")
     headers = {"Content-Type": "application/json", "User-Agent": UA}
     if cfg.get("token"):
         headers["Authorization"] = f"Bearer {cfg['token']}"
@@ -60,6 +60,9 @@ def _elapsed(obj, playing):
     return e
 
 
+LINE = {"layout": "line"}  # show_if for the single-line layout's options
+
+
 @register
 class Music(Widget):
     id = "music"
@@ -71,25 +74,30 @@ class Music(Widget):
         P("layout", "select", "full", "Layout", options=[
             ["full", "Full (album art, title, artist, progress)"],
             ["line", "Single line of text (great as a layer)"]]),
-        P("position", "select", "top", "Single line: where", options=[["top", "Top"], ["bottom", "Bottom"]]),
-        P("font", "font", "normal", "Single line: font"),
-        P("scale", "number", 1, "Single line: scale (pixel fonts)", min=1, max=4),
-        P("font_size", "number", 9, "Single line: size in dots (other fonts)", min=5, max=20),
+        P("position", "select", "top", "Single line: where", options=[["top", "Top"], ["bottom", "Bottom"]], show_if=LINE),
+        P("font", "font", "normal", "Single line: font", show_if=LINE),
+        P("scale", "number", 1, "Single line: scale (pixel fonts)", min=1, max=4, show_if={**LINE, "font": "pixel"}),
+        P("font_size", "number", 9, "Single line: size in dots (other fonts)", min=5, max=20, show_if={**LINE, "font": {"not": "pixel"}}),
         P("line_mode", "select", "always", "Single line: when to show it", options=[
             ["always", "Always (keeps scrolling)"],
-            ["once", "Once per song (scrolls across when the song changes, then disappears)"]]),
-        P("progress", "checkbox", True, "Single line: thin progress line under the text"),
-        P("scroll_speed", "number", 20, "Single line: scroll speed (dots/sec)", min=4, max=60),
-        P("art", "checkbox", True, "Show album art"),
-        P("dither", "checkbox", True, "Dither album art"),
+            ["once", "Once per song (scrolls across when the song changes, then disappears)"]], show_if=LINE),
+        P("progress", "checkbox", True, "Single line: thin progress line under the text", show_if=LINE),
+        P("scroll_speed", "number", 20, "Single line: scroll speed (dots/sec)", min=4, max=60, show_if=LINE),
+        P("art", "checkbox", True, "Show album art", show_if={"layout": "full"}),
+        P("dither", "checkbox", True, "Dither album art", show_if={"layout": "full", "art": True}),
         P("idle", "select", "text", "When nothing is playing",
           options=[["text", "Say 'Nothing playing'"], ["blank", "Stay blank"], ["last", "Keep the last song"]]),
         P("song_transition", "select", "dissolve", "Whole-board transition when the song changes",
           options=[["none", "None"]] + [[t, t] for t in TRANSITIONS if t != "none"]),
-        P("song_transition_time", "number", 1.5, "Song transition time (s)", min=0.2, max=10, step=0.1),
+        P("song_transition_time", "number", 1.5, "Song transition time (s)", min=0.2, max=10, step=0.1,
+          show_if={"song_transition": {"not": "none"}}),
     ]
     refresh = 3
     interval = 0.1
+
+    @classmethod
+    def needs_setup(cls, store, params):
+        return None if _cfg(store).get("url") else "the Music Assistant URL (Settings, Music)"
 
     def __init__(self, ctx, **params):
         super().__init__(ctx, **params)
@@ -149,7 +157,8 @@ class Music(Widget):
     def render(self, c, now):
         if self.line and self.data is None:
             self.poll()
-            if self.error:
+            self.hidden = bool(self.setup)  # not set up: stay out of the way (as a layer, show what's below)
+            if self.error and not self.setup:
                 self.draw_line(c, now, "Music Assistant: " + self.error, None)
             return
         return super().render(c, now)

@@ -1,20 +1,25 @@
-// Settings: quiet hours, board health (disc wear heatmap + exercise), board setup (panel mapping).
-import { $, api, el, safe, toast } from "./common.js";
+// Quiet hours (Schedule page); board health (Settings → Maintenance: disc wear heatmap + exercise); panel setup (Settings → Board hardware).
+import { $, api, autosave, confirmDialog, el, fillField as fill, forgetFields, safe, toast } from "./common.js";
 
 let settings = {};
 
 export async function loadBoardCare(s) {
+  const h = s.board_health || {};
+  fill("wearAuto", !!h.auto_exercise, "checked");
+  fill("wearTime", h.exercise_time || "12:00");
+  await Promise.all([loadWear(), loadPanels(), loadQuietHours(s)]);
+}
+
+// quiet hours live on the Schedule page
+export async function loadQuietHours(s) {
   settings = s;
   const q = s.quiet_hours || {};
-  $("qhEnabled").checked = !!q.enabled;
-  $("qhStart").value = q.start || "22:00";
-  $("qhEnd").value = q.end || "07:00";
-  $("qhMax").value = q.max_flips ?? 150;
-  $("qhSlow").value = q.slowdown ?? 3;
-  const h = s.board_health || {};
-  $("wearAuto").checked = !!h.auto_exercise;
-  $("wearTime").value = h.exercise_time || "12:00";
-  await Promise.all([loadWear(), loadPanels(), refreshQuiet()]);
+  fill("qhEnabled", !!q.enabled, "checked");
+  fill("qhStart", q.start || "22:00");
+  fill("qhEnd", q.end || "07:00");
+  fill("qhMax", q.max_flips ?? 150);
+  fill("qhSlow", q.slowdown ?? 3);
+  await refreshQuiet();
 }
 
 async function refreshQuiet() {
@@ -24,15 +29,21 @@ async function refreshQuiet() {
     : q.enabled ? `Not active now (starts ${q.start})` : "Off";
 }
 
-$("qhSave").onclick = safe(async () => {
+// quiet hours save themselves when a field changes
+let qhTimer = null;
+const saveQuiet = safe(() => autosave("qhSaved", async () => {
   settings = await api("/api/settings", { quiet_hours: {
     enabled: $("qhEnabled").checked, start: $("qhStart").value || "22:00", end: $("qhEnd").value || "07:00",
     max_flips: Math.max(10, Math.min(2000, +$("qhMax").value || 150)),
     slowdown: Math.max(1, Math.min(10, +$("qhSlow").value || 1)),
   } });
+  const q = settings.quiet_hours;
+  forgetFields(["qhEnabled", "qhStart", "qhEnd", "qhMax", "qhSlow"]);
+  fill("qhEnabled", !!q.enabled, "checked"); fill("qhStart", q.start); fill("qhEnd", q.end); fill("qhMax", q.max_flips); fill("qhSlow", q.slowdown);
   await refreshQuiet();
-  toast("Saved");
-});
+}));
+for (const id of ["qhEnabled", "qhStart", "qhEnd", "qhMax", "qhSlow"])
+  $(id).addEventListener("change", () => { clearTimeout(qhTimer); qhTimer = setTimeout(saveQuiet, 300); });
 
 // ---- board health ----
 let wear = null;
@@ -87,40 +98,43 @@ $("wearExercise").onclick = safe(async () => {
   toast(`Flipping ${j.discs} discs for about ${Math.ceil(j.seconds)} s`);
   setTimeout(() => loadWear().catch(() => {}), (j.seconds + 2) * 1000);
 });
-const saveHealth = safe(async () => {
+const saveHealth = safe(() => autosave("wearSaved", async () => {
   settings = await api("/api/settings", { board_health: { auto_exercise: $("wearAuto").checked, exercise_time: $("wearTime").value || "12:00" } });
-  toast("Saved");
-});
+  forgetFields(["wearAuto", "wearTime"]);
+  fill("wearAuto", !!settings.board_health.auto_exercise, "checked"); fill("wearTime", settings.board_health.exercise_time);
+}));
 $("wearAuto").onchange = saveHealth;
 $("wearTime").onchange = saveHealth;
 
 // ---- board setup ----
 let panels = [];
 let step = -1;
+let panelsEdited = false;  // unsaved edits in the table: don't reload over them
 
 async function loadPanels() {
+  if (panelsEdited) return renderPanels();
   panels = (await api("/api/panels")).panels;
   renderPanels();
 }
 
 function renderPanels() {
   const num = (p, k, min, max) => el("input", { type: "number", min, max, value: p[k], "aria-label": k,
-    oninput: e => { p[k] = e.target.value; } });
+    oninput: e => { p[k] = e.target.value; panelsEdited = true; } });
   $("psRows").replaceChildren(...panels.map((p, i) => el("tr", { class: i === step ? "current" : "" },
     el("td", {}, String(i + 1)),
     el("td", {}, num(p, "column", 1, 32)),
     el("td", {}, num(p, "row", 1, 32)),
-    el("td", {}, el("input", { type: "text", value: p.ip, "aria-label": "ip", oninput: e => { p.ip = e.target.value.trim(); } })),
+    el("td", {}, el("input", { type: "text", value: p.ip, "aria-label": "ip", oninput: e => { p.ip = e.target.value.trim(); panelsEdited = true; } })),
     el("td", {}, num(p, "port", 1, 65535)),
     el("td", {}, num(p, "address", 0, 255)),
     el("td", {}, (() => {
-      const s = el("select", { "aria-label": "rotate", onchange: e => { p.rotate = +e.target.value; } },
+      const s = el("select", { "aria-label": "rotate", onchange: e => { p.rotate = +e.target.value; panelsEdited = true; } },
         el("option", { value: "0" }, "0°"), el("option", { value: "180" }, "180°"));
       s.value = String(p.rotate || 0);
       return s;
     })()),
     el("td", {}, el("button", { class: "ghost", title: "Show this panel on the board", onclick: safe(() => identify(i)) }, "Show"),
-      el("button", { class: "ghost danger", title: "Remove this panel", onclick: () => { panels.splice(i, 1); renderPanels(); } }, "Remove")),
+      el("button", { class: "ghost danger", title: "Remove this panel", onclick: () => { panels.splice(i, 1); panelsEdited = true; renderPanels(); } }, "Remove")),
   )));
   $("psStep").textContent = step < 0 ? "" : `Panel ${step + 1} of ${panels.length}: column ${panels[step].column}, row ${panels[step].row}, port ${panels[step].port}, address ${panels[step].address}`;
 }
@@ -138,12 +152,14 @@ $("psDone").onclick = safe(async () => { step = -1; await api("/api/fill", { col
 $("psAdd").onclick = () => {
   const last = panels[panels.length - 1] || { column: 0, row: 1, ip: "192.168.11.100", port: 5000, address: 0 };
   panels.push({ ...last, column: +last.column + 1, rotate: 0 });
+  panelsEdited = true;
   renderPanels();
 };
 $("psSave").onclick = safe(async () => {
-  if (!confirm("Write this panel mapping to config.yaml?")) return;
+  if (!await confirmDialog({ title: "Write this panel mapping to config.yaml?", message: "The board switches to it right away.", confirmText: "Save to config.yaml" })) return;
   const j = await api("/api/panels", { panels });
   panels = j.panels;
+  panelsEdited = false;
   renderPanels();
   $("psMsg").textContent = j.applied ? "Saved and applied" : j.message;
   toast(j.applied ? "Saved to config.yaml and applied" : j.message);

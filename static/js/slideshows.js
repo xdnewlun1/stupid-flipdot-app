@@ -1,5 +1,5 @@
-// Slideshows (Image & video tab): upload images / GIFs / zips, order them, set timings, play.
-import { $, api, board, bus, catalog, el, galleriesCache, icon, iconButton, renderDots, rowsToGrid, safe, toast } from "./common.js";
+// Slideshows page: upload images / GIFs / zips, order them, set timings, play.
+import { $, api, ask, autosave, board, bus, catalog, confirmDelete, el, flushUndo, galleriesCache, icon, iconButton, renderDots, rowsToGrid, safe, toast, undoable } from "./common.js";
 
 let current = null, gallery = null, saveTimer = null;
 const thumbs = new Map();  // `${gid}/${file}/${settingsKey}` -> rows
@@ -15,21 +15,41 @@ export async function loadGalleries() {
 function renderSelect() {
   $("ssSelect").replaceChildren(...(galleriesCache.list.length
     ? galleriesCache.list.map(g => el("option", { value: g.id, selected: g.id === current }, `${g.name} (${g.count})`))
-    : [el("option", { value: "" }, "No slideshows yet. Press New.")]));
-  $("ssBody").hidden = !current;
+    : [el("option", { value: "" }, "No slideshows yet")]));
+  for (const id of ["ssRename", "ssDelete"]) $(id).disabled = !current;
   if (!$("ssTransition").options.length)
     $("ssTransition").replaceChildren(...catalog.transitions.map(t => el("option", { value: t }, t)));
 }
 
 async function loadGallery() {
+  flushUndo();  // finish a pending item removal before swapping what's shown
   gallery = current ? await api(`/api/galleries/${current}`) : null;
   render();
 }
 
 const settingsKey = () => JSON.stringify([gallery.settings.mode, gallery.settings.dither, gallery.settings.threshold, gallery.settings.invert]);
 
+const MODE_HELP = {
+  stretch: "Fills the board; the picture is squashed or stretched to fit.",
+  crop: "Fills the board; edges that don't fit are cut off.",
+  fit: "Shows the whole picture, with black bars where it doesn't fill the board.",
+};
+const DITHER_HELP = {
+  false: "Each dot is lit or dark by brightness alone: crisp, good for logos and drawings.",
+  true: "Mixes lit and dark dots to fake shades of grey: better for photos.",
+};
+
 function render() {
-  if (!gallery) { $("ssItems").replaceChildren(); return; }
+  const empty = !gallery?.items.length;
+  $("ssPlay").disabled = $("ssAddLayer").disabled = empty;
+  $("ssPlay").title = $("ssAddLayer").title = empty ? "Add some pictures first" : "";
+  $("ssOptions").hidden = !gallery;
+  if (!gallery) {
+    $("ssItems").replaceChildren();
+    $("ssStatus").textContent = "Drop pictures above to start a slideshow.";
+    renderNow();
+    return;
+  }
   const st = gallery.settings;
   $("ssImageSecs").value = st.image_seconds;
   $("ssGifLoops").value = st.gif_loops;
@@ -42,6 +62,8 @@ function render() {
   $("ssThreshold").value = st.threshold;
   $("ssThVal").textContent = st.threshold;
   $("ssInvert").checked = !!st.invert;
+  $("ssModeHelp").textContent = MODE_HELP[st.mode] || "";
+  $("ssDitherHelp").textContent = DITHER_HELP[!!st.dither];
   renderFx(st);
   const total = gallery.items.reduce((t, i) => t + (i.kind === "gif" ? (i.length_ms / 1000) * (i.loops || st.gif_loops) : (i.seconds || st.image_seconds)), 0);
   $("ssStatus").textContent = gallery.items.length
@@ -49,14 +71,15 @@ function render() {
     : "No images yet. Drop some above.";
   $("ssItems").replaceChildren(...gallery.items.map((item, i) => itemCard(item, i)));
   loadThumbs();
+  renderNow();
 }
 
 function itemCard(item, i) {
-  const c = el("canvas", { width: 84 * 3, height: 42 * 3, title: "Click to play this now" });
+  const c = el("canvas", { width: 84 * 3, height: 42 * 3, title: "Click to show this picture now" });
   c.dataset.file = item.file;
   c.onclick = safe(async () => {
     await api(`/api/galleries/${current}/play`, { file: item.file });
-    toast(`Playing ${item.name}`);
+    toast(`Showing ${item.name}`);
   });
   const isGif = item.kind === "gif";
   const input = el("input", {
@@ -76,19 +99,31 @@ function itemCard(item, i) {
     [gallery.items[i], gallery.items[j]] = [gallery.items[j], gallery.items[i]];
     render(); saveItems();
   };
-  return el("div", { class: "ssItem" + (board.runner?.description?.includes(`: ${item.name} (`) ? " playing" : "") },
+  const playing = board.runner?.slideshow?.gallery === current && board.runner.slideshow.file === item.file;
+  return el("div", { class: "ssItem" + (playing ? " playing" : ""), "data-file": item.file, "aria-current": playing ? "true" : null },
     c,
     el("div", { class: "name", title: item.name }, (isGif ? `GIF · ${item.frames} frames · ` : "") + item.name),
     el("div", { class: "ctl" },
       input, el("span", { class: "muted" }, isGif ? "plays" : "s"),
-      el("button", { title: "Play this now", "aria-label": "Play this now", class: "playNow", onclick: safe(async () => {
+      el("button", { title: "Show this picture now", "aria-label": `Show ${item.name} now`, class: "playNow", onclick: safe(async () => {
         await api(`/api/galleries/${current}/play`, { file: item.file });
-        toast(`Playing ${item.name}`);
+        toast(`Showing ${item.name}`);
       }) }, icon("play")),
       el("span", { class: "spacer" }),
       iconButton("left", "Play earlier", move(-1)),
       iconButton("right", "Play later", move(1)),
-      iconButton("x", "Remove from slideshow", () => { gallery.items.splice(i, 1); render(); saveItems(); }, "danger")));
+      iconButton("x", "Remove from slideshow", () => removeItem(i), "danger")));
+}
+
+// The item leaves the list now; its file is only deleted on the server once Undo is no longer offered.
+function removeItem(i) {
+  flushUndo();
+  const g = gallery, [gone] = g.items.splice(i, 1);
+  render();
+  undoable(`Removed ${gone.name}`, {
+    undo: () => { g.items.splice(i, 0, gone); if (gallery === g) render(); },
+    commit: () => saveItems(g, true),
+  });
 }
 
 async function loadThumbs() {
@@ -106,20 +141,22 @@ async function loadThumbs() {
   }
 }
 
-function saveItems() {
+function saveItems(g = gallery, now = false) {
+  if (!now) flushUndo();  // a pending removal goes out with this save
   clearTimeout(saveTimer);
-  saveTimer = setTimeout(safe(async () => {
-    gallery = await api(`/api/galleries/${current}`, {
-      items: gallery.items.map(i => ({ file: i.file, seconds: i.seconds ?? null, loops: i.loops ?? null })),
-    });
-    const g = galleriesCache.list.find(x => x.id === current);
-    if (g) { g.count = gallery.items.length; renderSelect(); }
-    render();
-  }), 300);
+  const go = safe(async () => {
+    const saved = await autosave("ssSaved", () => api(`/api/galleries/${g.id}`, {
+      items: g.items.map(i => ({ file: i.file, seconds: i.seconds ?? null, loops: i.loops ?? null })),
+    }));
+    const c = galleriesCache.list.find(x => x.id === g.id);
+    if (c) { c.count = saved.items.length; renderSelect(); }
+    if (gallery?.id === g.id) { gallery = saved; render(); }
+  });
+  if (now) go(); else saveTimer = setTimeout(go, 300);
 }
 
 async function saveSettings(patch) {
-  gallery = await api(`/api/galleries/${current}`, { settings: patch });
+  gallery = await autosave("ssSaved", () => api(`/api/galleries/${current}`, { settings: patch }));
   render();
 }
 
@@ -163,23 +200,24 @@ drop.addEventListener("drop", safe(async e => {
 
 $("ssSelect").onchange = safe(async () => { current = $("ssSelect").value; await loadGallery(); });
 $("ssNew").onclick = safe(async () => {
-  const name = prompt("Name for the slideshow?", `Slideshow ${galleriesCache.list.length + 1}`);
+  const name = await ask({ title: "New slideshow", label: "Name", value: `Slideshow ${galleriesCache.list.length + 1}`, confirmText: "Create" });
   if (!name) return;
   current = (await api("/api/galleries", { name })).id;
   await loadGalleries();
 });
 $("ssRename").onclick = safe(async () => {
   if (!current) return;
-  const name = prompt("New name?", gallery.name);
-  if (!name) return;
+  const name = await ask({ title: "Rename slideshow", label: "Name", value: gallery.name, confirmText: "Rename" });
+  if (!name || name === gallery.name) return;
   await api(`/api/galleries/${current}`, { name });
   await loadGalleries();
 });
 $("ssDelete").onclick = safe(async () => {
-  if (!current || !confirm(`Delete slideshow "${gallery.name}" and its ${gallery.items.length} images?`)) return;
+  if (!current || !await confirmDelete("gallery", current, `the slideshow "${gallery.name}" and its ${gallery.items.length} images`)) return;
   await api(`/api/galleries/${current}/delete`, {});
   current = null;
   await loadGalleries();
+  bus.dispatchEvent(new Event("refs"));
 });
 $("ssAddLayer").onclick = safe(async () => {
   if (!gallery?.items.length) return toast("Add some images first", true);
@@ -196,8 +234,32 @@ $("ssRemoveCovers").onclick = safe(async () => {
 $("ssPlay").onclick = safe(async () => {
   if (!gallery?.items.length) return toast("Add some images first", true);
   await api(`/api/galleries/${current}/play`, {});
-  toast(`Playing "${gallery.name}"`);
+  toast(`Showing "${gallery.name}"`);
 });
+
+// ---- while this slideshow is on the board: where it is, Previous / Pause / Next ----
+function renderNow() {
+  const r = board.runner, sl = r?.slideshow;
+  const mine = !!gallery && sl?.gallery === current;
+  $("ssNow").hidden = !mine;
+  document.querySelectorAll(".ssItem").forEach(card => {
+    const on = mine && card.dataset.file === sl.file;
+    card.classList.toggle("playing", on);
+    if (on) card.setAttribute("aria-current", "true"); else card.removeAttribute("aria-current");
+  });
+  if (!mine) return;
+  const n = gallery.items.findIndex(i => i.file === sl.file);
+  const yours = r.mode === "app";
+  $("ssNowText").textContent = `On the board: ${gallery.items[n]?.name || "…"}` + (n >= 0 ? ` (${n + 1} of ${gallery.items.length})` : "")
+    + (r.paused ? " · paused" : "") + (yours ? "" : " · playing from a playlist or the schedule");
+  for (const id of ["ssPrev", "ssNext", "ssPause"]) $(id).disabled = !yours;
+  $("ssPause").setAttribute("aria-pressed", String(!!r.paused));
+  $("ssPause").querySelector("span").textContent = r.paused ? "Resume" : "Pause";
+  $("ssPause").querySelector("use").setAttribute("href", r.paused ? "#i-play" : "#i-pause");
+}
+$("ssPrev").onclick = safe(() => api("/api/prev", {}));
+$("ssNext").onclick = safe(() => api("/api/next", {}));
+$("ssPause").onclick = safe(() => api("/api/pause", { paused: !board.runner?.paused }));
 
 const num = id => Number($(id).value);
 $("ssImageSecs").onchange = safe(() => saveSettings({ image_seconds: Math.max(1, num("ssImageSecs") || 10) }));
@@ -249,12 +311,11 @@ $("ssFxStrength").onchange = safe(() => saveSettings({ fx_strength: Math.max(0, 
 $("ssFxSeconds").onchange = safe(() => saveSettings({ fx_seconds: Math.max(0.3, Math.min(30, num("ssFxSeconds") || 3)) }));
 document.querySelectorAll("#ssFxMode [data-fx-mode]").forEach(b => { b.onclick = safe(() => saveSettings({ fx_mode: b.dataset.fxMode })); });
 
-// highlight the item that's on the board
-let lastDesc = null;
+// highlight the picture that's on the board
+let lastNow = "";
 bus.addEventListener("state", () => {
-  const d = board.runner?.description;
-  if (d === lastDesc || !gallery) return;
-  lastDesc = d;
-  document.querySelectorAll(".ssItem").forEach((card, i) =>
-    card.classList.toggle("playing", !!d && d.startsWith(gallery.name + ": ") && d.includes(`: ${gallery.items[i]?.name} (`)));
+  const r = board.runner, key = JSON.stringify([r?.slideshow, r?.paused, r?.mode]);
+  if (key === lastNow) return;
+  lastNow = key;
+  renderNow();
 });

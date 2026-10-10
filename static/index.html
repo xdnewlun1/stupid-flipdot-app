@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Flipdot Control</title>
 <meta name="color-scheme" content="dark light">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22%3E%3Crect width=%2224%22 height=%2224%22 rx=%225%22 fill=%22%23111%22/%3E%3Cg fill=%22%23e9b949%22%3E%3Ccircle cx=%227.5%22 cy=%227.5%22 r=%222%22/%3E%3Ccircle cx=%2216.5%22 cy=%227.5%22 r=%222%22/%3E%3Ccircle cx=%2212%22 cy=%2212%22 r=%222%22/%3E%3Ccircle cx=%227.5%22 cy=%2216.5%22 r=%222%22/%3E%3C/g%3E%3C/svg%3E">
@@ -17,6 +17,10 @@
   <symbol id="i-playlist" viewBox="0 0 24 24"><path d="M4 6h12M4 12h12M4 18h7"/><path d="m15 15 6 3.5-6 3.5z"/></symbol>
   <symbol id="i-scenes" viewBox="0 0 24 24"><rect x="3" y="6" width="14" height="14" rx="2"/><path d="M7 3h12a2 2 0 0 1 2 2v12"/></symbol>
   <symbol id="i-settings" viewBox="0 0 24 24"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></symbol>
+  <symbol id="i-pause" viewBox="0 0 24 24"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></symbol>
+  <symbol id="i-prev" viewBox="0 0 24 24"><path d="M18 6 10 12l8 6V6z"/><path d="M6 6v12"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5"/></symbol>
+  <symbol id="i-warn" viewBox="0 0 24 24"><path d="M12 3.5 2.5 20h19L12 3.5z"/><path d="M12 10v4.5M12 17.5v.01"/></symbol>
   <symbol id="i-stop" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/></symbol>
   <symbol id="i-next" viewBox="0 0 24 24"><path d="m6 5 9 7-9 7z"/><path d="M18 5v14"/></symbol>
   <symbol id="i-schedule" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4"/></symbol>
@@ -33,50 +37,117 @@
   <symbol id="i-logo" viewBox="0 0 24 24"><rect x="1" y="1" width="22" height="22" rx="5" fill="none" stroke="currentColor" stroke-width="1.5"/>
     <g fill="currentColor"><circle cx="7.5" cy="7.5" r="2"/><circle cx="16.5" cy="7.5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="7.5" cy="16.5" r="2"/></g>
     <g fill="none" stroke="currentColor" stroke-width="1" opacity=".45"><circle cx="12" cy="7.5" r="1.6"/><circle cx="7.5" cy="12" r="1.6"/><circle cx="16.5" cy="12" r="1.6"/><circle cx="12" cy="16.5" r="1.6"/><circle cx="16.5" cy="16.5" r="1.6"/></g></symbol>
+  <symbol id="i-now" viewBox="0 0 24 24"><rect x="2.5" y="5" width="19" height="12" rx="2"/><path d="M8 21h8M12 17v4"/><path d="m10.5 8.5 4 2.5-4 2.5z"/></symbol>
+  <symbol id="i-create" viewBox="0 0 24 24"><path d="M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16v4z"/><path d="M14 20h6"/></symbol>
+  <symbol id="i-library" viewBox="0 0 24 24"><rect x="3" y="4" width="5" height="16" rx="1"/><rect x="10" y="4" width="5" height="16" rx="1"/><path d="m17 5 3.5 14.5"/></symbol>
+  <symbol id="i-auto" viewBox="0 0 24 24"><path d="M4 12a8 8 0 0 1 14-5.3L20 9"/><path d="M20 4v5h-5"/><path d="M20 12a8 8 0 0 1-14 5.3L4 15"/><path d="M4 20v-5h5"/></symbol>
+  <symbol id="i-chat" viewBox="0 0 24 24"><path d="M4 5h16v11H9l-5 4V5z"/></symbol>
+  <symbol id="i-slides" viewBox="0 0 24 24"><rect x="6" y="5" width="12" height="14" rx="1.5"/><path d="M3 8v8M21 8v8"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.2-4.2"/></symbol>
+  <symbol id="i-zoomin" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.2-4.2M8 11h6M11 8v6"/></symbol>
+  <symbol id="i-zoomout" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.2-4.2M8 11h6"/></symbol>
+  <symbol id="i-hand" viewBox="0 0 24 24"><path d="M12 3v18M3 12h18"/><path d="m9 6 3-3 3 3M9 18l3 3 3-3M6 9l-3 3 3 3M18 9l3 3-3 3"/></symbol>
+  <symbol id="i-expand" viewBox="0 0 24 24"><path d="M14 4h6v6M10 20H4v-6M20 4l-7 7M4 20l7-7"/></symbol>
+  <symbol id="i-phone" viewBox="0 0 24 24"><rect x="7" y="2.5" width="10" height="19" rx="2"/><path d="M11 18.5h2"/></symbol>
 </svg>
+<a class="skip" href="#content">Skip to content</a>
 <div class="app">
   <aside class="sidebar">
     <div class="brand"><svg class="logo" aria-hidden="true"><use href="#i-logo"/></svg><span>Flipdot<small>84 × 42 · 18 panels</small></span></div>
     <nav class="nav" id="tabs" aria-label="Sections">
-      <button data-tab="draw" class="active"><svg class="i" aria-hidden="true"><use href="#i-draw"/></svg>Draw</button>
-      <button data-tab="media"><svg class="i" aria-hidden="true"><use href="#i-image"/></svg>Image &amp; video</button>
+      <button data-tab="now"><svg class="i" aria-hidden="true"><use href="#i-now"/></svg>Now playing</button>
+      <p class="navGroup">Create</p>
+      <button data-tab="draw"><svg class="i" aria-hidden="true"><use href="#i-draw"/></svg>Draw</button>
+      <button data-tab="import"><svg class="i" aria-hidden="true"><use href="#i-upload"/></svg>Import</button>
+      <p class="navGroup">Library</p>
+      <button data-tab="pictures"><svg class="i" aria-hidden="true"><use href="#i-scenes"/></svg>Pictures</button>
       <button data-tab="apps"><svg class="i" aria-hidden="true"><use href="#i-apps"/></svg>Apps</button>
       <button data-tab="layers"><svg class="i" aria-hidden="true"><use href="#i-layers"/></svg>Layers</button>
+      <button data-tab="slideshows"><svg class="i" aria-hidden="true"><use href="#i-slides"/></svg>Slideshows</button>
+      <p class="navGroup">Programme</p>
       <button data-tab="playlists"><svg class="i" aria-hidden="true"><use href="#i-playlist"/></svg>Playlists</button>
-      <button data-tab="scenes"><svg class="i" aria-hidden="true"><use href="#i-scenes"/></svg>Scenes</button>
+      <button data-tab="schedule"><svg class="i" aria-hidden="true"><use href="#i-schedule"/></svg>Schedule</button>
+      <button data-tab="automations"><svg class="i" aria-hidden="true"><use href="#i-auto"/></svg>Automations</button>
+      <span class="navRule" role="presentation"></span>
+      <button data-tab="guests"><svg class="i" aria-hidden="true"><use href="#i-chat"/></svg>Guest wall <span class="count gwCount" hidden></span></button>
       <button data-tab="settings"><svg class="i" aria-hidden="true"><use href="#i-settings"/></svg>Settings</button>
     </nav>
-    <div class="sidebar-bottom">
-      <div class="theme" role="group" aria-label="Theme">
-        <button data-theme-choice="auto" title="Match the device setting">Auto</button><button data-theme-choice="light">Light</button><button data-theme-choice="dark">Dark</button>
-      </div>
-      <div class="sidebar-foot" id="sideFoot">Connecting…</div>
-    </div>
   </aside>
-<main class="main">
-  <header class="top">
-    <h1 id="pageTitle">Draw</h1>
-    <div id="mode" class="mode" role="status" aria-live="polite"><span class="dot"></span>Connecting…</div>
-    <span class="spacer"></span>
-    <div class="group" role="group" aria-label="Playback">
-      <button id="btnStop" title="Stop whatever is running; the board keeps its current picture"><svg class="i" aria-hidden="true"><use href="#i-stop"/></svg>Stop</button>
-      <button id="btnNext" title="Skip to the next playlist item"><svg class="i" aria-hidden="true"><use href="#i-next"/></svg>Next</button>
-      <button id="btnSchedule" title="Go back to the schedule"><svg class="i" aria-hidden="true"><use href="#i-schedule"/></svg>Schedule</button>
+<main class="main" id="content">
+  <!-- what's on the board, on every page except Now playing and Draw -->
+  <div id="nowStrip" class="nowStrip">
+    <button id="stripToggle" class="stripThumb" aria-expanded="false" aria-controls="nowStrip" title="Show a bigger preview"><canvas id="miniBoard" role="img" aria-label="Board preview"></canvas></button>
+    <div class="stripText">
+      <span class="statusWhat"></span>
+      <span class="statusWhy"></span>
     </div>
+    <div class="playback" data-controls="strip" role="group" aria-label="Playback"></div>
+  </div>
+  <header class="pageHead">
+    <nav class="groupNav" id="groupNav" aria-label="Pages in this group"></nav>
+    <h1 id="pageTitle">Now playing</h1>
+    <p id="pageLede" class="lede"></p>
   </header>
+  <div id="statusWarn" class="statusWarn" role="status" hidden></div>
+  <p id="statusLive" class="sr" role="status" aria-live="polite"></p>
 
-  <section class="device" aria-label="Board preview">
-    <div class="wrap boardWrap"><canvas id="board"></canvas></div>
-    <div class="device-meta"><span>84 × 42</span><span>3 × 6 panels</span><span id="quietState" class="quiet" hidden title="Flips are rate-limited and transitions slowed (Settings, Board care)">Quiet hours</span><span id="deviceState"></span></div>
+  <!-- the big board: moved into Now playing or Draw, whichever is open -->
+  <section class="device" id="device" aria-label="Board preview">
+    <div class="wrap boardWrap" id="boardWrap"><canvas id="board" role="img" aria-label="Board preview"></canvas></div>
+    <div class="device-meta">
+      <span class="drawOnly zoomCtl" role="group" aria-label="Zoom">
+        <button id="zoomOut" class="icon ghost" title="Zoom out" aria-label="Zoom out"><svg class="i" aria-hidden="true"><use href="#i-zoomout"/></svg></button>
+        <span id="zoomLevel">1×</span>
+        <button id="zoomIn" class="icon ghost" title="Zoom in" aria-label="Zoom in"><svg class="i" aria-hidden="true"><use href="#i-zoomin"/></svg></button>
+        <button id="panMode" class="icon ghost" title="Move around (drag to pan instead of drawing)" aria-label="Move around" aria-pressed="false" hidden><svg class="i" aria-hidden="true"><use href="#i-hand"/></svg></button>
+      </span>
+      <span class="drawOnly drawStatus statusWhat"></span>
+      <span id="quietState" class="quiet" hidden title="Flips are rate-limited and transitions slowed (Schedule, Quiet hours)">Quiet hours</span>
+      <span id="deviceState"><span class="dot"></span>Connecting to the board server…</span>
+    </div>
+  </section>
+
+  <!-- ===================== NOW PLAYING ===================== -->
+  <section class="tab" id="tab-now" hidden>
+    <div class="nowGrid">
+      <div id="nowBoardSlot" class="nowBoard"></div>
+      <div class="card nowSide">
+        <p class="nowLabel">On the board</p>
+        <h2 class="statusWhat nowWhat"></h2>
+        <p class="statusWhy nowWhy"></p>
+        <div class="playback nowControls" data-controls="now" role="group" aria-label="Playback"></div>
+        <a id="ctlLink" class="ctlLink" href="/play" target="_blank" hidden><svg class="i" aria-hidden="true"><use href="#i-phone"/></svg>Open the game controller on your phone</a>
+
+        <h3>Show something</h3>
+        <div class="quickText">
+          <input id="qText" type="text" maxlength="200" placeholder="Type a message" aria-label="Message to show">
+          <div class="row tight">
+            <button id="qTextShow" class="primary"><svg class="i" aria-hidden="true"><use href="#i-play"/></svg>Show on board</button>
+            <button id="qTextFor">Show for</button>
+            <label class="muted"><input id="qSecs" type="number" min="1" max="3600" value="10" inputmode="numeric" style="width:64px" aria-label="Seconds"> s</label>
+          </div>
+        </div>
+        <div class="row quickRow">
+          <button id="qClock">Clock</button>
+          <button id="qWeather">Weather</button>
+          <button id="qBlack">All black</button>
+          <button id="qMore" class="ghost">More apps</button>
+        </div>
+      </div>
+    </div>
+    <div id="welcome" class="card welcome" hidden></div>
   </section>
 
   <!-- ===================== DRAW ===================== -->
-  <section class="tab card" id="tab-draw">
+  <section class="tab" id="tab-draw" hidden>
+    <div id="drawBoardSlot"></div>
+    <div class="card drawCard">
     <div class="bar targetBar">
       <label class="muted">Draw on <select id="drawTarget"></select></label>
+      <label id="drawLiveBox"><input type="checkbox" id="drawLive"> Draw on the board</label>
       <button id="newDrawing" title="Start a blank drawing layer on top of whatever is running">New drawing layer</button>
       <label id="layerOnlyBox" hidden><input type="checkbox" id="layerOnly"> Show only this layer</label>
-      <button id="showDrawing" hidden>Add to board</button>
+      <button id="showDrawing" hidden title="Put this drawing on top of what's on the board">Add as layer</button>
       <button id="renameDrawing" hidden>Rename</button>
       <button id="deleteDrawing" class="danger" hidden>Delete</button>
       <span class="muted" id="targetHint"></span>
@@ -114,11 +185,11 @@
       </div>
       <div class="animStrip" id="animStrip" role="group" aria-label="Frames"></div>
       <div class="bar">
-        <button id="animPlay" class="primary">Play on board</button>
+        <button id="animPlay" class="primary"><svg class="i" aria-hidden="true"><use href="#i-play"/></svg>Show on board</button>
         <button id="animStop">Stop</button>
         <span class="muted" id="animInfo"></span>
         <span class="spacer"></span>
-        <label class="muted">Saved animation <select id="animScene"></select></label>
+        <label class="muted">From Pictures <select id="animScene"></select></label>
         <button id="animOpen">Open</button>
         <button id="animNew" title="Start over with one blank frame">New</button>
         <button id="animSave">Save</button>
@@ -150,10 +221,10 @@
       <div class="group">
         <button id="allBlack">All black</button>
         <button id="allWhite">All white</button>
-        <button id="invert">Invert</button>
+        <button id="invert" title="Lit dots go dark and dark dots light up">Flip all dots</button>
       </div>
       <div class="group">
-        <button id="saveScene">Save as scene</button>
+        <button id="saveScene">Save to Pictures</button>
         <button id="exportPng" title="84x42 PNG, one pixel per dot">Export PNG</button>
         <button id="exportPretty" title="Picture of the board">Export picture</button>
         <button id="importImg">Import image…</button>
@@ -184,21 +255,24 @@
       </div>
       <span class="muted">Drag to select. Ctrl+C, Ctrl+X and Ctrl+V work too; after pasting, click the board to place it.</span>
     </div>
+    </div>
   </section>
 
-  <!-- ===================== MEDIA ===================== -->
-  <section class="tab card" id="tab-media" hidden>
-    <div class="grid2">
-      <div>
+  <!-- ===================== IMPORT ===================== -->
+  <section class="tab card" id="tab-import" hidden>
+    <div class="importGrid">
+      <div class="imSource">
         <div id="drop" class="drop" role="button" tabindex="0">Drop an image, GIF or video here, or click to choose one. You can also paste an image.</div>
         <input type="file" id="file" accept="image/*,video/*" hidden>
         <div class="row">
           <button id="webcam">Use webcam</button>
           <span class="muted" id="webcamNote"></span>
         </div>
+      </div>
+      <div class="imSettings">
         <div class="form">
-          <label for="mode">Sizing</label>
-          <select id="mode">
+          <label for="imgMode">Sizing</label>
+          <select id="imgMode">
             <option value="stretch">Stretch to fit (distorts)</option>
             <option value="crop">Cut to fit (fills board, crops edges)</option>
             <option value="fit">Fit inside (black bars)</option>
@@ -210,8 +284,8 @@
           </select>
           <label for="threshold">Brightness cutoff <span id="thVal"></span></label>
           <input type="range" id="threshold" min="1" max="254" value="128">
-          <label for="invertImg">Invert</label>
-          <input type="checkbox" id="invertImg">
+          <label for="invertImg">Negative</label>
+          <div class="row tight"><input type="checkbox" id="invertImg"><span class="muted">Swap lit and dark dots.</span></div>
           <label for="speed">Speed</label>
           <select id="speed">
             <option value="0.5">0.5×</option><option value="1" selected>1×</option>
@@ -225,13 +299,13 @@
           <input type="number" id="clipSecs" min="1" max="60" value="10">
         </div>
       </div>
-      <div>
+      <div class="imResult">
         <div class="wrap"><canvas id="preview"></canvas></div>
         <video id="video" playsinline muted hidden></video>
         <p class="muted" id="imgInfo">Nothing loaded yet. Choose a file, paste an image or use the webcam.</p>
         <div class="row">
-          <button class="primary" id="send" disabled>Send to board</button>
-          <button id="saveMedia" disabled>Save as scene</button>
+          <button class="primary" id="send" disabled><svg class="i" aria-hidden="true"><use href="#i-play"/></svg>Show on board</button>
+          <button id="saveMedia" disabled>Save to Pictures</button>
           <button id="clip" disabled>Convert video clip</button>
         </div>
         <div class="row">
@@ -253,23 +327,90 @@
     </div>
   </section>
 
-  <section class="tab card spacedCard" id="tab-media-slides" hidden>
-    <h2>Slideshows</h2>
-    <p class="lede">A list of images and GIFs that plays in a loop: each image stays up for a set time, each GIF plays through, then the next one starts.
-      Drop in files or a <b>.zip</b> (it's unpacked for you). Slideshows can also go in playlists, the schedule and layers through the Slideshow app.</p>
+  <!-- ===================== PICTURES ===================== -->
+  <section class="tab card" id="tab-pictures" hidden>
+    <div class="bar">
+      <button id="scSaveCurrent" class="primary">Save what's on the board</button>
+      <button id="pcDraw"><svg class="i" aria-hidden="true"><use href="#i-draw"/></svg>Draw a new one</button>
+      <button id="pcImport"><svg class="i" aria-hidden="true"><use href="#i-upload"/></svg>Import an image</button>
+      <span class="spacer"></span>
+      <div class="group" id="pcFilter" role="group" aria-label="Show">
+        <button data-kind="all" aria-pressed="true">All</button><button data-kind="still" aria-pressed="false">Still</button><button data-kind="anim" aria-pressed="false">Animations</button><button data-kind="drawing" aria-pressed="false">Drawing layers</button>
+      </div>
+    </div>
+    <div id="sceneGrid" class="sceneGrid"></div>
+  </section>
+
+  <!-- ===================== APPS ===================== -->
+  <section class="tab card" id="tab-apps" hidden>
+    <div class="appFind">
+      <label class="searchBox"><svg class="i" aria-hidden="true"><use href="#i-search"/></svg><span class="sr">Search apps</span>
+        <input id="appSearch" type="search" placeholder="Search apps, e.g. clock, weather, snake" autocomplete="off"></label>
+      <div class="chips chipsSingle" id="appChips" role="group" aria-label="Category"></div>
+    </div>
+    <div class="grid2 apps">
+      <div id="appList"></div>
+      <div id="appDetail"><p class="muted">Pick an app to see its options and show it.</p></div>
+    </div>
+  </section>
+
+  <!-- ===================== LAYERS ===================== -->
+  <section class="tab card" id="tab-layers" hidden>
+    <div class="bar">
+      <label class="muted">Layer set <select id="lyComp"></select></label>
+      <div class="group">
+        <button id="lyNew">New</button>
+        <button id="lySaveAs">Save a copy…</button>
+        <button id="lyRename">Rename</button>
+      </div>
+      <button id="lyLoadRunning" title="Open the layers that are on the board right now">Edit what's on the board</button>
+      <span class="savedNote" id="lySaved" role="status"></span>
+      <span class="spacer"></span>
+      <button id="lyDelete" class="danger">Delete</button>
+    </div>
+    <div class="bar">
+      <button id="lyRun" class="primary"><svg class="i" aria-hidden="true"><use href="#i-play"/></svg>Show on board</button>
+      <label class="muted">with <select id="lyTransition" aria-label="Transition"></select></label>
+      <label class="muted"><input type="number" id="lyTransDur" value="1" min="0.1" max="10" step="0.1" inputmode="decimal" style="width:64px" aria-label="Transition seconds"> s</label>
+      <span class="muted" id="lyState" role="status"></span>
+    </div>
+    <p class="lede">Layers play at the same time, stacked: the list shows the top layer first, and each one keeps its own timing.
+      Each layer's blend says how it combines with the layers below; <b>Invert where overlapping</b> lets Game of Life run over the weather
+      and still leaves the weather readable. Changes save to the layer set as you make them. When the set is on the board, they show there right away.</p>
+    <div id="lyList" class="items"></div>
+    <div class="row">
+      <select id="lyAddApp" aria-label="App for the new layer"></select>
+      <button id="lyAdd">Add layer</button>
+      <button id="lyAddDrawing" title="A blank layer you can draw on in Draw">Add drawing layer</button>
+      <button id="lyAddBoard" title="Copy what's on the board now into an editable drawing layer">Add current board as a layer</button>
+    </div>
+  </section>
+
+  <!-- ===================== SLIDESHOWS ===================== -->
+  <section class="tab card" id="tab-slideshows" hidden>
     <div class="bar">
       <select id="ssSelect" aria-label="Slideshow"></select>
       <div class="group">
         <button id="ssNew">New</button>
         <button id="ssRename">Rename</button>
-        <button id="ssDelete" class="danger">Delete</button>
       </div>
-      <button id="ssPlay" class="primary">Play on board</button>
+      <button id="ssPlay" class="primary"><svg class="i" aria-hidden="true"><use href="#i-play"/></svg>Show on board</button>
       <button id="ssAddLayer" title="Combine the slideshow with what's on the board">Add as layer</button>
       <select id="ssLayerPos" aria-label="Layer position">
         <option value="bottom">behind what's running</option>
         <option value="top">on top of what's running</option>
       </select>
+      <span class="savedNote" id="ssSaved" role="status"></span>
+      <span class="spacer"></span>
+      <button id="ssDelete" class="danger">Delete</button>
+    </div>
+    <div class="bar ssNow" id="ssNow" hidden>
+      <span id="ssNowText" class="muted"></span>
+      <div class="group" role="group" aria-label="Slideshow playback">
+        <button id="ssPrev"><svg class="i" aria-hidden="true"><use href="#i-prev"/></svg>Previous</button>
+        <button id="ssPause" aria-pressed="false"><svg class="i" aria-hidden="true"><use href="#i-pause"/></svg><span>Pause</span></button>
+        <button id="ssNext"><svg class="i" aria-hidden="true"><use href="#i-next"/></svg>Next</button>
+      </div>
     </div>
     <div id="ssBody">
       <div id="ssDrop" class="drop" role="button" tabindex="0">Drop images, GIFs or a .zip here, or click to choose files</div>
@@ -279,104 +420,78 @@
         <button id="ssRemoveCovers" title="Remove still images that are just covers for the GIFs already in this slideshow">Remove cover images</button>
       </div>
       <p class="muted" id="ssStatus"></p>
-      <div class="form ssSettings">
-        <label for="ssImageSecs">Seconds per image</label><input id="ssImageSecs" type="number" min="1" max="3600" step="1">
-        <label for="ssGifLoops">Times to play each GIF</label><input id="ssGifLoops" type="number" min="1" max="100">
-        <label for="ssGifMin">Minimum seconds per GIF</label><input id="ssGifMin" type="number" min="0" max="600" title="Short GIFs repeat until this much time has passed">
-        <label for="ssTransition">Transition</label>
-        <div class="row tight"><select id="ssTransition"></select><input id="ssTransDur" type="number" min="0.1" max="10" step="0.1" style="width:70px" aria-label="Transition seconds"><span class="muted">s</span></div>
-        <label for="ssShuffle">Shuffle</label><input id="ssShuffle" type="checkbox">
-        <label for="ssMode">Sizing</label>
-        <select id="ssMode">
-          <option value="stretch">Stretch to fit</option>
-          <option value="crop">Cut to fit</option>
-          <option value="fit">Fit inside (black bars)</option>
-        </select>
-        <label for="ssDither">Style</label>
-        <select id="ssDither"><option value="false">Threshold (crisp)</option><option value="true">Dither (shading)</option></select>
-        <label for="ssThreshold">Brightness cutoff <span id="ssThVal"></span></label><input id="ssThreshold" type="range" min="1" max="254">
-        <label for="ssInvert">Invert</label><input id="ssInvert" type="checkbox">
-      </div>
-      <h3>Random effects</h3>
-      <p class="muted">Now and then, give an item an effect.</p>
-      <div class="form">
-        <label for="ssFxChance">Chance per item</label>
-        <div class="row tight"><input id="ssFxChance" type="range" min="0" max="100" step="5"><output id="ssFxChanceVal" for="ssFxChance" class="rangeVal"></output></div>
-        <label id="ssFxEffectsLabel">Effects</label>
-        <div id="ssFxEffects" class="chips" role="group" aria-labelledby="ssFxEffectsLabel"></div>
-        <label id="ssFxModeLabel">Apply to</label>
-        <div><div class="group" id="ssFxMode" role="group" aria-labelledby="ssFxModeLabel">
-          <button data-fx-mode="burst">A short burst</button><button data-fx-mode="whole">The whole item</button>
-        </div></div>
-        <label for="ssFxSeconds">Burst length</label>
-        <div class="row tight"><input id="ssFxSeconds" type="number" min="0.3" max="30" step="0.1" style="width:80px"><span class="muted" id="ssFxSecondsNote">seconds, at a random moment in the item</span></div>
-        <label for="ssFxStrength">Strength</label>
-        <div class="row tight"><input id="ssFxStrength" type="range" min="0" max="100" step="5"><output id="ssFxStrengthVal" for="ssFxStrength" class="rangeVal"></output></div>
-        <span></span><span class="muted">Strength changes Glitch, Wave, Pixelate, Static, Melt and Flash.</span>
-      </div>
       <div id="ssItems" class="ssItems"></div>
-    </div>
-  </section>
 
-  <!-- ===================== APPS ===================== -->
-  <section class="tab card" id="tab-apps" hidden>
-    <div class="grid2 apps">
-      <div id="appList"></div>
-      <div id="appDetail"><p class="muted">Pick an app to see its options and run it.</p></div>
+      <details class="disclosure" id="ssOptions">
+        <summary>Display options</summary>
+        <p class="muted">Changes save as you make them and apply to the slideshow on the board right away. The thumbnails above show each picture with these options.</p>
+        <div class="form">
+          <label for="ssImageSecs">Seconds per image</label><input id="ssImageSecs" type="number" min="1" max="3600" step="1">
+          <label for="ssGifLoops">Times to play each GIF</label><input id="ssGifLoops" type="number" min="1" max="100">
+          <label for="ssGifMin">Minimum seconds per GIF</label>
+          <div class="row tight"><input id="ssGifMin" type="number" min="0" max="600" style="width:90px"><span class="muted">Short GIFs repeat until this much time has passed.</span></div>
+          <label for="ssTransition">Transition between pictures</label>
+          <div class="row tight"><select id="ssTransition"></select><input id="ssTransDur" type="number" min="0.1" max="10" step="0.1" inputmode="decimal" style="width:70px" aria-label="Transition seconds"><span class="muted">s</span></div>
+          <label for="ssShuffle">Shuffle</label><input id="ssShuffle" type="checkbox">
+          <label for="ssMode">Sizing</label>
+          <div>
+            <select id="ssMode">
+              <option value="stretch">Stretch to fit</option>
+              <option value="crop">Cut to fit</option>
+              <option value="fit">Fit inside (black bars)</option>
+            </select>
+            <p class="help" id="ssModeHelp"></p>
+          </div>
+          <label for="ssDither">Style</label>
+          <div>
+            <select id="ssDither"><option value="false">Threshold (crisp)</option><option value="true">Dither (shading)</option></select>
+            <p class="help" id="ssDitherHelp"></p>
+          </div>
+          <label for="ssThreshold">Brightness cutoff <span id="ssThVal"></span></label>
+          <div>
+            <input id="ssThreshold" type="range" min="1" max="254">
+            <p class="help">Parts of the picture brighter than this become lit dots. Lower it for dark pictures.</p>
+          </div>
+          <label for="ssInvert">Negative</label>
+          <div class="row tight"><input id="ssInvert" type="checkbox"><span class="muted">Swap lit and dark dots.</span></div>
+        </div>
+        <h3>Random effects</h3>
+        <p class="muted">Now and then, give a picture an effect, such as a glitch or a ripple. Set the chance above Off to turn them on.</p>
+        <div class="form">
+          <label for="ssFxChance">Chance per picture</label>
+          <div class="row tight"><input id="ssFxChance" type="range" min="0" max="100" step="5"><output id="ssFxChanceVal" for="ssFxChance" class="rangeVal"></output></div>
+          <label id="ssFxEffectsLabel">Effects</label>
+          <div id="ssFxEffects" class="chips" role="group" aria-labelledby="ssFxEffectsLabel"></div>
+          <label id="ssFxModeLabel">Apply to</label>
+          <div><div class="group" id="ssFxMode" role="group" aria-labelledby="ssFxModeLabel">
+            <button data-fx-mode="burst">A short burst</button><button data-fx-mode="whole">The whole picture</button>
+          </div></div>
+          <label for="ssFxSeconds">Burst length</label>
+          <div class="row tight"><input id="ssFxSeconds" type="number" min="0.3" max="30" step="0.1" inputmode="decimal" style="width:80px"><span class="muted" id="ssFxSecondsNote">seconds, at a random moment in the picture</span></div>
+          <label for="ssFxStrength">Strength</label>
+          <div class="row tight"><input id="ssFxStrength" type="range" min="0" max="100" step="5"><output id="ssFxStrengthVal" for="ssFxStrength" class="rangeVal"></output></div>
+          <span></span><span class="muted">Strength changes Glitch, Wave, Pixelate, Static, Melt and Flash.</span>
+        </div>
+      </details>
     </div>
-  </section>
-
-  <!-- ===================== LAYERS ===================== -->
-  <section class="tab card" id="tab-layers" hidden>
-    <div class="bar">
-      <select id="lyComp" aria-label="Composition"></select>
-      <div class="group">
-        <button id="lyNew">New</button>
-        <button id="lySave">Save</button>
-        <button id="lySaveAs">Save as…</button>
-        <button id="lyRename">Rename</button>
-        <button id="lyDelete" class="danger">Delete</button>
-      </div>
-      <button id="lyLoadRunning" title="Edit the layers that are on the board right now">Load what's on the board</button>
-    </div>
-    <div class="bar">
-      <button id="lyRun" class="primary">Run on board</button>
-      <label><input type="checkbox" id="lyLive" checked> Live edit</label>
-      <label class="muted">Transition <select id="lyTransition"></select></label>
-      <label class="muted"><input type="number" id="lyTransDur" value="1" min="0.1" max="10" step="0.1" style="width:64px" aria-label="Transition seconds"> s</label>
-      <span class="muted" id="lyDirty"></span>
-    </div>
-    <p class="lede">Layers are listed top first, and each one keeps running on its own. <b>Invert</b> flips whatever is under its white dots,
-      so Game of Life over the weather still lets you read the weather. With <b>Live edit</b> on, changes reach the board right away
-      and layers you didn't touch keep running.</p>
-    <div id="lyList" class="items"></div>
-    <div class="row">
-      <select id="lyAddApp" aria-label="App for the new layer"></select>
-      <button id="lyAdd">Add layer</button>
-      <button id="lyAddDrawing" title="A blank layer you can draw on in the Draw tab">Add drawing layer</button>
-      <button id="lyAddBoard" title="Copy what's on the board now into an editable drawing layer">Add current board as a layer</button>
-    </div>
-
-    <h2 class="spaced">Transitions</h2>
-    <p class="lede">Click one to try it on the board; it switches between a few demo apps. Playlists, apps and notifications can use any of them.</p>
-    <div class="bar"><label class="muted">Duration <input type="number" id="trDur" value="1.2" min="0.1" max="10" step="0.1" style="width:64px"> s</label></div>
-    <div id="trGallery" class="trGallery"></div>
   </section>
 
   <!-- ===================== PLAYLISTS ===================== -->
   <section class="tab card" id="tab-playlists" hidden>
-    <h2>Playlists</h2>
     <div class="bar">
       <select id="plSelect" aria-label="Playlist"></select>
       <div class="group">
         <button id="plNew">New</button>
         <button id="plRename">Rename</button>
-        <button id="plDelete" class="danger">Delete</button>
       </div>
-      <button id="plPlay" class="primary"><svg class="i" aria-hidden="true"><use href="#i-play"/></svg>Play now</button>
+      <button id="plPlay" class="primary"><svg class="i" aria-hidden="true"><use href="#i-play"/></svg>Show on board</button>
       <label class="muted">Transition <select id="plTransition"></select></label>
-      <label class="muted"><input type="number" id="plTransDur" min="0.1" max="10" step="0.1" value="1" style="width:64px" aria-label="Transition seconds"> s</label>
+      <label class="muted"><input type="number" id="plTransDur" min="0.1" max="10" step="0.1" value="1" inputmode="decimal" style="width:64px" aria-label="Transition seconds"> s</label>
+      <span class="savedNote" id="plSaved" role="status"></span>
+      <span class="spacer"></span>
+      <button id="plDelete" class="danger">Delete</button>
     </div>
+    <p class="lede">A playlist shows its items one after another. Changes save as you make them.</p>
     <div id="plItems"></div>
     <div class="row">
       <select id="plAddApp" aria-label="App to add"></select>
@@ -384,49 +499,83 @@
     </div>
     <div id="plEditor"></div>
 
-    <h2 class="spaced">Schedule</h2>
-    <p class="lede">The first matching rule wins; otherwise the default playlist plays. Drawing or running an app pauses the schedule until you press <b>Schedule</b> at the top.</p>
+    <details class="disclosure" id="trDetails">
+      <summary>Transitions: preview them on the board</summary>
+      <p class="lede">Each one switches between a few demo apps and <b>replaces what's showing</b>. Playlists, apps and slideshows can use any of them.</p>
+      <div class="bar"><label class="muted">Duration <input type="number" id="trDur" value="1.2" min="0.1" max="10" step="0.1" inputmode="decimal" style="width:64px"> s</label></div>
+      <div id="trGallery" class="trGallery"></div>
+    </details>
+  </section>
+
+  <!-- ===================== SCHEDULE ===================== -->
+  <section class="tab card" id="tab-schedule" hidden>
+    <h2>Rules</h2>
+    <p class="lede">The first matching rule wins; otherwise the default playlist plays. A rule can run past midnight (for example 22:00 to 07:00).
+      Showing anything yourself pauses the schedule until you press <b>Resume schedule</b>.</p>
     <div class="bar">
       <label><input type="checkbox" id="schEnabled"> Follow the schedule</label>
       <label class="muted">Default playlist <select id="schDefault"></select></label>
+      <span class="savedNote" id="schSaved" role="status"></span>
     </div>
     <div id="schRules"></div>
     <div class="row"><button id="schAdd">Add rule</button></div>
+      <h2 class="spaced">Quiet hours <span class="savedNote" id="qhSaved" role="status"></span></h2>
+      <p class="lede">Flipdots clatter. During quiet hours the board flips at most this many dots per second: bigger changes are
+        spread out and always end on the latest picture. Transitions also run slower.</p>
+      <div class="form">
+        <label for="qhEnabled">Quiet hours</label><input id="qhEnabled" type="checkbox">
+        <label for="qhStart">From</label>
+        <div class="row tight"><input id="qhStart" type="time"><span class="muted">to</span><input id="qhEnd" type="time" aria-label="Until"></div>
+        <label for="qhMax">Most dots flipped per second</label>
+        <div class="row tight"><input id="qhMax" type="number" min="10" max="2000" step="10" style="width:96px"><span class="muted">A full-board change is 3,528 dots.</span></div>
+        <label for="qhSlow">Slow transitions down</label>
+        <div class="row tight"><input id="qhSlow" type="number" min="1" max="10" step="0.5" style="width:80px"><span class="muted">times</span></div>
+        <label>Status</label><div id="qhStatus" class="muted">Loading…</div>
+      </div>
+  </section>
 
-    <h2 class="spaced">Automations</h2>
-    <p class="lede">When something happens, change what's on the board. Each automation runs once when its trigger starts (not again while it lasts), then waits at least the set time before it can run again.</p>
+  <!-- ===================== AUTOMATIONS ===================== -->
+  <section class="tab card" id="tab-automations" hidden>
+    <p class="lede">Each automation runs once when its trigger starts (not again while it lasts), then waits at least the set time before it can run again.</p>
     <div class="bar">
       <button id="autoAdd" class="primary"><svg class="i" aria-hidden="true"><use href="#i-plus"/></svg>New automation</button>
       <button id="autoRefresh">Refresh</button>
+      <span class="savedNote" id="autoSaved" role="status"></span>
       <span id="autoStatus" class="muted">Loading…</span>
     </div>
     <div id="autoRules"></div>
     <div id="autoEditor"></div>
   </section>
 
-  <!-- ===================== SCENES ===================== -->
-  <section class="tab card" id="tab-scenes" hidden>
-    <div class="bar">
-      <button id="scSaveCurrent" class="primary">Save current board</button>
-      <span class="muted">Scenes are saved drawings, images and animations. Use them in playlists through the Saved scene app.</span>
-    </div>
-    <div id="sceneGrid" class="sceneGrid"></div>
+  <!-- ===================== GUEST WALL ===================== -->
+  <section class="tab card" id="tab-guests" hidden>
+      <p class="lede">Guests open <a id="gwLink" target="_blank" rel="noopener"></a> (the Guest wall app shows it as a QR code)
+        and leave a name and a message. That page and its Send button work without the password; nothing else does.
+        Approved messages scroll on the board in the Guest wall app.</p>
+      <div class="form">
+        <label for="gwAuto">Approve automatically</label><input id="gwAuto" type="checkbox">
+        <label>Waiting for review</label><div id="gwPending" class="muted">Loading…</div>
+      </div>
+      <div class="row"><button id="gwRefresh">Refresh</button></div>
+      <div class="items" id="gwList"></div>
   </section>
 
   <!-- ===================== SETTINGS ===================== -->
   <section class="tab card" id="tab-settings" hidden>
     <nav class="subnav" id="setNav" aria-label="Settings sections">
-      <button data-set="general" aria-pressed="true">General</button>
-      <button data-set="board" aria-pressed="false">Board care</button>
+      <button data-set="location" aria-pressed="true">Location &amp; display</button>
+      <button data-set="fonts" aria-pressed="false">Fonts</button>
+      <button data-set="ai" aria-pressed="false">AI drawing</button>
       <button data-set="music" aria-pressed="false">Music</button>
-      <button data-set="controllers" aria-pressed="false">Controllers</button>
       <button data-set="home" aria-pressed="false">Smart home &amp; API</button>
-      <button data-set="guests" aria-pressed="false">Guest wall <span class="count" id="gwBadge" hidden></span></button>
-      <button data-set="storage" aria-pressed="false">Storage</button>
+      <button data-set="controllers" aria-pressed="false">Controllers</button>
+      <button data-set="hardware" aria-pressed="false">Board hardware</button>
+      <button data-set="maintenance" aria-pressed="false">Maintenance</button>
+      <button data-set="backup" aria-pressed="false">Backup</button>
     </nav>
 
-    <!-- ---------- General ---------- -->
-    <div class="setGroup" data-set="general">
+    <p class="lede">Settings save themselves as you change them (text boxes when you leave them), and <b>Saved</b> appears by the heading.</p>
+    <div class="setGroup" data-set="location">
       <h2>Appearance</h2>
       <div class="form">
         <label>Theme</label>
@@ -435,7 +584,7 @@
         </div><span class="muted">Auto follows this device's light or dark setting. Saved in this browser.</span></div>
       </div>
 
-      <h2 class="spaced">Weather</h2>
+      <h2 class="spaced">Weather <span class="savedNote" id="wxSaved" role="status"></span></h2>
       <p class="lede">Used by the Weather app and the weather automations.</p>
       <div class="form">
         <label for="wxSearch">Location</label>
@@ -452,13 +601,14 @@
         <select id="wxUnits"><option value="fahrenheit">°F</option><option value="celsius">°C</option></select>
       </div>
 
-      <h2 class="spaced">Display</h2>
+      <h2 class="spaced">Display <span class="savedNote" id="dispSaved" role="status"></span></h2>
       <div class="form">
         <label for="trFps">Transition frame rate</label>
         <div class="row tight"><input id="trFps" type="number" min="5" max="30" step="1" style="width:80px"><span class="muted">frames per second. 15 matches most flipdot GIFs.</span></div>
       </div>
-
-      <h2 class="spaced">Fonts</h2>
+    </div>
+    <div class="setGroup" data-set="fonts" hidden>
+      <h2>Fonts</h2>
       <p class="lede">Pixel fonts are built in, and fonts installed on the server are listed too. You can upload <code>.ttf</code> or <code>.otf</code>
         fonts (ones drawn for small sizes look best, such as Silkscreen, Press Start 2P, VT323 or Pixelify Sans) and
         <code>.bdf</code> or <code>.pcf</code> bitmap fonts.</p>
@@ -478,87 +628,20 @@
         <label>Uploaded fonts</label>
         <div id="fontUserList" class="muted">None</div>
       </div>
-
-      <h2 class="spaced">AI drawing</h2>
-      <p class="lede">Powers “Draw me…” in the Draw tab: describe a picture or a short animation and Claude draws it as dots
+    </div>
+    <div class="setGroup" data-set="ai" hidden>
+      <h2>AI drawing <span class="savedNote" id="aiSaved" role="status"></span></h2>
+      <p class="lede">Powers “Draw me…” in Draw: describe a picture or a short animation and Claude draws it as dots
         you can edit. It needs an API key from <a href="https://console.anthropic.com/" target="_blank" rel="noopener">console.anthropic.com</a>,
         and each drawing is billed to that account. Your description is sent to Anthropic.</p>
       <div class="form">
         <label for="aiKey">Anthropic API key</label><input id="aiKey" type="password" autocomplete="off" placeholder="sk-ant-…">
         <label for="aiModel">Model</label><select id="aiModel"></select>
       </div>
-      <div class="row"><button id="aiSave" class="primary">Save</button></div>
     </div>
-
-    <!-- ---------- Board care ---------- -->
-    <div class="setGroup" data-set="board" hidden>
-      <h2>Quiet hours</h2>
-      <p class="lede">Flipdots clatter. During quiet hours the board flips at most this many dots per second: bigger changes are
-        spread out and always end on the latest picture. Transitions also run slower.</p>
-      <div class="form">
-        <label for="qhEnabled">Quiet hours</label><input id="qhEnabled" type="checkbox">
-        <label for="qhStart">From</label>
-        <div class="row tight"><input id="qhStart" type="time"><span class="muted">to</span><input id="qhEnd" type="time" aria-label="Until"></div>
-        <label for="qhMax">Most dots flipped per second</label>
-        <div class="row tight"><input id="qhMax" type="number" min="10" max="2000" step="10" style="width:96px"><span class="muted">A full-board change is 3,528 dots.</span></div>
-        <label for="qhSlow">Slow transitions down</label>
-        <div class="row tight"><input id="qhSlow" type="number" min="1" max="10" step="0.5" style="width:80px"><span class="muted">times</span></div>
-        <label>Status</label><div id="qhStatus" class="muted">Loading…</div>
-      </div>
-      <div class="row"><button id="qhSave" class="primary">Save</button></div>
-
-      <h2 class="spaced">Board health</h2>
-      <p class="lede">How often each disc has flipped, counted as frames go out to the board. Discs that rarely move can
-        stick. Exercising flips the least-used eighth of them a few times, then puts the picture back.</p>
-      <div class="wrap capped"><canvas id="wearMap" aria-label="Flip count per disc"></canvas></div>
-      <div class="wearLegend capped"><span id="wearMin">0</span><span class="ramp" aria-hidden="true"></span><span id="wearMax">0</span><span id="wearHover" class="muted"></span></div>
-      <div id="wearSummary" class="muted">Loading…</div>
-      <div class="row"><button id="wearExercise">Exercise rarely flipped discs</button><button id="wearRefresh">Refresh</button></div>
-      <div class="form">
-        <label for="wearAuto">Exercise every day at</label>
-        <div class="row tight"><input id="wearAuto" type="checkbox"><input id="wearTime" type="time" aria-label="Exercise time"><span class="muted">Skipped during quiet hours.</span></div>
-      </div>
-
-      <h2 class="spaced">Board setup</h2>
-      <p class="lede">Check which config entry drives each physical panel. Step through the panels: the board outlines the selected
-        panel and shows its column, row, port and address on it, and everything else goes black. Upside-down text means that panel
-        needs rotate 180°. Saving writes <code>config.yaml</code> and applies the mapping right away.</p>
-      <div class="row">
-        <div class="group">
-          <button id="psPrev"><svg class="i" aria-hidden="true"><use href="#i-left"/></svg>Previous</button><button id="psNext">Next<svg class="i" aria-hidden="true"><use href="#i-right"/></svg></button>
-        </div>
-        <button id="psAll">Identify all</button><button id="psDone">Done</button>
-        <span id="psStep" class="muted"></span>
-      </div>
-      <div class="tableWrap"><table class="panelTable"><thead><tr><th>#</th><th>Column</th><th>Row</th><th>IP</th><th>Port</th><th>Address</th><th>Rotate</th><th><span class="sr">Actions</span></th></tr></thead><tbody id="psRows"></tbody></table></div>
-      <div class="row"><button id="psAdd"><svg class="i" aria-hidden="true"><use href="#i-plus"/></svg>Add panel</button><button id="psSave" class="primary">Save to config.yaml</button><span id="psMsg" class="muted"></span></div>
-    </div>
-
-    <!-- ---------- Controllers ---------- -->
-    <div class="setGroup" data-set="controllers" hidden>
-      <h2>Gamepad</h2>
-      <p class="lede">Plug USB gamepads or a Mayflash GameCube adapter (PC mode) into the server to play the board's games. Each
-        adapter port is a player, port 1 = player 1. The stick and D-pad steer, A and B are the game buttons. In Doom, L/R strafe,
-        X switches weapon, Y toggles run, Z opens doors and Start pauses.</p>
-      <div class="form">
-        <label for="gpEnabled">Gamepads</label><input id="gpEnabled" type="checkbox">
-        <label for="gpDeadzone">Stick dead zone</label>
-        <div class="row tight"><input id="gpDeadzone" type="range" min="0.1" max="0.9" step="0.05"><output id="gpDeadzoneVal" for="gpDeadzone" class="rangeVal"></output></div>
-        <label>Status</label><div id="gpStatus" class="muted">Loading…</div>
-        <label>Controllers</label><div id="gpPads" class="items"></div>
-        <label>Last inputs</label><div id="gpEvents" class="muted">None yet</div>
-      </div>
-      <div class="row"><button id="gpSave" class="primary">Save</button></div>
-
-      <h2 class="spaced">Button mapping</h2>
-      <p class="lede">Press a button and its code name shows under Last inputs. Pick what each code does; Off ignores it.</p>
-      <div class="tableWrap"><table class="panelTable"><thead><tr><th>Code</th><th>Does</th></tr></thead><tbody id="gpMap"></tbody></table></div>
-      <div class="row"><button id="gpAddCode"><svg class="i" aria-hidden="true"><use href="#i-plus"/></svg>Add code</button><button id="gpMapSave" class="primary">Save mapping</button><button id="gpMapReset">Reset to defaults</button></div>
-    </div>
-
-    <!-- ---------- Music ---------- -->
     <div class="setGroup" data-set="music" hidden>
-      <h2>Music Assistant</h2>
+    <div class="setGroup" data-set="music" hidden>
+      <h2>Music Assistant <span class="savedNote" id="maSaved" role="status"></span></h2>
       <p class="lede">For the Now playing app. Enter your Music Assistant server address (usually port 8095, for example
         <code>http://homeassistant.local:8095</code>). If your server asks you to log in, create a long-lived token in
         Music Assistant under <b>Settings → Security</b> and paste it here.</p>
@@ -568,9 +651,9 @@
         <label for="maPlayer">Default player</label><select id="maPlayer"><option value="">Whatever is playing</option></select>
         <label>Status</label><div id="maStatus" class="muted">Not tested</div>
       </div>
-      <div class="row"><button id="maSave" class="primary">Save and test</button></div>
+      <div class="row"><button id="maTest">Test connection</button></div>
 
-      <h2 class="spaced">Visualizer stream (Sendspin)</h2>
+      <h2 class="spaced">Visualizer stream (Sendspin) <span class="savedNote" id="spSaved" role="status"></span></h2>
       <p class="lede">Lets Music Assistant stream live visualizer data (loudness, spectrum, beats) to the board, so the
         <b>Music visualizer</b> app follows the music that's playing. The board joins as a display-only Sendspin client: it plays no
         audio and uses no microphone. It needs <code>pip install -r requirements-sendspin.txt</code> on the server (Python 3.12+, and the
@@ -589,15 +672,13 @@
         <div class="row tight"><input id="ssUnpaired" type="checkbox"><span class="muted">Simplest on a trusted home network. Otherwise, pair below.</span></div>
         <label>Status</label><div id="ssStatusLine" class="muted">Loading…</div>
       </div>
+      <p class="muted">A changed <b>Connect to</b> takes effect when the server restarts.</p>
       <div class="row">
-        <button id="ssSave" class="primary">Save</button>
         <button id="ssPair" title="Opens a short pairing window. Music Assistant then shows the code to enter, or the board displays it.">Pair with Music Assistant</button>
       </div>
     </div>
-
-    <!-- ---------- Smart home & API ---------- -->
     <div class="setGroup" data-set="home" hidden>
-      <h2>MQTT and Home Assistant</h2>
+      <h2>MQTT and Home Assistant <span class="savedNote" id="mqSaved" role="status"></span></h2>
       <div class="form">
         <label for="mqEnabled">MQTT</label><input id="mqEnabled" type="checkbox">
         <label for="mqHost">Broker host</label><input id="mqHost" type="text" placeholder="homeassistant.local">
@@ -609,30 +690,67 @@
         <label for="mqDiscPrefix">Discovery prefix</label><input id="mqDiscPrefix" type="text" value="homeassistant">
         <label>Status</label><div id="mqStatus" class="muted">Loading…</div>
       </div>
-      <div class="row"><button id="mqSave" class="primary">Save</button></div>
 
       <h2 class="spaced">Webhooks and the HTTP API</h2>
       <div id="hooks" class="docs"></div>
     </div>
-
-    <!-- ---------- Guest wall ---------- -->
-    <div class="setGroup" data-set="guests" hidden>
-      <h2 id="guestHead">Guest wall</h2>
-      <p class="lede">Guests open <a id="gwLink" target="_blank" rel="noopener"></a> (the Guest wall app shows it as a QR code)
-        and leave a name and a message. That page and its Send button work without the password; nothing else does.
-        Approved messages scroll on the board in the Guest wall app.</p>
+    <div class="setGroup" data-set="controllers" hidden>
+    <div class="setGroup" data-set="controllers" hidden>
+      <h2>Gamepad <span class="savedNote" id="gpSaved" role="status"></span></h2>
+      <p class="lede">Plug USB gamepads or a Mayflash GameCube adapter (PC mode) into the server to play the board's games. Each
+        adapter port is a player, port 1 = player 1. The stick and D-pad steer, A and B are the game buttons. In Doom, L/R strafe,
+        X switches weapon, Y toggles run, Z opens doors and Start pauses.</p>
       <div class="form">
-        <label for="gwAuto">Approve automatically</label><input id="gwAuto" type="checkbox">
-        <label>Waiting for review</label><div id="gwPending" class="muted">Loading…</div>
+        <label for="gpEnabled">Gamepads</label><input id="gpEnabled" type="checkbox">
+        <label for="gpDeadzone">Stick dead zone</label>
+        <div class="row tight"><input id="gpDeadzone" type="range" min="0.1" max="0.9" step="0.05"><output id="gpDeadzoneVal" for="gpDeadzone" class="rangeVal"></output></div>
+        <label for="gpMenu">Menu button</label>
+        <div>
+          <select id="gpMenu"><option value="hold_start">Hold Start</option><option value="off">Off</option></select>
+          <p class="help">Hold Start to open the game menu on the board: up and down choose, left and right change the category, A plays, B goes back to your game.</p>
+        </div>
+        <label>Status</label><div id="gpStatus" class="muted">Loading…</div>
+        <label>Controllers</label><div id="gpPads" class="items"></div>
+        <label>Last inputs</label><div id="gpEvents" class="muted">None yet</div>
       </div>
-      <div class="row"><button id="gwRefresh">Refresh</button></div>
-      <div class="items" id="gwList"></div>
-    </div>
 
-    <!-- ---------- Storage ---------- -->
-    <div class="setGroup" data-set="storage" hidden>
+      <h2 class="spaced">Button mapping <span class="savedNote" id="gpMapSaved" role="status"></span></h2>
+      <p class="lede">Press a button and its code name shows under Last inputs. Pick what each code does; Off ignores it.</p>
+      <div class="tableWrap"><table class="panelTable"><thead><tr><th>Code</th><th>Does</th></tr></thead><tbody id="gpMap"></tbody></table></div>
+      <div class="row"><button id="gpAddCode"><svg class="i" aria-hidden="true"><use href="#i-plus"/></svg>Add code</button><button id="gpMapReset">Reset to defaults</button></div>
+    </div>
+    <div class="setGroup" data-set="hardware" hidden>
+      <h2>Panel setup</h2>
+      <p class="lede">Check which config entry drives each physical panel. Step through the panels: the board outlines the selected
+        panel and shows its column, row, port and address on it, and everything else goes black. Upside-down text means that panel
+        needs rotate 180°. Saving writes <code>config.yaml</code> and applies the mapping right away.</p>
+      <div class="row">
+        <div class="group">
+          <button id="psPrev"><svg class="i" aria-hidden="true"><use href="#i-left"/></svg>Previous</button><button id="psNext">Next<svg class="i" aria-hidden="true"><use href="#i-right"/></svg></button>
+        </div>
+        <button id="psAll">Identify all</button><button id="psDone">Done</button>
+        <span id="psStep" class="muted"></span>
+      </div>
+      <div class="tableWrap"><table class="panelTable"><thead><tr><th>#</th><th>Column</th><th>Row</th><th>IP</th><th>Port</th><th>Address</th><th>Rotate</th><th><span class="sr">Actions</span></th></tr></thead><tbody id="psRows"></tbody></table></div>
+      <div class="row"><button id="psAdd"><svg class="i" aria-hidden="true"><use href="#i-plus"/></svg>Add panel</button><button id="psSave" class="primary">Save to config.yaml</button><span id="psMsg" class="muted"></span></div>
+    </div>
+    <div class="setGroup" data-set="maintenance" hidden>
+      <h2>Board health</h2>
+      <p class="lede">How often each disc has flipped, counted as frames go out to the board. Discs that rarely move can
+        stick. Exercising flips the least-used eighth of them a few times, then puts the picture back.</p>
+      <div class="wrap capped"><canvas id="wearMap" aria-label="Flip count per disc"></canvas></div>
+      <div class="wearLegend capped"><span id="wearMin">0</span><span class="ramp" aria-hidden="true"></span><span id="wearMax">0</span><span id="wearHover" class="muted"></span></div>
+      <div id="wearSummary" class="muted">Loading…</div>
+      <div class="row"><button id="wearExercise">Exercise rarely flipped discs</button><button id="wearRefresh">Refresh</button></div>
+      <div class="form">
+        <label for="wearAuto">Exercise every day at <span class="savedNote" id="wearSaved" role="status"></span></label>
+        <div class="row tight"><input id="wearAuto" type="checkbox"><input id="wearTime" type="time" aria-label="Exercise time"><span class="muted">Skipped during quiet hours.</span></div>
+      </div>
+      <p class="muted spacedP">Quiet hours (fewer flips at night) are on the <a href="#schedule">Schedule</a> page.</p>
+    </div>
+    <div class="setGroup" data-set="backup" hidden>
       <h2>Storage</h2>
-      <p class="lede">Settings, playlists, scenes, drawings, slideshows, fonts and other saved data live in one SQLite file
+      <p class="lede">Settings, playlists, pictures, drawing layers, slideshows, fonts and other saved data live in one SQLite file
         outside the app folder, so they survive updating or replacing the app. The <code>data</code> folder is a working copy
         rebuilt from it at startup.</p>
       <div class="form">
@@ -650,6 +768,15 @@
   </section>
 </main>
 </div>
+<!-- phone: one bar for the top-level groups -->
+<nav class="tabbar" id="tabbar" aria-label="Sections">
+  <button data-group="now"><svg class="i" aria-hidden="true"><use href="#i-now"/></svg><span>Now</span></button>
+  <button data-group="create"><svg class="i" aria-hidden="true"><use href="#i-create"/></svg><span>Create</span></button>
+  <button data-group="library"><svg class="i" aria-hidden="true"><use href="#i-library"/></svg><span>Library</span></button>
+  <button data-group="programme"><svg class="i" aria-hidden="true"><use href="#i-schedule"/></svg><span>Programme</span></button>
+  <button data-group="guests"><svg class="i" aria-hidden="true"><use href="#i-chat"/></svg><span>Guests</span><span class="count gwCount" hidden></span></button>
+  <button data-group="settings"><svg class="i" aria-hidden="true"><use href="#i-settings"/></svg><span>Settings</span></button>
+</nav>
 <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 <script type="module" src="/static/js/main.js"></script>
 </body>

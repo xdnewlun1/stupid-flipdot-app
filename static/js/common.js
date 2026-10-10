@@ -1,4 +1,5 @@
 // Shared helpers: API calls, board state polling, dot rendering, toasts.
+import { GAME_GROUPS } from "./games.js";
 
 export const $ = id => document.getElementById(id);
 export const bus = new EventTarget();
@@ -17,19 +18,171 @@ export async function api(path, body, opts = {}) {
   return j;
 }
 
-export function toast(msg, isError = false) {
+// Errors stay until dismissed; ones that need a setting carry a button that opens it.
+export function toast(msg, isError = false, action = null, ms = 2500) {
   const t = $("toast");
-  t.textContent = msg;
+  action ||= isError ? fixFor(msg) : null;
+  t.replaceChildren(el("span", {}, msg));
+  if (action) t.append(el("button", { type: "button", onclick: () => { t.hidden = true; action.onclick(); } }, action.label));
+  if (isError) t.append(el("button", { type: "button", class: "close", "aria-label": "Dismiss", onclick: () => { t.hidden = true; } }, "×"));
   t.classList.toggle("error", isError);
+  t.setAttribute("role", isError ? "alert" : "status");
   t.hidden = false;
   clearTimeout(toast.timer);
-  toast.timer = setTimeout(() => (t.hidden = true), isError ? 5000 : 2500);
+  if (!isError) toast.timer = setTimeout(() => (t.hidden = true), ms);
 }
 
-// Wrap an async click handler so errors show up as toasts.
+// Messages that name a setting get a button that goes there: [pattern, button label, settings group, field to focus]
+const FIXES = [
+  [/AI drawing|Anthropic/i, "Open Settings → AI drawing", "ai", "aiKey"],
+  [/weather location|Settings, Location/i, "Open Settings → Location", "location", "wxSearch"],
+  [/Music Assistant URL|Settings, Music/i, "Open Settings → Music", "music", "maUrl"],
+  [/MQTT/, "Open Settings → Smart home", "home", "mqHost"],
+];
+export function fixFor(msg) {
+  const f = FIXES.find(([re]) => re.test(msg || ""));
+  return f ? { label: f[1], onclick: () => openSettings(f[2], f[3]) } : null;
+}
+export function openSettings(group, field) {
+  bus.dispatchEvent(new CustomEvent("tab", { detail: `settings/${group}` }));
+  const f = field && $(field);
+  if (f) { f.scrollIntoView({ block: "center" }); f.focus({ preventScroll: true }); }
+}
+
+// One-click removals: the item goes now, and the toast offers Undo for a few seconds.
+// `commit` (optional) runs once the window closes without Undo, e.g. to delete a file for real.
+let pendingUndo = null;
+export function undoable(msg, { undo, commit = null, ms = 7000 }) {
+  flushUndo();
+  const p = pendingUndo = { commit, timer: setTimeout(() => { if (pendingUndo === p) flushUndo(); }, ms) };
+  toast(msg, false, { label: "Undo", onclick: safe(async () => {
+    if (pendingUndo !== p) return;
+    clearTimeout(p.timer);
+    pendingUndo = null;
+    await undo();
+  }) }, ms);
+}
+// Finish a pending removal now (call before anything that would save over it).
+export function flushUndo() {
+  const p = pendingUndo;
+  if (!p) return;
+  pendingUndo = null;
+  clearTimeout(p.timer);
+  if (p.commit) safe(p.commit)();
+}
+
+// Before deleting a playlist, layer set, scene, slideshow or drawing: list what uses it and ask.
+// The server removes those uses (or turns off automations) when the thing is deleted.
+export async function confirmDelete(kind, key, label) {
+  let used = [];
+  try { used = (await api(`/api/refs?kind=${kind}&key=${encodeURIComponent(key)}`)).used_by; } catch {}
+  const more = used.length > 8 ? [el("li", {}, `…and ${used.length - 8} more`)] : [];
+  return confirmDialog({
+    title: `Delete ${label}?`, confirmText: "Delete", danger: true,
+    message: used.length ? [
+      el("p", {}, "It's used by:"), el("ul", {}, used.slice(0, 8).map(u => el("li", {}, u)), more),
+      el("p", {}, "Those playlist items and layers are removed, schedule rules switch to Nothing and automations are turned off."),
+    ] : "This can't be undone.",
+  });
+}
+
+// ---- one dialog for naming things and confirming (instead of the browser's prompt() and confirm()) ----
+let dlg = null;
+// ask({ title, label, value, confirmText, validate(v) -> error text or null }) resolves to the text, or null on Cancel.
+// With input: false it's a yes/no question and resolves to true/false.
+export function ask({ title, label = "Name", value = "", message = null, confirmText = "OK", danger = false, validate = null, input = true }) {
+  dlg?.close();
+  const field = input ? el("input", { type: "text", value, maxlength: 120, "aria-describedby": "dlgErr", autocomplete: "off" }) : null;
+  const err = el("p", { class: "dlgErr", id: "dlgErr", role: "alert" });
+  const ok = el("button", { type: "submit", value: "ok", class: danger ? "dangerFill" : "primary" }, confirmText);
+  const form = el("form", { method: "dialog" },
+    el("h2", { id: "dlgTitle" }, title),
+    message ? el("div", { class: "muted dlgMsg" }, message) : null,
+    field ? el("label", { class: "dlgField" }, el("span", {}, label), field) : null,
+    err,
+    el("div", { class: "row dlgButtons" }, el("button", { type: "button", value: "cancel", onclick: () => d.close("cancel") }, "Cancel"), ok));
+  const d = dlg = el("dialog", { class: "dlg", "aria-labelledby": "dlgTitle" }, form);
+  document.body.append(d);
+  return new Promise(resolve => {
+    form.addEventListener("submit", e => {
+      if (!field) return;
+      const v = field.value.trim();
+      const problem = !v ? `Enter a ${label.toLowerCase()}.` : validate?.(v);
+      if (problem) { e.preventDefault(); err.textContent = problem; field.focus(); }
+    });
+    field?.addEventListener("input", () => { err.textContent = ""; });
+    d.addEventListener("close", () => {
+      const yes = d.returnValue === "ok";
+      d.remove();
+      if (dlg === d) dlg = null;
+      resolve(field ? (yes ? field.value.trim() : null) : yes);
+    });
+    d.showModal();
+    if (field) { field.focus(); field.select(); } else ok.focus();
+  });
+}
+export const confirmDialog = opts => ask({ ...opts, input: false });
+// Name validation shared by New / Rename / Save as: taken names are refused in the dialog itself.
+export const nameFree = (names, except = null) => v => (v !== except && names.includes(v) ? `"${v}" is already taken.` : null);
+
+// ---- autosave feedback: "Saving…" then "Saved" next to whatever was edited ----
+export async function autosave(target, fn, done = "Saved") {
+  const note = typeof target === "string" ? $(target) : target;
+  if (note) { note.textContent = "Saving…"; note.classList.remove("bad"); }
+  try {
+    const r = await fn();
+    if (note) note.replaceChildren(icon("check"), done);
+    return r;
+  } catch (e) {
+    if (note) { note.textContent = "Not saved"; note.classList.add("bad"); }
+    throw e;
+  }
+}
+
+// Settings fields: fill from the server, but never over something the user typed and hasn't saved.
+const shown = new Map();  // id -> [prop, value we last put there]
+export function fillField(id, value, prop = "value") {
+  const e = $(id);
+  const last = shown.get(id);
+  if (last && e[prop] !== last[1]) return;  // edited since: keep the draft
+  e[prop] = value;
+  shown.set(id, [prop, e[prop]]);
+}
+export const forgetFields = ids => ids.forEach(id => shown.delete(id));
+export const unsavedFields = () => [...shown].filter(([id, [prop, v]]) => $(id) && $(id)[prop] !== v).map(([id]) => id);
+
+// Wrap an async handler so errors show up (next to the button that failed, or as a toast), and a clicked
+// button stays busy until the work is done, so a double click doesn't do it twice.
 export const safe = fn => async (...a) => {
-  try { await fn(...a); } catch (e) { toast(e.message, true); }
+  const btn = a[0]?.currentTarget instanceof HTMLButtonElement ? a[0].currentTarget : null;
+  if (btn) {
+    if (btn.getAttribute("aria-busy") === "true") return;
+    btn.setAttribute("aria-busy", "true");
+    btn.disabled = true;
+    clearInlineError(btn);
+  }
+  try { await fn(...a); } catch (e) { if (!(btn && inlineError(btn, e.message))) toast(e.message, true); }
+  finally {
+    if (btn) { btn.removeAttribute("aria-busy"); btn.disabled = false; }
+  }
 };
+
+// An error shown right after the control that failed; it stays until dismissed or the control is used again.
+function inlineError(btn, msg) {
+  const anchor = btn.closest(".group") || btn;
+  if (!btn.isConnected || !anchor.parentElement?.matches(".row, .bar")) return false;
+  clearInlineError(btn);
+  const fix = fixFor(msg);
+  const box = el("span", { class: "inlineErr", role: "alert" }, el("span", {}, msg),
+    fix ? el("button", { type: "button", onclick: () => { box.remove(); fix.onclick(); } }, fix.label) : null,
+    el("button", { type: "button", class: "close", "aria-label": "Dismiss", onclick: () => box.remove() }, "×"));
+  anchor.after(box);
+  return true;
+}
+function clearInlineError(btn) {
+  const anchor = btn.closest(".group") || btn;
+  if (anchor.nextElementSibling?.classList.contains("inlineErr")) anchor.nextElementSibling.remove();
+}
 
 export const rowsToGrid = rows => rows.map(r => [...r].map(c => c === "1"));
 export const gridToRows = grid => grid.map(r => r.map(v => (v ? "1" : "0")).join(""));
@@ -236,6 +389,36 @@ export function fontSelect(value, attrs = {}) {
   }));
 }
 
+// The order apps are offered in, everywhere: everyday things first, games last.
+// The "Used in playlists" apps only show something you made elsewhere (a picture, drawing, layer set or slideshow).
+const EVERYDAY = ["clock", "text", "weather", "calendar", "music", "analog_clock", "countdown", "guest_wall"];
+export const APP_SECTIONS = [
+  ["everyday", "Everyday", a => EVERYDAY.includes(a.id)],
+  ["widgets", "Widgets", a => a.category === "Widgets"],
+  ["generative", "Generative", a => a.category === "Generative"],
+  ["utilities", "Utilities", a => ["Utilities", "Clocks", "Text"].includes(a.category)],
+  ["other", "More", a => !["Games", "Layers", "Media"].includes(a.category)],
+  ["playlists", "Used in playlists", a => ["Layers", "Media"].includes(a.category)],
+  ["games", "Games", () => true],
+];
+const GAME_ORDER = Object.values(GAME_GROUPS).flat().map(([id]) => id);
+const gameGroupOf = id => Object.entries(GAME_GROUPS).find(([, g]) => g.some(([gid]) => gid === id))?.[0] || "More games";
+export function appSections(apps = catalog.apps) {
+  const out = APP_SECTIONS.map(([key, label]) => ({ key, label, apps: [] }));
+  for (const a of apps) out[APP_SECTIONS.findIndex(([, , test]) => test(a))].apps.push(a);
+  out[0].apps.sort((a, b) => EVERYDAY.indexOf(a.id) - EVERYDAY.indexOf(b.id));
+  const games = out.find(s => s.key === "games");
+  games.apps.sort((a, b) => (GAME_ORDER.indexOf(a.id) + 1 || 999) - (GAME_ORDER.indexOf(b.id) + 1 || 999));
+  games.groups = {};
+  for (const a of games.apps) (games.groups[gameGroupOf(a.id)] ||= []).push(a);
+  return out.filter(s => s.apps.length);
+}
+// <option>s for an app picker, grouped in the same order (skip: app ids to leave out)
+export function appOptions(selected = null, skip = []) {
+  return appSections(catalog.apps.filter(a => !skip.includes(a.id))).map(s =>
+    el("optgroup", { label: s.label }, s.apps.map(a => el("option", { value: a.id, selected: a.id === selected }, a.title))));
+}
+
 export async function loadCatalog() {
   const j = await api("/api/apps");
   catalog.apps = j.apps; catalog.transitions = j.transitions;
@@ -251,7 +434,7 @@ export async function refreshScenes() {
 // Build a form for an app's params. Returns { el, values() }.
 export function paramForm(app, values = {}) {
   const form = el("div", { class: "form" });
-  const getters = {};
+  const getters = {}, shown = [];
   for (const p of app.params) {
     if (p.type === "hidden") continue;
     const id = `p_${app.id}_${p.name}_${Math.random().toString(36).slice(2, 7)}`;
@@ -277,7 +460,7 @@ export function paramForm(app, values = {}) {
       getters[p.name] = () => input.value;
     } else if (p.type === "composition") {
       input = el("select", { id }, compCache.names.map(n => el("option", { value: n, selected: n === v }, n)));
-      if (!compCache.names.length) input.append(el("option", { value: "" }, "No compositions saved yet"));
+      if (!compCache.names.length) input.append(el("option", { value: "" }, "No saved layer sets yet"));
       getters[p.name] = () => input.value;
     } else if (p.type === "checkbox") {
       input = el("input", { id, type: "checkbox", checked: !!v });
@@ -296,8 +479,26 @@ export function paramForm(app, values = {}) {
       input = el("input", { id, type: "text", value: v ?? "" });
       getters[p.name] = () => input.value;
     }
-    form.append(el("label", { for: id }, p.label), input);
+    const label = el("label", { for: id }, p.label);
+    form.append(label, input);
+    if (p.show_if) shown.push([p.show_if, label, input]);
   }
+  // show_if: {param: value | [values] | {not: value | [values]}}, all must hold. A font param compares its
+  // kind ("pixel", "uploaded" or "system"), so fields for pixel fonts and other fonts can swap.
+  const kinds = Object.fromEntries(app.params.map(p => [p.name, p.type]));
+  const current = name => {
+    const v = getters[name]?.();
+    return kinds[name] === "font" ? (fontCache.list.find(f => f.id === v)?.kind || "pixel") : v;
+  };
+  const holds = (want, v) => {
+    if (want && typeof want === "object" && !Array.isArray(want)) return !holds(want.not, v);
+    return (Array.isArray(want) ? want : [want]).some(w => String(w) === String(v));
+  };
+  const update = () => shown.forEach(([cond, label, input]) => {
+    const on = Object.entries(cond).every(([name, want]) => holds(want, current(name)));
+    label.hidden = input.hidden = !on;
+  });
+  if (shown.length) { update(); form.addEventListener("input", update); form.addEventListener("change", update); }
   return { el: form, values: () => Object.fromEntries(Object.entries(getters).map(([k, g]) => [k, g()])) };
 }
 

@@ -1,4 +1,4 @@
-import { $, api, board, bus, catalog, live, loadCatalog, loadDrawings, loadFonts, refreshScenes, safe, startPolling, toast, wsSend } from "./common.js";
+import { $, api, board, bus, catalog, el, fixFor, icon, live, loadCatalog, loadDrawings, loadFonts, openSettings, refreshScenes, renderDots, safe, startPolling, toast, wsSend } from "./common.js";
 import { setActive as setDrawActive } from "./draw.js";
 import "./media.js";
 import { loadGalleries } from "./slideshows.js";
@@ -8,61 +8,277 @@ import { loadAutomations } from "./automations.js";
 import { loadCompositions, renderGallery } from "./layers.js";
 import "./scenes.js";
 import { loadSettings } from "./settings.js";
+import { loadQuietHours } from "./boardcare.js";
+import { loadGuestWall } from "./guestwall.js";
 
-const TABS = ["draw", "media", "apps", "layers", "playlists", "scenes", "settings"];
+// ---- pages, grouped the way the sidebar and the phone tab bar show them ----
+const PAGES = {
+  now: ["now", "Now playing", "What the board shows right now and why. Stop it, skip ahead, or put something up quickly."],
+  draw: ["create", "Draw", "Draw on the board, on a drawing layer that sits on top of what's running, or frame by frame as an animation."],
+  import: ["create", "Import", "Turn a picture, GIF, video or the webcam into dots, then show it, add it as a layer or keep it in Pictures."],
+  pictures: ["library", "Pictures", "Everything you've drawn, imported or saved: still pictures, animations and drawing layers."],
+  apps: ["library", "Apps", "Clocks, text, widgets, patterns and games. Pick one to set it up and show it."],
+  layers: ["library", "Layers", "Stack apps and pictures so they play at the same time, like a clock over Game of Life."],
+  slideshows: ["library", "Slideshows", "A playlist made of your own images and GIFs: each one stays up for a set time, then the next one starts."],
+  playlists: ["programme", "Playlists", "Items that play one after another, each for a set time. The schedule decides when each playlist runs."],
+  schedule: ["programme", "Schedule", "Which playlist plays when, and quiet hours for the night."],
+  automations: ["programme", "Automations", "When something happens (music starts, an event arrives), change what's on the board."],
+  guests: ["guests", "Guest wall", "Messages guests leave from their phones. Approve them before they scroll across the board."],
+  settings: ["settings", "Settings", "Location, fonts, connections and the board hardware."],
+};
+const GROUPS = {};
+for (const [page, [group]] of Object.entries(PAGES)) (GROUPS[group] ||= []).push(page);
+const GROUP_NAMES = { create: "Create", library: "Library", programme: "Programme" };
+// hashes from before the reorganisation keep working
+const OLD = { media: "import", scenes: "pictures", "": "now" };
+const OLD_SETTINGS = { general: "location", board: "maintenance", storage: "backup", guests: null };
 
-function showTab(name) {
-  if (!TABS.includes(name)) name = "draw";
-  for (const t of TABS) $(`tab-${t}`).hidden = t !== name;
-  $("tab-media-slides").hidden = name !== "media";
-  document.querySelectorAll("#tabs button").forEach(b => {
-    const on = b.dataset.tab === name;
-    b.classList.toggle("active", on);
-    if (on) { b.setAttribute("aria-current", "page"); $("pageTitle").textContent = b.textContent.trim(); }
-    else b.removeAttribute("aria-current");
+let currentPage = null;
+const lastInGroup = {};
+try { Object.assign(lastInGroup, JSON.parse(localStorage.getItem("lastPages") || "{}")); } catch {}
+
+function showTab(spec) {
+  let [name, sub] = String(spec ?? "").split("/");
+  name = OLD[name] ?? name;
+  if (name === "settings" && sub in OLD_SETTINGS) { if (OLD_SETTINGS[sub] === null) name = "guests"; sub = OLD_SETTINGS[sub] || undefined; }
+  if (!PAGES[name]) name = "now";
+  const [group, title, lede] = PAGES[name];
+  const changed = name !== currentPage;
+  currentPage = name;
+  for (const p of Object.keys(PAGES)) $(`tab-${p}`).hidden = p !== name;
+  document.querySelectorAll("#tabs [data-tab]").forEach(b => {
+    if (b.dataset.tab === name) b.setAttribute("aria-current", "page"); else b.removeAttribute("aria-current");
   });
+  document.querySelectorAll("#tabbar [data-group]").forEach(b => {
+    if (b.dataset.group === group) b.setAttribute("aria-current", "page"); else b.removeAttribute("aria-current");
+  });
+  // the pages in this group, as a row of buttons (on phones, where there's no sidebar)
+  const siblings = GROUPS[group];
+  $("groupNav").hidden = siblings.length < 2;
+  $("groupNav").replaceChildren(...(siblings.length < 2 ? [] : siblings.map(p =>
+    el("button", { "data-tab": p, "aria-current": p === name ? "page" : false }, PAGES[p][1]))));
+  $("groupNav").setAttribute("aria-label", `${GROUP_NAMES[group] || title} pages`);
+  $("pageTitle").textContent = title;
+  $("pageLede").textContent = lede;
+  document.title = `${title} · Flipdot`;
+  // the big board lives in Now playing and Draw; every other page has the compact strip
+  const slot = name === "now" ? $("nowBoardSlot") : name === "draw" ? $("drawBoardSlot") : null;
+  if (slot && $("device").parentElement !== slot) slot.append($("device"));
+  $("device").hidden = !slot;
+  $("nowStrip").hidden = !!slot;
   setDrawActive(name === "draw");
   document.body.dataset.tab = name;
-  if (location.hash !== "#" + name) history.replaceState(null, "", "#" + name);
-  if (name === "settings") loadSettings().catch(e => toast(e.message, true));
-  if (name === "playlists" && catalog.apps.length) loadAutomations().catch(e => toast(e.message, true));
+  lastInGroup[group] = name;
+  try { localStorage.setItem("lastPages", JSON.stringify(lastInGroup)); } catch {}
+  const hash = "#" + name + (name === "settings" && sub ? "/" + sub : "");
+  if (location.hash !== hash) history.replaceState(null, "", hash);
+  if (name === "settings") {
+    if (sub) bus.dispatchEvent(new CustomEvent("settingsGroup", { detail: sub }));
+    loadSettings().catch(e => toast(e.message, true));
+  }
+  if (name === "schedule") api("/api/settings").then(loadQuietHours).catch(e => toast(e.message, true));
+  if (name === "automations" && catalog.apps.length) loadAutomations().catch(e => toast(e.message, true));
+  if (name === "guests") loadGuestWall().catch(e => toast(e.message, true));
+  if (name === "now") renderWelcome().catch(() => {});
+  if (changed) { window.scrollTo(0, 0); renderMini(); }
+  bus.dispatchEvent(new CustomEvent("tabShown", { detail: name }));
 }
-$("tabs").addEventListener("click", e => { const b = e.target.closest("button"); if (b) showTab(b.dataset.tab); });
+document.addEventListener("click", e => {
+  const b = e.target.closest("#tabs [data-tab], #groupNav [data-tab]");
+  if (b) return showTab(b.dataset.tab);
+  const g = e.target.closest("#tabbar [data-group]");
+  if (g) showTab(lastInGroup[g.dataset.group] || GROUPS[g.dataset.group][0]);
+});
+window.addEventListener("hashchange", () => showTab(location.hash.slice(1)));
 bus.addEventListener("tab", e => showTab(e.detail));
+// a rename or delete changed references elsewhere on the server: reload those lists
+bus.addEventListener("refs", () => {
+  Promise.all([loadAutomations(), loadCompositions(), refreshScenes(), loadDrawings(), loadGalleries()]).catch(e => toast(e.message, true));
+});
 
-// ---- status line ----
+// ---- what's on the board, and why: a headline and a reason, shown in several places ----
+function statusParts(r) {
+  const what = r.description || "";
+  const held = r.schedule_enabled && r.mode !== "schedule" ? " · the schedule is paused" : "";
+  let s;
+  if (r.notification) s = [what, "For a few seconds, then back to what was on"];
+  else if (r.mode === "manual") s = ["A still picture", "Nothing is running" + held];
+  else if (r.mode === "app") s = [what, "You started it" + held];
+  else if (r.mode === "playlist") s = [what || `Playlist "${r.playlist}" is empty`, `From the playlist "${r.playlist}"` + held];
+  else if (!r.schedule_enabled) s = ["Nothing is running", "The schedule is turned off"];
+  else if (r.playlist === "__off__") s = ["Board off (all black)", "From the schedule"];
+  else if (!r.playlist) s = ["Nothing scheduled right now", "The schedule is on"];
+  else s = [what || `Playlist "${r.playlist}" is empty`, `From the schedule (${r.playlist})`];
+  if (r.paused) s[1] += " · paused";
+  return s;
+}
+
+// playback buttons, built once per place that shows them; renderMode keeps them all in step
+const ACTS = [
+  ["resume", "schedule", "Resume schedule", () => api("/api/schedule/resume", {}).then(() => toast("Back on the schedule"))],
+  ["prev", "prev", "Previous", () => api("/api/prev", {})],
+  ["pause", "pause", "Pause", () => api("/api/pause", { paused: !board.runner?.paused })],
+  ["next", "next", "Next", () => api("/api/next", {})],
+  ["stop", "stop", "Stop", () => api("/api/stop", {})],
+];
+document.querySelectorAll("[data-controls]").forEach(box => box.append(...ACTS.map(([act, ic, label, fn]) =>
+  el("button", { "data-act": act, class: act === "resume" ? "resume" : "", onclick: safe(fn) }, icon(ic), el("span", {}, label)))));
+
+function setAct(act, { hidden, disabled, label, aria, iconName, pressed } = {}) {
+  document.querySelectorAll(`[data-act="${act}"]`).forEach(b => {
+    if (hidden !== undefined) b.hidden = hidden;
+    if (disabled !== undefined) b.disabled = disabled;
+    if (label) b.querySelector("span").textContent = label;
+    if (aria) { b.setAttribute("aria-label", aria); b.title = aria; }
+    if (iconName) b.querySelector("use").setAttribute("href", `#i-${iconName}`);
+    if (pressed !== undefined) b.setAttribute("aria-pressed", String(pressed));
+  });
+}
+
+let lastStatus = "";
 function renderMode() {
   const r = board.runner;
   if (!r) return;
-  const what = r.description ? `<b>${escapeHtml(r.description)}</b>` : "";
-  let text;
-  if (r.notification) text = `Notification: ${what}`;
-  else if (r.mode === "manual") text = "<b>Manual</b>: drawing mode" + (r.schedule_target ? " (schedule paused)" : "");
-  else if (r.mode === "app") text = `Running ${what}`;
-  else if (r.mode === "playlist") text = `Playlist <b>${escapeHtml(r.playlist)}</b> → ${what}`;
-  else text = r.playlist === "__off__" ? "Schedule: <b>off</b>" : r.playlist ? `Schedule: <b>${escapeHtml(r.playlist)}</b> → ${what}` : "Schedule: nothing scheduled";
-  if (r.interactive) text += ` · <a href="/play" target="_blank">game controller</a>`;
-  const dot = live() ? `<span class="dot live" title="Live updates over WebSocket"></span>` : `<span class="dot poll" title="WebSocket down; polling instead"></span>`;
-  $("mode").innerHTML = dot + `<span>${text}</span>`;
-  $("deviceState").textContent = live() ? "Live" : "Polling";
+  const [what, why] = statusParts(r);
+  if (what + why !== lastStatus) {  // the live region only changes when the words do
+    lastStatus = what + why;
+    document.querySelectorAll(".statusWhat").forEach(e => { e.textContent = what; });
+    document.querySelectorAll(".statusWhy").forEach(e => { e.textContent = why; });
+    $("statusLive").textContent = `${what}. ${why}`;
+  }
+  if (r.mode === "app" || r.mode === "playlist" || r.mode === "manual") markDone("shown");
+  $("ctlLink").hidden = !r.interactive;
   $("quietState").hidden = !r.quiet_hours;
-  $("sideFoot").textContent = live() ? "Connected · live" : "Reconnecting…";
-  $("btnNext").disabled = !(r.mode === "playlist" || r.mode === "schedule");
-  $("btnStop").disabled = r.mode === "manual" && !r.notification;
+  renderConnection(live() ? "live" : "poll");
+  const name = r.description || "what's running";
+  const stoppable = r.mode !== "manual" || r.notification;
+  setAct("stop", { disabled: !stoppable, aria: stoppable ? `Stop ${name}. The picture stays on the board.` : "Nothing is running" });
+  const pic = r.skip === "picture";
+  setAct("next", { disabled: !r.can_next, label: pic ? "Next picture" : "Next",
+    aria: !r.can_next ? "Nothing to skip. Next works for playlists, the schedule and slideshows." : pic ? "Show the next picture in the slideshow" : "Skip to the next playlist item" });
+  setAct("prev", { hidden: !r.can_next, aria: pic ? "Show the previous picture in the slideshow" : "Go back to the previous playlist item" });
+  const frozen = ["slideshow", "scene"].includes(r.app);
+  setAct("pause", { hidden: !r.can_pause && !r.paused, pressed: !!r.paused, iconName: r.paused ? "play" : "pause", label: r.paused ? "Resume" : "Pause",
+    aria: r.paused ? "Carry on from here" : frozen ? "Pause on this picture" : "Stay on this item (the playlist stops moving on)" });
+  setAct("resume", { hidden: !(r.schedule_enabled && r.mode !== "schedule"), aria: "Go back to what the schedule plays now" });
+  renderWarning(r);
 }
-const escapeHtml = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+// a running app that needs setup or can't load its data: say so, with the way to fix it
+let lastWarn = "";
+function renderWarning(r) {
+  const who = r.problem_app || r.description || "This app";
+  const msg = r.setup ? `${who} can't show anything yet: it needs ${r.setup}.`
+    : r.error ? `${who} can't load its data: ${r.error}` : "";
+  if (msg === lastWarn) return;
+  lastWarn = msg;
+  const box = $("statusWarn");
+  box.hidden = !msg;
+  if (!msg) return box.replaceChildren();
+  const fix = fixFor(msg);
+  box.replaceChildren(icon("warn"), el("span", {}, msg), fix ? el("button", { type: "button", onclick: fix.onclick }, fix.label) : "");
+}
+// the connection to this server, shown once (under the board preview)
+let lastConn = "";
+function renderConnection(state) {
+  if (state === lastConn) return;
+  lastConn = state;
+  const text = { live: "Connected to the board server", poll: "Connected to the board server (checking every second)",
+                 off: "Can't reach the board server. Retrying…" }[state];
+  $("deviceState").replaceChildren(el("span", { class: `dot ${state}` }), text);
+}
 bus.addEventListener("state", renderMode);
-bus.addEventListener("offline", () => {
-  $("mode").innerHTML = `<span class="dot off"></span><span>Can't reach the server. Retrying…</span>`;
-  $("deviceState").textContent = "Offline";
-  $("sideFoot").textContent = "Offline";
-});
+bus.addEventListener("offline", () => renderConnection("off"));
 bus.addEventListener("live", renderMode);
 bus.addEventListener("reconnecting", renderMode);
 
-$("btnStop").onclick = safe(() => api("/api/stop", {}));
-$("btnNext").onclick = safe(() => api("/api/next", {}));
-$("btnSchedule").onclick = safe(async () => { await api("/api/schedule/resume", {}); toast("Following the schedule"); });
+// ---- the compact "now showing" strip: a small live preview, bigger on click ----
+const mini = $("miniBoard"), mctx = mini.getContext("2d");
+let miniQueued = false;
+function renderMini() {
+  if ($("nowStrip").hidden || miniQueued || !board.grid.length) return;
+  miniQueued = true;
+  requestAnimationFrame(() => {
+    miniQueued = false;
+    const cell = $("nowStrip").classList.contains("expanded") ? 6 : 3;
+    if (mini.width !== board.W * cell) { mini.width = board.W * cell; mini.height = board.H * cell; }
+    renderDots(mctx, board.grid, cell, { seams: false });
+  });
+}
+bus.addEventListener("state", renderMini);
+$("stripToggle").onclick = () => {
+  const open = $("nowStrip").classList.toggle("expanded");
+  $("stripToggle").setAttribute("aria-expanded", String(open));
+  $("stripToggle").title = open ? "Show a smaller preview" : "Show a bigger preview";
+  renderMini();
+};
+
+// ---- Now playing: quick things to show ----
+const run = (spec, msg) => safe(async () => { await api("/api/run", spec); if (msg) toast(msg); });
+$("qTextShow").onclick = safe(async () => {
+  const text = $("qText").value.trim();
+  if (!text) { $("qText").focus(); throw new Error("Type a message first."); }
+  await api("/api/run", { app: "text", params: { text } });
+  toast("Showing your message");
+});
+$("qTextFor").onclick = safe(async () => {
+  const text = $("qText").value.trim();
+  if (!text) { $("qText").focus(); throw new Error("Type a message first."); }
+  const secs = Math.max(1, Math.round(+$("qSecs").value) || 10);
+  await api("/api/notify", { text, duration: secs });
+  toast(`Showing your message for ${secs} s`);
+});
+$("qText").addEventListener("keydown", e => { if (e.key === "Enter") $("qTextShow").click(); });
+$("qClock").onclick = run({ app: "clock" }, "Showing the clock");
+$("qWeather").onclick = safe(async () => {
+  // without a location the board would only show an error, so say it here, with the way to fix it
+  if (!(await api("/api/settings")).weather?.name) throw new Error("The weather needs a weather location first (Settings, Location).");
+  await api("/api/run", { app: "weather" });
+  toast("Showing the weather");
+});
+$("qBlack").onclick = run({ app: "blank", params: { color: "black" } }, "The board is all black");
+$("qMore").onclick = () => showTab("apps");
+
+// ---- first run: a short getting-started list on Now playing, until it's hidden ----
+const DONE_KEY = "gettingStarted";
+let done = {};
+try { done = JSON.parse(localStorage.getItem(DONE_KEY) || "{}"); } catch {}
+function markDone(step) {
+  if (done[step]) return;
+  done[step] = true;
+  try { localStorage.setItem(DONE_KEY, JSON.stringify(done)); } catch {}
+  if (!$("welcome").hidden) renderWelcome().catch(() => {});
+}
+let welcomeOff = null;
+async function renderWelcome() {
+  const s = await api("/api/settings");
+  welcomeOff = !!s.ui?.welcome_dismissed;
+  const box = $("welcome");
+  box.hidden = welcomeOff;
+  if (welcomeOff) return;
+  const located = !!s.weather?.name;
+  const step = (ok, title, text, ...actions) => el("li", { class: ok ? "done" : "" },
+    el("span", { class: "stepMark", "aria-hidden": "true" }, ok ? icon("check") : ""),
+    el("div", {}, el("b", {}, title), ok ? el("span", { class: "sr" }, " (done)") : null, el("p", { class: "muted" }, text),
+      actions.length ? el("div", { class: "row tight wrapRow" }, actions) : null));
+  const phoneUrl = `${location.origin}/play`;
+  box.replaceChildren(
+    el("div", { class: "welcomeHead" }, el("h2", {}, "Getting started"),
+      el("button", { class: "ghost", onclick: safe(async () => {
+        await api("/api/settings", { ui: { welcome_dismissed: true } });
+        box.hidden = true;
+        toast("Hidden. The same things live in Settings and on the Apps page.");
+      }) }, "Hide this")),
+    el("ol", { class: "steps" },
+      step(located, "Set your location", located ? `Weather uses ${s.weather.name}.` : "The weather app and weather automations need it.",
+        located ? null : el("button", { onclick: () => openSettings("location", "wxSearch") }, "Set location")),
+      step(!!done.shown, "Show something", "Put the clock or a message up. The schedule takes over again when you press Resume schedule.",
+        done.shown ? null : el("button", { onclick: () => $("qClock").click() }, "Show the clock"),
+        done.shown ? null : el("button", { onclick: () => $("qText").focus() }, "Type a message")),
+      step(!!done.phone, "Use your phone as a controller", `Open ${phoneUrl} on your phone to play the board's games.`,
+        el("a", { class: "button", href: "/play", target: "_blank", onclick: () => markDone("phone") }, icon("phone"), "Open the controller"))),
+    el("p", { class: "muted" }, "Panels showing up in the wrong order? Step through them in ",
+      el("a", { href: "#settings/hardware" }, "Settings → Board hardware"), "."));
+}
 
 // ---- keyboard control for games ----
 const KEYS = {
@@ -71,7 +287,11 @@ const KEYS = {
   q: "strafe_left", e: "strafe_right", r: "weapon", Shift: "run",  // Doom only; other games ignore them
 };
 function gameKey(e, action) {
-  if (!board.runner?.interactive || e.target.closest("input, textarea, select") || e.ctrlKey || e.metaKey) return;
+  // Leave keys alone where focus needs them: fields get every key; buttons and links keep Enter and Space
+  // (arrows still steer, so the game stays playable right after pressing Show on board).
+  if (!board.runner?.interactive || e.ctrlKey || e.metaKey || e.altKey) return;
+  if (e.target.closest?.("input, textarea, select, [contenteditable]")) return;
+  if ((e.key === "Enter" || e.key === " ") && e.target.closest?.("button, a[href], summary, [role=button], [tabindex]:not(#board)")) return;
   const key = KEYS[e.key] || KEYS[e.key.toLowerCase?.()];
   if (!key) return;
   e.preventDefault();
@@ -117,6 +337,7 @@ document.querySelectorAll("[data-theme-choice]").forEach(b => b.addEventListener
     renderAppList();
     await loadPlaylists();
     await loadAutomations();
+    loadGuestWall().catch(() => {});  // for the count of waiting messages
   } catch (e) {
     toast(e.message, true);
   }

@@ -352,7 +352,7 @@ class RandomEffects(App):
         P("seconds", "number", 20, "Seconds per effect", min=3, max=600),
         P("transition", "select", "random", "Transition", options=[["random", "Random (a good mix)"], ["none", "None"]]
           + [[t, t] for t in TRANSITIONS if t not in ("none", "random")]),
-        P("transition_time", "number", 1.5, "Transition time (s)", min=0.2, max=6, step=0.1),
+        P("transition_time", "number", 1.5, "Transition time (s)", min=0.2, max=6, step=0.1, show_if={"transition": {"not": "none"}}),
         P("visualizer", "checkbox", False, "Include music-visualizer styles"),
     ]
 

@@ -1,7 +1,6 @@
-// Settings tab: weather location, gamepads, quiet hours/board health/setup (boardcare.js), fonts, Music Assistant, MQTT, storage, webhook docs.
-import { $, api, bus, el, fontCache, fontSelect, loadFonts, renderDots, rowsToGrid, safe, toast } from "./common.js";
+// Settings page: location & display, fonts, AI drawing, Music Assistant, MQTT and webhook docs, gamepads, board hardware and maintenance (boardcare.js), backup.
+import { $, api, autosave, bus, confirmDialog, el, fillField as fill, fontCache, fontSelect, forgetFields, loadFonts, renderDots, rowsToGrid, safe, toast, undoable, unsavedFields } from "./common.js";
 import { loadBoardCare } from "./boardcare.js";
-import { loadGuestWall } from "./guestwall.js";
 
 let settings = {};
 
@@ -9,48 +8,95 @@ export async function loadSettings() {
   settings = await api("/api/settings");
   const wx = settings.weather || {};
   $("wxCurrent").textContent = wx.name ? `${wx.name} (${(+wx.lat).toFixed(2)}, ${(+wx.lon).toFixed(2)})` : "Not set. Search for a city above.";
-  $("wxUnits").value = wx.units || "fahrenheit";
-  $("trFps").value = settings.display?.transition_fps ?? 15;
+  fill("wxUnits", wx.units || "fahrenheit");
+  fill("trFps", settings.display?.transition_fps ?? 15);
   const sp = settings.sendspin || {};
-  $("ssEnabled").checked = !!sp.enabled;
-  $("ssName").value = sp.name || "Flipdot board";
-  $("ssUnpaired").checked = !!sp.unpaired;
-  $("ssServer").value = sp.server_url ?? "auto";
+  fill("ssEnabled", !!sp.enabled, "checked");
+  fill("ssName", sp.name || "Flipdot board");
+  fill("ssUnpaired", !!sp.unpaired, "checked");
+  fill("ssServer", sp.server_url ?? "auto");
   refreshSendspin().catch(() => {});
   const ma = settings.music_assistant || {};
-  $("maUrl").value = ma.url || "";
-  $("maToken").value = ma.token || "";
+  fill("maUrl", ma.url || "");
+  fill("maToken", ma.token || "");
   maPlayer = ma.player || "";
   if (ma.url) testMusic().catch(() => {});
   const mq = settings.mqtt || {};
-  $("mqEnabled").checked = !!mq.enabled;
-  $("mqHost").value = mq.host || "";
-  $("mqPort").value = mq.port || 1883;
-  $("mqUser").value = mq.username || "";
-  $("mqPass").value = mq.password || "";
-  $("mqPrefix").value = mq.prefix || "flipdot";
-  $("mqDiscovery").checked = !!mq.discovery;
-  $("mqDiscPrefix").value = mq.discovery_prefix || "homeassistant";
+  fill("mqEnabled", !!mq.enabled, "checked");
+  fill("mqHost", mq.host || "");
+  fill("mqPort", mq.port || 1883);
+  fill("mqUser", mq.username || "");
+  fill("mqPass", mq.password || "");
+  fill("mqPrefix", mq.prefix || "flipdot");
+  fill("mqDiscovery", !!mq.discovery, "checked");
+  fill("mqDiscPrefix", mq.discovery_prefix || "homeassistant");
   $("mqStatus").textContent = !mq.enabled ? "Off" : mq.connected ? "Connected" : `Not connected${mq.error ? `: ${mq.error}` : ""}`;
   renderHooks(mq.prefix || "flipdot");
   const ai = settings.ai || {};
-  $("aiKey").value = ai.api_key || "";
+  fill("aiKey", ai.api_key || "");
   aiModels().then(models => {
-    $("aiModel").replaceChildren(...models.map(([v, label]) => el("option", { value: v, selected: v === (ai.model || models[0][0]) }, label)));
+    const keep = unsavedFields().includes("aiModel") ? $("aiModel").value : null;
+    $("aiModel").replaceChildren(...models.map(([v, label]) => el("option", { value: v }, label)));
+    if (keep) $("aiModel").value = keep;
+    fill("aiModel", ai.model || models[0][0]);
   }).catch(() => {});
   const gp = settings.gamepad || {};
-  $("gpEnabled").checked = gp.enabled !== false;
-  $("gpDeadzone").value = gp.deadzone ?? 0.35;
+  fill("gpEnabled", gp.enabled !== false, "checked");
+  fill("gpDeadzone", gp.deadzone ?? 0.35);
+  fill("gpMenu", gp.menu_button || "hold_start");
   $("gpDeadzoneVal").textContent = (+$("gpDeadzone").value).toFixed(2);
   gpMapping = { ...(gp.mapping || {}) };
-  gpTableDrawn = false;
   refreshGamepad().catch(() => {});
   refreshStorage().catch(() => {});
-  loadGuestWall().catch(() => {});
   await loadBoardCare(settings);
 }
 
-const save = async section => { settings = await api("/api/settings", section); await loadSettings(); toast("Saved"); };
+// fields per settings section, so saving one section refreshes only those (drafts elsewhere stay)
+const FIELDS = {
+  weather: ["wxUnits"], display: ["trFps"], sendspin: ["ssEnabled", "ssName", "ssUnpaired", "ssServer"],
+  music_assistant: ["maUrl", "maToken"], ai: ["aiKey", "aiModel"],
+  mqtt: ["mqEnabled", "mqHost", "mqPort", "mqUser", "mqPass", "mqPrefix", "mqDiscovery", "mqDiscPrefix"],
+  gamepad: ["gpEnabled", "gpDeadzone", "gpMenu"], quiet_hours: ["qhEnabled", "qhStart", "qhEnd", "qhMax", "qhSlow"],
+  board_health: ["wearAuto", "wearTime"],
+};
+export const savedSection = section => forgetFields(Object.keys(section).flatMap(k => FIELDS[k] || []));
+const save = async section => {
+  settings = await api("/api/settings", section);
+  savedSection(section);
+  await loadSettings();
+};
+
+// Every setting saves itself when you change it (text fields when you leave them), with "Saved" next to its heading.
+const SECTIONS = [
+  { note: "wxSaved", ids: ["wxUnits"], build: () => ({ weather: { units: $("wxUnits").value } }) },
+  { note: "dispSaved", ids: ["trFps"], build: () => ({ display: { transition_fps: Math.max(5, Math.min(30, +$("trFps").value || 15)) } }) },
+  { note: "aiSaved", ids: ["aiKey", "aiModel"], build: () => ({ ai: { api_key: $("aiKey").value.trim(), model: $("aiModel").value } }) },
+  { note: "maSaved", ids: ["maUrl", "maToken", "maPlayer"], after: () => testMusic(),
+    build: () => ({ music_assistant: { url: $("maUrl").value.trim(), token: $("maToken").value.trim(), player: (maPlayer = $("maPlayer").value) } }) },
+  { note: "spSaved", ids: ["ssEnabled", "ssName", "ssUnpaired", "ssServer"],
+    after: () => setTimeout(() => refreshSendspin().catch(() => {}), 1500),
+    build: () => ({ sendspin: { enabled: $("ssEnabled").checked, name: $("ssName").value.trim() || "Flipdot board",
+                                unpaired: $("ssUnpaired").checked, server_url: $("ssServer").value.trim() } }) },
+  { note: "mqSaved", ids: ["mqEnabled", "mqHost", "mqPort", "mqUser", "mqPass", "mqPrefix", "mqDiscovery", "mqDiscPrefix"],
+    after: () => setTimeout(() => loadSettings().catch(() => {}), 2500),  // show the connection result
+    build: () => ({ mqtt: {
+      enabled: $("mqEnabled").checked, host: $("mqHost").value.trim(), port: +$("mqPort").value || 1883,
+      username: $("mqUser").value, password: $("mqPass").value, prefix: $("mqPrefix").value.trim() || "flipdot",
+      discovery: $("mqDiscovery").checked, discovery_prefix: $("mqDiscPrefix").value.trim() || "homeassistant",
+    } }) },
+  { note: "gpSaved", ids: ["gpEnabled", "gpDeadzone", "gpMenu"],
+    build: () => ({ gamepad: { enabled: $("gpEnabled").checked, deadzone: +$("gpDeadzone").value, menu_button: $("gpMenu").value } }) },
+];
+for (const sec of SECTIONS) {
+  let timer = null;
+  const go = () => {
+    clearTimeout(timer);
+    timer = setTimeout(safe(async () => { await autosave(sec.note, () => save(sec.build())); sec.after?.(); }), 300);
+  };
+  sec.ids.forEach(id => $(id).addEventListener("change", go));
+}
+// typed-but-unsaved settings survive tab switches; warn before the page itself goes away
+window.addEventListener("beforeunload", e => { if (unsavedFields().length) e.preventDefault(); });
 
 $("wxFind").onclick = safe(async () => {
   const q = $("wxSearch").value.trim();
@@ -58,16 +104,14 @@ $("wxFind").onclick = safe(async () => {
   const { results } = await api(`/api/geocode?q=${encodeURIComponent(q)}`);
   $("wxResults").replaceChildren(...(results.length ? results.map(r =>
     el("button", { class: "ghost", onclick: safe(async () => {
-      await save({ weather: { name: r.name, lat: r.lat, lon: r.lon, units: $("wxUnits").value } });
+      await autosave("wxSaved", () => save({ weather: { name: r.name, lat: r.lat, lon: r.lon, units: $("wxUnits").value } }));
       $("wxResults").replaceChildren();
     }) }, r.name)) : [el("span", { class: "muted" }, `No places match "${q}". Try a nearby larger city.`)]));
 });
 $("wxSearch").addEventListener("keydown", e => { if (e.key === "Enter") $("wxFind").click(); });
-$("wxUnits").onchange = safe(() => save({ weather: { units: $("wxUnits").value } }));
 
 let aiModelList = null;
 const aiModels = async () => (aiModelList ||= (await api("/api/ai")).models);
-$("aiSave").onclick = safe(() => save({ ai: { api_key: $("aiKey").value.trim(), model: $("aiModel").value } }));
 
 let maPlayer = "";
 async function testMusic() {
@@ -89,41 +133,19 @@ async function refreshSendspin() {
     + (j.metadata?.title ? ` · now: ${j.metadata.title}` : "") + (j.version ? ` · aiosendspin ${j.version}` : "")
     + (j.warning ? ` · Warning: ${j.warning}` : "");
 }
-$("ssSave").onclick = safe(async () => {
-  await save({ sendspin: { enabled: $("ssEnabled").checked, name: $("ssName").value.trim() || "Flipdot board",
-                           unpaired: $("ssUnpaired").checked, server_url: $("ssServer").value.trim() } });
-  toast("Saved. Restart the server if you changed Connect to.");
-  setTimeout(() => refreshSendspin().catch(() => {}), 1500);
-});
 $("ssFind").onclick = safe(async () => {
   $("ssStatusLine").textContent = "Searching the network…";
   const { servers } = await api("/api/sendspin/discover");
   if (!servers.length) { $("ssStatusLine").textContent = "No Music Assistant Sendspin server found on the network. Enter its address by hand."; return; }
   $("ssServer").value = servers[0].url;
-  $("ssStatusLine").textContent = `Found ${servers.map(x => x.url).join(", ")}. Press Save, then restart the server.`;
+  $("ssServer").dispatchEvent(new Event("change"));  // saves it
+  $("ssStatusLine").textContent = `Found ${servers.map(x => x.url).join(", ")}. Saved; restart the server to connect.`;
 });
 $("ssPair").onclick = safe(async () => {
   await api("/api/sendspin/pair", {});
   toast("Pairing window open. Finish pairing in Music Assistant; the board shows a code if one is needed.");
 });
-$("trFps").onchange = safe(() => save({ display: { transition_fps: Math.max(5, Math.min(30, +$("trFps").value || 15)) } }));
-$("maSave").onclick = safe(async () => {
-  await save({ music_assistant: { url: $("maUrl").value.trim(), token: $("maToken").value.trim(), player: $("maPlayer").value } });
-});
-$("maPlayer").onchange = safe(async () => {
-  maPlayer = $("maPlayer").value;
-  await api("/api/settings", { music_assistant: { player: maPlayer } });
-  toast("Saved");
-});
-
-$("mqSave").onclick = safe(async () => {
-  await save({ mqtt: {
-    enabled: $("mqEnabled").checked, host: $("mqHost").value.trim(), port: +$("mqPort").value || 1883,
-    username: $("mqUser").value, password: $("mqPass").value, prefix: $("mqPrefix").value.trim() || "flipdot",
-    discovery: $("mqDiscovery").checked, discovery_prefix: $("mqDiscPrefix").value.trim() || "homeassistant",
-  } });
-  setTimeout(() => loadSettings().catch(() => {}), 2500);  // show connection result
-});
+$("maTest").onclick = safe(testMusic);
 
 function renderHooks(prefix) {
   const base = location.origin;
@@ -197,7 +219,7 @@ function renderFontSettings() {
   $("fontUserList").replaceChildren(...(mine.length ? mine.map(f => el("div", { class: "row tight" },
     el("span", {}, f.label),
     el("button", { class: "danger", onclick: safe(async () => {
-      if (!confirm(`Delete font "${f.label}"?`)) return;
+      if (!await confirmDialog({ title: `Delete the font "${f.label}"?`, message: "Apps and layers that use it switch to the standard pixel font.", confirmText: "Delete", danger: true })) return;
       await api("/api/fonts/delete", { id: f.id });
       await loadFonts();
     }) }, "Delete"))) : ["None"]));
@@ -234,8 +256,8 @@ $("stRestoreFile").onchange = safe(async e => {
   const file = e.target.files[0];
   e.target.value = "";
   if (!file) return;
-  if (!confirm(`Replace all saved data (settings, playlists, scenes, drawings, slideshows, fonts) with "${file.name}"?\n\n`
-    + "It takes effect when the server restarts. Anything saved after the backup was made is lost.")) return;
+  if (!await confirmDialog({ title: `Restore "${file.name}"?`, confirmText: "Restore", danger: true,
+    message: "It replaces all saved data (settings, playlists, scenes, drawings, slideshows, fonts) when the server restarts. Anything saved after the backup was made is lost." })) return;
   const j = await api("/api/storage/restore?confirm=1", file, { raw: true });
   toast(j.message);
   await refreshStorage();
@@ -291,24 +313,36 @@ setInterval(() => {
   if (!document.hidden && !$("tab-settings").hidden && group && !group.hidden) refreshGamepad().catch(() => {});
 }, 1000);
 $("gpDeadzone").oninput = () => { $("gpDeadzoneVal").textContent = (+$("gpDeadzone").value).toFixed(2); };
-$("gpSave").onclick = safe(() => save({ gamepad: { enabled: $("gpEnabled").checked, deadzone: +$("gpDeadzone").value } }));
 $("gpAddCode").onclick = () => $("gpMap").append(gpMapRow("", "a", true));
-$("gpMapSave").onclick = safe(() => save({ gamepad: { mapping: gamepadMapFromTable() } }));
+// the mapping table saves itself too
+let gpMapTimer = null;
+const saveMapping = mapping => autosave("gpMapSaved", () => save({ gamepad: { mapping } }));
+$("gpMap").addEventListener("change", () => {
+  clearTimeout(gpMapTimer);
+  gpMapTimer = setTimeout(safe(async () => { await saveMapping(gamepadMapFromTable()); gpMapping = gamepadMapFromTable(); }), 300);
+});
 $("gpMapReset").onclick = safe(async () => {
-  if (!confirm("Use the default button mapping?")) return;
-  await save({ gamepad: { mapping: {} } });
+  const before = { ...gpMapping };
+  await saveMapping({});
+  gpMapping = {};
+  drawGamepadMap();
+  undoable("Back to the default button mapping", { undo: async () => { await saveMapping(before); gpMapping = before; drawGamepadMap(); } });
 });
 
 // ---- sub-navigation: one group of settings at a time, remembered per browser ----
+const OLD_GROUPS = { general: "location", board: "maintenance", storage: "backup" };
 function showSettingsGroup(name) {
   const groups = [...document.querySelectorAll(".setGroup")];
-  if (!groups.some(g => g.dataset.set === name)) name = "general";
+  name = OLD_GROUPS[name] || name;
+  if (!groups.some(g => g.dataset.set === name)) name = "location";
   groups.forEach(g => { g.hidden = g.dataset.set !== name; });
   document.querySelectorAll("#setNav [data-set]").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.set === name)));
   try { localStorage.setItem("settingsGroup", name); } catch {}
   if (name === "controllers") refreshGamepad().catch(() => {});
+  if (document.body.dataset.tab === "settings") history.replaceState(null, "", `#settings/${name}`);
 }
 $("setNav").addEventListener("click", e => { const b = e.target.closest("[data-set]"); if (b) showSettingsGroup(b.dataset.set); });
-let savedGroup = "general";
-try { savedGroup = localStorage.getItem("settingsGroup") || "general"; } catch {}
+bus.addEventListener("settingsGroup", e => showSettingsGroup(e.detail));
+let savedGroup = "location";
+try { savedGroup = localStorage.getItem("settingsGroup") || "location"; } catch {}
 showSettingsGroup(savedGroup);

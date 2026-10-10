@@ -12,8 +12,8 @@ DEFAULT_PLAYLISTS = {
     "Default": {
         "transition": "dissolve",
         "items": [
+            # no Weather here: it needs a location first (playlists skip it until then anyway)
             {"app": "clock", "params": {}, "duration": 30},
-            {"app": "weather", "params": {}, "duration": 20},
             {"app": "analog_clock", "params": {}, "duration": 20},
             {"app": "life", "params": {}, "duration": 30},
         ],
@@ -71,7 +71,7 @@ DEFAULT_SETTINGS = {
     "quiet_hours": {"enabled": False, "start": "22:00", "end": "07:00", "max_flips": 150, "slowdown": 3},
     "board_health": {"auto_exercise": False, "exercise_time": "12:00"},
     "ai": {"api_key": "", "model": "claude-opus-5-5"},
-    "gamepad": {"enabled": True, "deadzone": 0.35, "mapping": {}},
+    "gamepad": {"enabled": True, "deadzone": 0.35, "mapping": {}, "menu_button": "hold_start"},  # menu_button: hold_start | off
 }
 
 
@@ -161,7 +161,7 @@ class Store:
         return ["".join("1" if v else "0" for v in d["px"][y * w:(y + 1) * w]) for y in range(d["h"])]
 
     def list_drawings(self):
-        return [{"id": did, "name": d["name"]} for did, d in self.drawings.items()]
+        return [{"id": did, "name": d["name"], "thumb": self.drawing_rows(did)} for did, d in list(self.drawings.items())]
 
     def get_drawing(self, did):
         if did not in self.drawings:

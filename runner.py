@@ -41,6 +41,11 @@ class Runner:
         self.listeners = []  # called with status() whenever the mode/app changes
         self.quiet = False  # quiet hours active (set by boardcare)
         self.slowdown = 1.0  # transitions take this many times longer (quiet hours)
+        # Pause: a pausable app (slideshow, animation) freezes on its own clock, and playlists stop advancing
+        self.paused_at = None
+        self.clock_offset = 0.0  # seconds a pausable app has spent paused (its clock runs this far behind)
+        self.render_once = False  # paused, but show the result of a skip
+        self._problem, self._problem_at = None, 0
         threading.Thread(target=self._loop, daemon=True).start()
 
     # ---- control (called from HTTP/MQTT threads) --------------------------------
@@ -73,8 +78,61 @@ class Runner:
         else:
             self.transition = None
         self.app = app
+        self.paused_at, self.clock_offset = None, 0.0
         self.wake.set()
         self._changed()
+
+    # ---- pause / skip ----------------------------------------------------------------
+
+    def _top(self):
+        return None if self.notif else self.app
+
+    def can_pause(self):
+        app = self._top()
+        return bool(app is not None and getattr(app, "pausable", False)) or self.mode in ("playlist", "schedule")
+
+    def _skippable(self):
+        """The app whose own items Next/Previous step through (a slideshow you started), or None."""
+        app = self._top()
+        return app if self.mode == "app" and app is not None and hasattr(app, "skip") else None
+
+    def pause(self, on=True):
+        with self.lock:
+            if on and self.paused_at is None and self.can_pause():
+                self.paused_at = time.time()
+            elif not on and self.paused_at is not None:
+                held = time.time() - self.paused_at
+                self.clock_offset += held
+                self.item_until += held
+                self.paused_at = None
+            else:
+                return
+            self.wake.set()
+            self._changed()
+
+    def app_now(self, now):
+        """The clock a pausable app sees: it stands still while paused."""
+        return (self.paused_at if self.paused_at is not None else now) - self.clock_offset
+
+    def prev(self):
+        with self.lock:
+            app = self._skippable()
+            if app is not None:
+                app.skip(-1, cut=self.paused_at is not None)
+                self.render_once = True
+            elif self.mode in ("playlist", "schedule"):
+                pl = self.store.playlists.get(self.playlist or "")
+                n = len((pl or {}).get("items") or [])
+                if n:
+                    self.item_index = (self.item_index - 2) % n
+                    self.item_until = 0
+                    self._resume_for_skip()
+            self.wake.set()
+
+    def _resume_for_skip(self):
+        # a skipped-to playlist item starts fresh; a held playlist would never show it
+        if self.paused_at is not None:
+            self.pause(False)
 
     def stop(self):
         """Back to manual mode: nothing runs, the board keeps whatever is on it."""
@@ -91,6 +149,7 @@ class Runner:
             self.transition = None
             self.mode = "manual"
             self.playlist = None
+            self.paused_at = None
             self._changed()
 
     def run(self, spec, transition="none", duration=1.0):
@@ -129,6 +188,7 @@ class Runner:
             self.mode = "playlist"
             self.playlist = name
             self.item_index, self.item_until = -1, 0
+            self.paused_at = None
             self.wake.set()
 
     def resume_schedule(self):
@@ -136,12 +196,38 @@ class Runner:
             self.mode = "schedule"
             self.playlist = None
             self.item_index, self.item_until = -1, 0
+            self.paused_at = None
             self.wake.set()
+            self._changed()
 
     def next(self):
         with self.lock:
-            self.item_until = 0
+            app = self._skippable()
+            if app is not None:
+                app.skip(1, cut=self.paused_at is not None)
+                self.render_once = True
+            else:
+                self.item_until = 0
+                self._resume_for_skip()
             self.wake.set()
+
+    def update_params(self, app_id, params):
+        """Live options: restart the app you started with new params, without a transition.
+        Returns False when that app isn't what's running (playlists and the schedule keep their own params)."""
+        with self.lock:
+            old = self._top()
+            if self.mode != "app" or old is None or old.id != app_id or app_id == "layers":
+                return False
+            app = apps.create(self.ctx, {"app": app_id, "params": params})
+            if not app.interactive:
+                app.started = old.started  # a ticker keeps its place
+            old.stop()
+            self._drop_prev()
+            self.transition = None
+            self.app = app
+            self.wake.set()
+            self._changed()
+            return True
 
     def add_layer(self, layer, bottom=False):
         """Add a layer to whatever is on the board now (turning it into a layer composition):
@@ -201,9 +287,31 @@ class Runner:
             self.wake.set()
             return True
 
+    def problem(self, app):
+        """(setup message, error message, title of the app with the problem) for the app on the board,
+        looking inside layers."""
+        if app is None:
+            return None, None, None
+        subs = [l.app for l in app.layers] if app.id == "layers" else [app]
+        for a in subs:
+            spec = getattr(a, "spec", None)
+            setup = (apps.base.setup_needed(self.store, spec) if spec else None) or getattr(a, "setup", None)
+            if setup:
+                return setup, None, a.title
+            err = getattr(a, "error", None)
+            if err and getattr(a, "data", None) is None:
+                return None, err, a.title
+        return None, None, None
+
     def status(self):
         with self.lock:
             app = self.notif["app"] if self.notif else self.app
+            top = self._top()
+            setup, error, problem_app = self.problem(app)
+            skip = self._skippable()
+            slide = None
+            if top is not None and top.id == "slideshow" and top.item:
+                slide = {"gallery": top.gid, "file": top.item.get("file")}
             return {
                 "mode": self.mode,
                 "playlist": self.playlist,
@@ -214,6 +322,19 @@ class Runner:
                 "drawings": self.drawings_on_board(),
                 "schedule_target": self.scheduled_playlist(time.time()),
                 "quiet_hours": self.quiet,
+                "setup": setup,
+                "error": error,
+                "problem_app": problem_app,  # which app (or layer) the setup/error message is about
+                "schedule_enabled": bool(self.store.schedule.get("enabled", True)),
+                "paused": self.paused_at is not None,
+                "can_pause": self.can_pause(),
+                "can_next": skip is not None or self.mode in ("playlist", "schedule"),
+                "skip": "picture" if skip is not None else "item",
+                # what you started, so its options form can open with the values on the board
+                "spec": top.spec if top is not None and hasattr(top, "spec") and top.id != "layers" else None,
+                "layer_set": top.name if top is not None and top.id == "layers" else None,
+                "layers_rev": top.rev if top is not None and top.id == "layers" else None,
+                "slideshow": slide,
             }
 
     def _changed(self):
@@ -266,6 +387,8 @@ class Runner:
         for _ in range(len(items)):
             self.item_index = (self.item_index + 1) % len(items)
             item = items[self.item_index]
+            if apps.base.setup_needed(self.store, item):
+                continue  # e.g. Weather with no location: skip rather than put an error on the board
             try:
                 app = apps.create(self.ctx, item)
             except Exception as e:
@@ -276,6 +399,17 @@ class Runner:
             self.item_until = now + float(item.get("duration") or 30)
             return
         self.item_until = now + 10  # every item failed; try again later
+
+    def _check_problem(self):
+        """Tell listeners when the running app starts or stops reporting an error (widgets fetch in the background)."""
+        now = time.time()
+        if now < self._problem_at:
+            return
+        self._problem_at = now + 1
+        cur = self.problem(self.notif["app"] if self.notif else self.app)
+        if cur != self._problem:
+            self._problem = cur
+            self._changed()
 
     def _end_notification(self):
         n = self.notif
@@ -296,16 +430,23 @@ class Runner:
             with self.lock:
                 now = time.time()
                 try:
-                    self._advance(now)
+                    if self.paused_at is None:
+                        self._advance(now)
                 except Exception:
                     log.exception("playlist advance failed")
                 if self.notif and now >= self.notif["until"]:
                     self._end_notification()
                 app = self.notif["app"] if self.notif else self.app
+                frozen = (app is not None and app is self.app and not self.notif and self.paused_at is not None
+                          and getattr(app, "pausable", False) and not self.transition)
+                if frozen and not self.render_once:
+                    app = None  # paused: the board keeps its picture
+                    delay = 0.5
+                self.render_once = False
                 if app is not None:
                     c = Canvas(self.board.width, self.board.height)
                     try:
-                        result = app.render(c, now)
+                        result = app.render(c, self.app_now(now) if getattr(app, "pausable", False) and app is self.app else now)
                     except Exception:
                         log.exception("app %s crashed", app.id)
                         result = False
@@ -344,6 +485,7 @@ class Runner:
                         elif self.mode in ("playlist", "schedule"):
                             self.item_until = 0
                         delay = 0.01
+                self._check_problem()
             # time the next tick from when this frame started, so rendering time doesn't slow the frame rate
             self.wake.wait(max(0.0, now + delay - time.time()) if delay > 0.011 else delay)
             self.wake.clear()

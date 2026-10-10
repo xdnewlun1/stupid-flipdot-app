@@ -7,6 +7,7 @@ Layers are listed bottom first. Compositing is done on whole-board bitmaps held 
 ints (one byte per dot, each 0 or 1), so OR/AND/XOR of a full layer is a single operation.
 """
 
+import itertools
 import json
 import logging
 
@@ -24,6 +25,7 @@ BLENDS = [
     ["mask", "Mask (below shows only where this is white)"],
     ["cut", "Cut out (erases below where this is white)"],
 ]
+_revs = itertools.count(1)  # bumped on every change to any running stack, so the web editor can tell
 BAYER4 = [[0, 8, 2, 10], [12, 4, 14, 6], [3, 11, 1, 9], [15, 7, 13, 5]]
 
 
@@ -111,9 +113,9 @@ class Layers(App):
     id = "layers"
     title = "Layers"
     category = "Layers"
-    description = "Several apps stacked with blend modes (e.g. Game of Life inverting the weather). Build them in the Layers tab."
+    description = "Several apps stacked with blend modes (e.g. Game of Life inverting the weather). Build them on the Layers page."
     params = [
-        P("composition", "composition", "", "Saved composition"),
+        P("composition", "composition", "", "Layer set"),
         P("layers", "hidden", None),
     ]
     interval = 0.05
@@ -163,6 +165,7 @@ class Layers(App):
                 layer.app.stop()
         self.layers = new
         self.interactive = any(l.app.interactive for l in new)
+        self.rev = next(_revs)
 
     def density_mask(self, d):
         level = round(d * 16)

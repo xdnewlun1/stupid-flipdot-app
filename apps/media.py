@@ -10,11 +10,12 @@ MIN_DELAY = 0.05  # the discs can't physically flip much faster than this
 @register
 class Scene(App):
     id = "scene"
-    title = "Saved scene"
+    title = "Saved picture"
     category = "Media"
     description = "Show a saved drawing, image or animation."
+    pausable = True
     params = [
-        P("scene", "scene", "", "Scene"),
+        P("scene", "scene", "", "Picture"),
         P("speed", "number", 1, "Animation speed", min=0.1, max=5, step=0.1),
         P("loop", "checkbox", True, "Loop animation"),
     ]
@@ -57,7 +58,7 @@ class Drawing(App):
     id = "drawing"
     title = "Drawing"
     category = "Media"
-    description = "A drawing you can keep editing in the Draw tab while it's on the board (great as a layer)."
+    description = "A drawing layer from Pictures that you can keep editing in Draw while it's on the board."
     params = [P("drawing", "drawing", "", "Drawing")]
     interval = 0.05  # pick up edits quickly
 

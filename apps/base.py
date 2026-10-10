@@ -34,6 +34,7 @@ class App:
     params = []
     interval = 0.1  # seconds between frames
     interactive = False  # accepts controller input
+    pausable = False  # Pause freezes it: render() gets a clock that stands still (slideshows, animations)
 
     def __init__(self, ctx, **params):
         self.ctx = ctx
@@ -45,6 +46,11 @@ class App:
     def render(self, c, now):
         raise NotImplementedError
 
+    @classmethod
+    def needs_setup(cls, store, params):
+        """What has to be set up first (shown in the UI; playlists skip the item), or None."""
+        return None
+
     def input(self, key, action="down", player=1):
         pass
 
@@ -53,6 +59,19 @@ class App:
 
     def describe(self):
         return self.title
+
+
+class NeedsSetup(ValueError):
+    """Raised by fetch() when a setting is missing: shown as a calm hint, not an error."""
+
+
+def setup_needed(store, spec):
+    """The needs_setup() message for an app spec, or None."""
+    cls = REGISTRY.get(ALIASES.get(spec.get("app"), spec.get("app")))
+    try:
+        return cls.needs_setup(store, spec.get("params") or {}) if cls else None
+    except Exception:
+        return None
 
 
 ALIASES = {"spotify": "music"}  # Spotify was replaced by Music Assistant
@@ -113,6 +132,7 @@ class Widget(App):
         super().__init__(ctx, **params)
         self.data = None
         self.error = None
+        self.setup = None  # NeedsSetup message
         self._last_fetch = 0
         self._fetching = False
         self._stopped = False
@@ -123,7 +143,9 @@ class Widget(App):
     def _do_fetch(self):
         try:
             self.data = self.fetch()
-            self.error = None
+            self.error = self.setup = None
+        except NeedsSetup as e:
+            self.error = self.setup = str(e)
         except Exception as e:  # network errors, bad config, API changes...
             log.warning("%s: %s", self.id, e)
             self.error = str(e)
@@ -139,6 +161,16 @@ class Widget(App):
 
     def render(self, c, now):
         self.poll()
+        if self.data is None and self.setup:
+            # a missing setting isn't a fault: name the app and say what to set, no "Error"
+            from canvas import wrap_text
+            from fonts import SMALL
+            lines = wrap_text(self.setup[:80], SMALL, c.w - 4)[:3]
+            top = (c.h - 10 - 6 * len(lines)) // 2
+            c.text_center(top, self.title.split(" (")[0][:14])
+            for i, line in enumerate(lines):
+                c.text_center(top + 10 + i * 6, line, SMALL)
+            return
         if self.data is None:
             msg = "Error" if self.error else "Loading..."
             c.text_center(c.h // 2 - 8, msg)

@@ -8,7 +8,8 @@ from transitions import NAMES, Transition
 CHAR_PARAMS = [
     P("char_transition", "select", "none", "Character transition",
       options=[["none", "None"]] + [[n, n] for n in NAMES if n != "none"]),
-    P("char_time", "number", 0.5, "Character transition time (s)", min=0.1, max=3, step=0.1),
+    P("char_time", "number", 0.5, "Character transition time (s)", min=0.1, max=3, step=0.1,
+      show_if={"char_transition": {"not": "none"}}),
 ]
 
 

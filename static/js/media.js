@@ -1,5 +1,5 @@
-// Image & video tab: convert images, GIFs, video files and the webcam to dots.
-import { $, api, board, bus, renderDots, gridToRows, safe, toast, refreshScenes, loadDrawings, wsSend } from "./common.js";
+// Import page: convert images, GIFs, video files and the webcam to dots.
+import { $, api, ask, board, bus, renderDots, gridToRows, safe, toast, refreshScenes, loadDrawings, wsSend } from "./common.js";
 
 const MAX_FRAMES = 500;
 const preview = $("preview"), pctx = preview.getContext("2d");
@@ -14,7 +14,7 @@ const fps = () => Math.max(1, Math.min(20, +$("fps").value || 10));
 
 function convertFrame(src) {
   const W = board.W, H = board.H;
-  const mode = $("mode").value, dither = $("dither").value === "dither";
+  const mode = $("imgMode").value, dither = $("dither").value === "dither";
   const threshold = +$("threshold").value, inv = $("invertImg").checked;
   const iw = src.videoWidth || src.width, ih = src.videoHeight || src.height;
   // art made for the board (its exact size or an exact multiple) is used dot for dot
@@ -148,7 +148,7 @@ async function decodeImage(file) {
 
 async function loadFile(file) {
   if (!file) return;
-  bus.dispatchEvent(new CustomEvent("tab", { detail: "media" }));
+  bus.dispatchEvent(new CustomEvent("tab", { detail: "import" }));
   resetSource();
   sourceName = file.name || "pasted image";
   if (file.type.startsWith("video/")) {
@@ -252,7 +252,7 @@ async function convertClip() {
     $("clip").disabled = false;
   }
   converted = frames;
-  $("imgInfo").textContent = `${sourceName} clip · ${frames.length} frames at ${rate} fps. Send it or save it as a scene.`;
+  $("imgInfo").textContent = `${sourceName} clip · ${frames.length} frames at ${rate} fps. Show it on the board or save it to Pictures.`;
   updateButtons();
   startPreview();
 }
@@ -265,14 +265,14 @@ const framesPayload = () => {
 $("send").onclick = safe(async () => {
   if (converted.length === 1) await api("/api/frame", { rows: gridToRows(converted[0].grid) });
   else await api("/api/animation", { loop: $("loop").checked, frames: framesPayload(), name: sourceName });
-  toast("Sent to board");
+  toast("Showing it on the board");
 });
 $("saveMedia").onclick = safe(async () => {
-  const name = prompt("Scene name?", sourceName.replace(/\.[^.]+$/, ""));
+  const name = await ask({ title: "Save to Pictures", label: "Name", value: sourceName.replace(/\.[^.]+$/, ""), confirmText: "Save" });
   if (!name) return;
   await api("/api/scenes", { name, frames: framesPayload() });
   await refreshScenes();
-  toast(`Saved "${name}"`);
+  toast(`Saved "${name}" to Pictures`);
 });
 $("live").onclick = safe(toggleLive);
 $("addAsLayer").onclick = safe(async () => {
@@ -305,7 +305,7 @@ document.addEventListener("paste", safe(e => {
   const item = [...e.clipboardData.items].find(i => i.type.startsWith("image/"));
   if (item) return loadFile(item.getAsFile());
 }));
-for (const id of ["mode", "dither", "threshold", "invertImg"]) $(id).addEventListener("input", reconvert);
+for (const id of ["imgMode", "dither", "threshold", "invertImg"]) $(id).addEventListener("input", reconvert);
 $("speed").addEventListener("input", () => converted.length && startPreview());
 $("fps").addEventListener("change", () => { if (liveTimer) { stopLive(); toggleLive(); } });
 if (!window.isSecureContext) $("webcamNote").textContent = "(webcam only works on http://localhost or https)";

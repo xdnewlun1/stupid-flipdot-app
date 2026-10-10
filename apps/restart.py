@@ -13,7 +13,8 @@ NICE = ["morph", "migrate", "scatter", "life", "dissolve", "fade", "iris-open", 
 RESTART_PARAMS = [
     P("restart_transition", "select", "dissolve", "Transition when it restarts",
       options=[["none", "None"], ["random", "Random"]] + [[n, n] for n in NAMES if n not in ("none", "random")]),
-    P("restart_time", "number", 1.5, "Restart transition time (s)", min=0.2, max=6, step=0.1),
+    P("restart_time", "number", 1.5, "Restart transition time (s)", min=0.2, max=6, step=0.1,
+      show_if={"restart_transition": {"not": "none"}}),
 ]
 
 

@@ -31,11 +31,12 @@ import apps
 import guestwall
 import media_upload
 import panelsetup
+import refs
 import rules
 import sendspin_link
 import storage as storage_mod
 import timelapse
-from apps import slideshow
+from apps import gamemenu, slideshow
 from apps import music
 from apps.media import convert_image
 from apps.widgets import geocode
@@ -378,7 +379,8 @@ def start_gamepad():
         gamepad = None
     cfg = store.settings.get("gamepad", {})
     if cfg.get("enabled"):
-        gamepad = gamepad_mod.GamepadManager(lambda key, action, player: runner.input(key, action, player),
+        # holding Start opens the on-board game menu (apps/gamemenu.py); other input goes to runner.input
+        gamepad = gamepad_mod.GamepadManager(gamemenu.GamepadMenu(runner, store).input,
                                              mapping=cfg.get("mapping") or {},
                                              deadzone=float(cfg.get("deadzone") or 0.35))
         gamepad.start()
@@ -499,9 +501,13 @@ def post_layers(req):
         if layer.get("app") not in apps.REGISTRY:
             raise ValueError(f"unknown app {layer.get('app')!r}")
     runner.update_layers(layers, body.get("transition", "none"), float(body.get("transition_duration") or 1.0))
-    if body.get("composition") and body.get("layers") is None:
-        if runner.app is not None and runner.app.id == "layers":
-            runner.app.name = body["composition"]
+    # remember which saved set this is ("name" when the editor sends the layers of a saved set)
+    if body.get("layers") is None or "name" in body:
+        name = body.get("composition") if body.get("layers") is None else body.get("name")
+        with runner.lock:
+            if runner.app is not None and runner.app.id == "layers" and runner.app.name != (name or None):
+                runner.app.name = name or None
+                runner._changed()
     return state()
 
 
@@ -571,7 +577,7 @@ def show_drawing(req, did):
 @route("POST", "/api/drawings/([A-Za-z0-9_-]+)/delete")
 def delete_drawing(req, did):
     store.delete_drawing(did)
-    return {"drawings": store.list_drawings()}
+    return {"drawings": store.list_drawings(), "cleaned": clean_refs("drawing", did)}
 
 
 @route("GET", "/api/layers/current")
@@ -606,8 +612,11 @@ def update_gallery(req, gid):
     body = req.json()
     if body.get("name"):
         g["name"] = str(body["name"])
+    reconvert = False
     if isinstance(body.get("settings"), dict):
-        g["settings"].update({k: v for k, v in body["settings"].items() if k in store.GALLERY_DEFAULTS})
+        new = {k: v for k, v in body["settings"].items() if k in store.GALLERY_DEFAULTS}
+        reconvert = any(g["settings"].get(k) != v for k, v in new.items() if k in ("mode", "dither", "threshold", "invert"))
+        g["settings"].update(new)
     if isinstance(body.get("items"), list):
         known = {i["file"]: i for i in g["items"]}
         new_items = []
@@ -626,6 +635,11 @@ def update_gallery(req, gid):
             store.sync(f"media/{gid}")
         g["items"] = new_items
     store.save_galleries()
+    if reconvert:
+        with runner.lock:
+            app = running_slideshow(gid)
+            if app is not None:
+                app.reload()  # the picture on the board follows the new look right away
     runner.wake.set()
     return {"id": gid, **g}
 
@@ -682,7 +696,11 @@ def play_gallery_item(req, gid):
     with runner.lock:
         app = running_slideshow(gid)
         if app is not None:
-            app.jump(file)
+            if file:
+                app.jump(file, cut=runner.paused_at is not None and app is runner.app)
+                runner.render_once = True  # shows it even while paused
+            elif app is runner.app:
+                runner.pause(False)  # Show on board for the slideshow that's already showing: carry on
             runner.wake.set()
             return state()
     params = {"gallery": gid}
@@ -695,7 +713,7 @@ def play_gallery_item(req, gid):
 @route("POST", "/api/galleries/(g[0-9]+)/delete")
 def delete_gallery(req, gid):
     store.delete_gallery(gid)
-    return {"ok": True}
+    return {"ok": True, "cleaned": clean_refs("gallery", gid)}
 
 
 @route("GET", "/api/compositions")
@@ -712,6 +730,102 @@ def post_compositions(req):
                 raise ValueError(f"composition {name}: unknown app {layer.get('app')!r}")
     store.save_compositions(data)
     return {"compositions": store.compositions}
+
+
+# ---- references: renames follow through, deletes clean up (refs.py) ---------------------
+
+def ref_data():
+    """Deep copies of everything that can point at a saved thing, for refs.py to edit."""
+    return json.loads(json.dumps({"playlists": store.playlists, "compositions": store.compositions,
+                                  "schedule": store.schedule, "rules": automations.rules if automations else []}))
+
+
+def save_ref_data(data, changed):
+    if "playlists" in changed:
+        store.save_playlists(data["playlists"])
+    if "compositions" in changed:
+        store.save_compositions(data["compositions"])
+    if "schedule" in changed:
+        store.save_schedule(data["schedule"])
+    if "rules" in changed and automations:
+        automations.save(data["rules"])
+    if changed & {"playlists", "schedule"}:
+        runner.wake.set()
+        ha_sync()
+
+
+def clean_refs(kind, key):
+    data = ref_data()
+    done, changed = refs.remove(data, kind, key)
+    save_ref_data(data, changed)
+    return done
+
+
+@route("GET", "/api/refs")
+def get_refs(req):
+    """Where a playlist / composition (by name) or scene / gallery / drawing (by id) is used."""
+    kind, key = req.query.get("kind", [""])[0], req.query.get("key", [""])[0]
+    if kind not in refs.KINDS:
+        raise ValueError(f"kind must be one of {', '.join(refs.KINDS)}")
+    return {"used_by": refs.find(ref_data(), kind, key)}
+
+
+def rename_named(kind, coll, old, new):
+    """Rename a playlist or composition and everything that refers to it by name."""
+    new = str(new or "").strip()
+    if old not in coll:
+        raise HttpError(404, f"no {kind} {old!r}")
+    if not new:
+        raise ValueError("the new name is empty")
+    if new in coll and new != old:
+        raise ValueError(f"there's already a {kind} called {new!r}")
+    data = ref_data()
+    key = "playlists" if kind == "playlist" else "compositions"
+    data[key] = {(new if k == old else k): v for k, v in data[key].items()}  # keeps the order
+    n, changed = refs.rename(data, kind, old, new)
+    save_ref_data(data, changed | {key})
+    with runner.lock:
+        if kind == "playlist" and runner.playlist == old:
+            runner.playlist = new
+        if kind == "composition" and runner.app is not None and runner.app.id == "layers" and runner.app.name == old:
+            runner.app.name = new
+    return n
+
+
+@route("POST", "/api/playlists/rename")
+def rename_playlist(req):
+    body = req.json()
+    n = rename_named("playlist", store.playlists, body.get("old"), body.get("new"))
+    return {"updated": n, "playlists": store.playlists, "schedule": store.schedule}
+
+
+@route("POST", "/api/playlists/delete")
+def delete_playlist(req):
+    name = req.json().get("name")
+    if name not in store.playlists:
+        raise HttpError(404, f"no playlist {name!r}")
+    pls = dict(store.playlists)
+    del pls[name]
+    store.save_playlists(pls)
+    return {"cleaned": clean_refs("playlist", name), "playlists": store.playlists, "schedule": store.schedule}
+
+
+@route("POST", "/api/compositions/rename")
+def rename_composition(req):
+    body = req.json()
+    n = rename_named("composition", store.compositions, body.get("old"), body.get("new"))
+    return {"updated": n, "compositions": store.compositions}
+
+
+@route("POST", "/api/compositions/delete")
+def delete_composition(req):
+    name = req.json().get("name")
+    if name not in store.compositions:
+        raise HttpError(404, f"no composition {name!r}")
+    comps = dict(store.compositions)
+    del comps[name]
+    store.save_compositions(comps)
+    return {"cleaned": clean_refs("composition", name), "compositions": store.compositions}
 
 
 @route("POST", "/api/input")
@@ -734,6 +848,27 @@ def post_next(req):
     return state()
 
 
+@route("POST", "/api/prev")
+def post_prev(req):
+    runner.prev()
+    return state()
+
+
+@route("POST", "/api/pause")
+def post_pause(req):
+    """{"paused": true|false}: freeze a slideshow or animation, or hold the current playlist item."""
+    runner.pause(bool(req.json().get("paused", True)))
+    return state()
+
+
+@route("POST", "/api/params")
+def post_params(req):
+    """Live options: {"app": id, "params": {...}} restarts that app with these params if you started it."""
+    body = req.json()
+    applied = runner.update_params(body["app"], body.get("params") or {})
+    return {"applied": applied, **state()}
+
+
 @route("POST", "/api/schedule/resume")
 def post_resume(req):
     runner.resume_schedule()
@@ -748,7 +883,7 @@ def post_play_playlist(req):
 
 @route("GET", "/api/playlists")
 def get_playlists(req):
-    return {"playlists": store.playlists, "transitions": TRANSITIONS}
+    return {"playlists": store.playlists, "transitions": TRANSITIONS, "warnings": playlist_warnings()}
 
 
 @route("POST", "/api/playlists")
@@ -760,7 +895,18 @@ def post_playlists(req):
                 raise ValueError(f"playlist {name}: unknown app {item.get('app')!r}")
     store.save_playlists(data)
     ha_sync()  # the Home Assistant playlist list
-    return {"playlists": store.playlists}
+    return {"playlists": store.playlists, "warnings": playlist_warnings()}
+
+
+def playlist_warnings():
+    """{playlist: {item index: what it needs}} for items that can't show anything until set up."""
+    out = {}
+    for name, pl in store.playlists.items():
+        for i, item in enumerate(pl.get("items", [])):
+            msg = apps.base.setup_needed(store, item)
+            if msg:
+                out.setdefault(name, {})[i] = msg
+    return out
 
 
 @route("GET", "/api/schedule")
@@ -801,7 +947,7 @@ def post_scene(req):
 @route("POST", "/api/scenes/([a-z0-9_-]+)/delete")
 def delete_scene(req, scene_id):
     store.delete_scene(scene_id)
-    return {"ok": True}
+    return {"ok": True, "cleaned": clean_refs("scene", scene_id)}
 
 
 # ---- AI drawing ---------------------------------------------------------------------
