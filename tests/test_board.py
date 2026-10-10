@@ -109,6 +109,7 @@ class Collector:
         self.srv.listen()
         self.port = self.srv.getsockname()[1]
         self.latest, self.refreshes, self.writes = {}, 0, 0
+        self.events = []  # (time, "refresh" | panel address)
         threading.Thread(target=self._run, daemon=True).start()
 
     def _run(self):
@@ -127,9 +128,11 @@ class Collector:
             while buf:
                 if buf.startswith(flipdot.REFRESH):
                     self.refreshes += 1
+                    self.events.append((time.monotonic(), "refresh"))
                     buf = buf[3:]
                 elif len(buf) >= 32:
                     self.latest[buf[2]] = buf[:32]
+                    self.events.append((time.monotonic(), buf[2]))
                     buf = buf[32:]
                 else:
                     break
@@ -188,6 +191,40 @@ class SendTest(unittest.TestCase):
         port_of = {c.port: c for c in buses}
         self.assertTrue(self.wait_for(lambda: all(
             port_of[p.port].latest.get(p.address) == expected_frame(b, p, px) for p in b.panels)))
+
+    def first_times(self, buses, kind):
+        return [min(t for t, k in c.events if k == kind) for c in buses]
+
+    def test_sweep_wave_with_sync_refresh(self):
+        # each column of panels refreshes one sweep after the column to its left
+        b, buses = self.run_board(sync_refresh=True, sweep_ms=150)
+        self.assertTrue(self.wait_for(lambda: all(c.refreshes for c in buses)))
+        for c in buses:
+            c.events.clear()
+        b.set_canvas(random_canvas(b.width, b.height, 5))
+        self.assertTrue(self.wait_for(lambda: all(any(k == "refresh" for _, k in c.events) for c in buses)))
+        t = self.first_times(buses, "refresh")
+        for a, z in zip(t, t[1:]):
+            self.assertAlmostEqual(z - a, 0.15, delta=0.04)
+        self.assertTrue(self.board_matches(b, buses, 0x84))
+
+    def test_sweep_wave_without_sync_refresh(self):
+        # write-and-refresh frames: each column's data is held back by one sweep instead
+        b, buses = self.run_board(sweep_ms=150)
+        self.assertTrue(self.wait_for(lambda: self.board_matches(b, buses)))
+        time.sleep(0.4)
+        for c in buses:
+            c.events.clear()
+        b.set_canvas(random_canvas(b.width, b.height, 6))
+        self.assertTrue(self.wait_for(lambda: self.board_matches(b, buses)))
+        t = self.first_times(buses, 0)
+        for a, z in zip(t, t[1:]):
+            self.assertAlmostEqual(z - a, 0.15, delta=0.04)
+
+    def test_timing_can_change_live(self):
+        b, buses = self.run_board()
+        self.assertEqual(b.set_timing(sweep_ms=40, sync_refresh=True)["sweep_ms"], 40)
+        self.assertTrue(self.wait_for(lambda: self.board_matches(b, buses, 0x84)))
 
     def test_baud_pacing_coalesces(self):
         # 6 panels x 32 bytes at 1920 baud = 1 s per full picture: 20 quick pictures can't all go out

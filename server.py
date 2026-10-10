@@ -1435,6 +1435,19 @@ def post_panels(req):
     return {"saved": True, "applied": True, "panels": panelsetup.panel_list(board)}
 
 
+@route("GET", "/api/board/timing")
+def get_board_timing(req):
+    return board.timing()
+
+
+@route("POST", "/api/board/timing")
+def post_board_timing(req):
+    """{"sweep_ms": 40, "sync_refresh": true}: change how panel columns are timed, live, to tune it by eye. Not saved:
+    put the values that look right in config.yaml."""
+    body = req.json()
+    return board.set_timing(body.get("sweep_ms"), body.get("sync_refresh"))
+
+
 @route("POST", "/api/panels/identify")
 def post_panels_identify(req):
     """Label panels on the board: {"index": n} for one panel (with an outline), or no index for all."""

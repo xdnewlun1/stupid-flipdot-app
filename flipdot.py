@@ -6,6 +6,11 @@ Each column byte holds the 7 dots in that column; bit 0 is the top dot.
 0x83 means "write and refresh immediately". With `sync_refresh: true` in config.yaml panels are
 written with 0x84 ("write, don't refresh yet") and then one 0x80 0x82 0x8F per bus flips them all at once.
 
+A panel doesn't flip all its columns at once: it sweeps across them left to right. With every bus starting
+together, the right edge of one panel flips well after the left edge of the panel next to it. With `sweep_ms:`
+set to how long that sweep takes, each column of panels starts that much after the one to its left, so a big
+change runs across the whole board as one wave.
+
 Each bus (ip, port) has its own sender thread, so a bus that is down or slow never holds up the others.
 With `baud:` set, a bus is never handed data faster than its RS485 line can carry it: changes wait here
 and are coalesced, so the board shows the newest picture instead of working through a backlog.
@@ -94,6 +99,7 @@ class _Bus:
         self.reset = False  # close the socket before the next send (the panel mapping changed)
         self.free_at = 0.0  # when the line will have finished sending what it was given (with baud set)
         self.last_flush = 0.0
+        self.col = 0  # leftmost panel column on this bus: its place in the sweep wave
 
 
 class Board:
@@ -104,6 +110,8 @@ class Board:
         self.invert = bool(config.get("invert", False))
         self.baud = int(config.get("baud") or 0)  # RS485 speed, to pace sends (0 = don't pace)
         self.sync_refresh = bool(config.get("sync_refresh", False))
+        self.sweep = max(0.0, float(config.get("sweep_ms") or 0)) / 1000  # see the module docstring
+        self._wave_start = 0.0  # when the latest change was made: the sweep wave is timed from it
         self.dry_run = dry_run
 
         self.panels = parse_panels(config["panels"])
@@ -147,6 +155,29 @@ class Board:
             if key not in self._buses:
                 bus = self._buses[key] = _Bus(key)
                 threading.Thread(target=self._bus_loop, args=(bus,), daemon=True, name=f"flipdot-{key[0]}:{key[1]}").start()
+        for key, bus in self._buses.items():
+            cols = [p.col for p, k in zip(panels, self._bus_of) if k == key]
+            bus.col = min(cols) if cols else 0
+        # time for the busiest bus to receive a whole new picture: in sync mode no column flips before every bus has
+        # its data, so the wave isn't broken by a bus still busy receiving
+        most = max(self._bus_of.count(k) for k in set(self._bus_of))
+        self._lead = most * (self.pw + 4) * 10 / (self.baud or 57600)
+
+    def set_timing(self, sweep_ms=None, sync_refresh=None):
+        """Change the sweep wave and refresh mode while running (to tune them by eye on the real board)."""
+        if sweep_ms is not None:
+            self.sweep = max(0.0, min(1000.0, float(sweep_ms))) / 1000
+        if sync_refresh is not None:
+            self.sync_refresh = bool(sync_refresh)
+        with self._lock:
+            self._dirty = set(range(len(self.panels)))
+            self._sent = {}
+        for bus in list(self._buses.values()):
+            bus.wake.set()
+        return self.timing()
+
+    def timing(self):
+        return {"sweep_ms": round(self.sweep * 1000, 1), "sync_refresh": self.sync_refresh, "baud": self.baud}
 
     # ---- framebuffer -----------------------------------------------------
 
@@ -179,6 +210,8 @@ class Board:
             self.px[:] = new
             self.version += 1
             now = time.monotonic()
+            if dirty:
+                self._wave_start = now
             wake = set()
             for i in dirty:
                 if i not in self._dirty:
@@ -357,6 +390,17 @@ class Board:
             self._tokens -= cost
             return 0
 
+    def _pace(self, bus, frames):
+        """Note how long the line needs for what it was just given (10 bits per byte on the wire, 8N1)."""
+        if self.baud:
+            bus.free_at = max(time.monotonic(), bus.free_at) + sum(map(len, frames)) * 10 / self.baud
+
+    @staticmethod
+    def _sleep_until(t):
+        wait = t - time.monotonic()
+        if wait > 0:
+            time.sleep(wait)
+
     def _bus_loop(self, bus):
         while True:
             bus.wake.wait()
@@ -371,10 +415,15 @@ class Board:
                 order = sorted(mine, key=lambda i: self._since.get(i, 0))
                 panels = self.panels
                 px = bytes(self.px)
+                wave = self._wave_start
             if not order:
                 continue
+            sweep, sync = self.sweep, self.sync_refresh
+            if sweep and not sync:
+                # no separate refresh: hold this column's data back until its turn in the wave
+                self._sleep_until(wave + bus.col * sweep)
             bus.last_flush = time.monotonic()
-            cmd = CMD_WRITE if self.sync_refresh else CMD_WRITE_REFRESH
+            cmd = CMD_WRITE if sync else CMD_WRITE_REFRESH
             batch, deferred, needed = [], [], 0
             for i in order:
                 frame = self._frame_for(panels[i], px, cmd)
@@ -388,9 +437,15 @@ class Board:
                     continue
                 batch.append((i, frame))
             if batch:
-                frames = [f for _, f in batch] + ([REFRESH] if self.sync_refresh else [])
+                # in sync mode with a sweep the refresh goes separately, when this column's turn in the wave comes
+                frames = [f for _, f in batch] + ([REFRESH] if sync and not sweep else [])
                 try:
                     self._send(bus, frames)
+                    if sync and sweep:
+                        self._pace(bus, frames)
+                        frames = [REFRESH]
+                        self._sleep_until(wave + self._lead + bus.col * sweep)
+                        self._send(bus, frames)
                 except OSError as e:
                     log.warning("send to %s:%d failed: %s", *bus.key, e)
                     with self._lock:
@@ -399,9 +454,7 @@ class Board:
                     time.sleep(RETRY)  # only this bus waits; the others carry on
                     bus.wake.set()
                     continue
-                if self.baud:
-                    # 10 bits per byte on the wire (8N1)
-                    bus.free_at = max(time.monotonic(), bus.free_at) + sum(map(len, frames)) * 10 / self.baud
+                self._pace(bus, frames)
                 for i, frame in batch:
                     self._count_flips(i, panels[i], frame)
                     self._since.pop(i, None)
