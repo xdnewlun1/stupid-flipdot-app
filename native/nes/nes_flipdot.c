@@ -3,6 +3,10 @@
  *   nes_flipdot ROM.nes [-fps N] [-state FILE]
  *
  * Emulates at the NES's 60.1 frames per second and sends every (60/N)th frame, N = board updates per second.
+ * After a button goes down or up it also sends every BOOST_STEP-th frame for BOOST_FRAMES frames, so the game's
+ * response reaches the board in a few frames instead of waiting up to a whole 1/N s for the next regular send
+ * (games take 1-4 frames to show a press, so one fixed extra send would sometimes come too early), then carries on
+ * every 1/N s from there.
  *
  * stdout: one message per sent frame, 24-byte little-endian header, then
  *         256*240 bytes colour (NES palette index 0..63), 256*240 bytes layer (see agnes_flipdot.patch:
@@ -45,6 +49,8 @@ int agnes_fd_mapper(const agnes_t *a);
 #define HEADER 24
 #define NES_NS 16639267LL  /* 1 / 60.0988 Hz */
 #define MIN_HOLD 3          /* frames a tap stays pressed, so a quick down+up still reaches the game */
+#define BOOST_STEP 2        /* after input: send every 2nd frame (30 a second)... */
+#define BOOST_FRAMES 8      /* ...for this many frames */
 
 enum { F_PAUSED = 1, F_SAVED = 2, F_LOADED = 4, F_NOSAVE = 8, F_SAVEFAIL = 16, F_BADSAVE = 32 };
 
@@ -55,6 +61,7 @@ static const char *state_path;
 static uint8_t held[2], early_up[2];
 static uint32_t pressed_at[2][8];
 static uint32_t frame;
+static uint32_t boost_from, boost_end;  /* send often in (boost_from, boost_end]: just after a button changed */
 static int paused, events;
 
 static uint32_t crc32(const unsigned char *p, size_t n)
@@ -140,6 +147,10 @@ static void read_input(void)
         int i = 0;
         for (; i + 3 <= len; i += 3) {
             int cmd = in[i], p = in[i + 1] == 2 ? 1 : 0, b = in[i + 2] & 7;
+            if (cmd == 'D' || cmd == 'U') {
+                boost_from = frame;
+                boost_end = frame + BOOST_FRAMES;
+            }
             if (cmd == 'D') {
                 held[p] |= 1 << b;
                 early_up[p] &= ~(1 << b);
@@ -235,6 +246,7 @@ int main(int argc, char **argv)
 
     long long period = NES_NS, send_every = 1000000000LL / fps;
     long long next = now_ns(), next_send = next, emu_ns = 0;
+    uint32_t last_sent = 0;
     int emu_n = 0;
     unsigned emu_us = 0;
     for (;;) {
@@ -257,11 +269,16 @@ int main(int argc, char **argv)
             emu_ns = 0;
             emu_n = 0;
         }
-        if (t1 >= next_send || events) {
+        int boosting = boost_end && frame <= boost_end;
+        if (t1 >= next_send || events
+            || (boosting && frame >= boost_from + BOOST_STEP && frame - last_sent >= BOOST_STEP)) {
             send_frame(emu_us);
-            next_send += send_every;
+            last_sent = frame;
+            /* while boosting, the regular sends line up behind the last quick one */
+            next_send = boosting ? t1 + send_every : next_send + send_every;
             if (next_send < t1) next_send = t1 + send_every;
         }
+        if (boost_end && frame > boost_end) boost_end = 0;
         next += period;
         if (next < t1 - 5 * period) next = t1;  /* fell far behind (a slow moment): don't race to catch up */
         struct timespec ts = { next / 1000000000LL, next % 1000000000LL };

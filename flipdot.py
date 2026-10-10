@@ -117,6 +117,7 @@ class Board:
         self._wave_start = 0.0  # when the latest change was made: the sweep wave is timed from it
         self._wave = False  # whether that change gets the sweep wave (False: every column flips together)
         self._changed_at = -1e9  # when the picture last changed
+        self.interactive = False  # a game is on the board (set by the runner): no wave, every column at once
         self.dry_run = dry_run
 
         self.panels = parse_panels(config["panels"])
@@ -230,7 +231,9 @@ class Board:
             now = time.monotonic()
             if dirty:
                 # moving content (a change while the last wave is still crossing) flips all columns together
-                self._wave = self.sweep_mode == "always" or now - self._changed_at >= self._wave_length()
+                # and so does a game: the first move after standing still mustn't wait for a wave
+                self._wave = not self.interactive and (self.sweep_mode == "always"
+                                                       or now - self._changed_at >= self._wave_length())
                 self._changed_at = self._wave_start = now
             wake = set()
             for i in dirty:

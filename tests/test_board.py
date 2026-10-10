@@ -274,6 +274,19 @@ class SendTest(unittest.TestCase):
         for a, z in zip(t, t[1:]):
             self.assertAlmostEqual(z - a, 0.15, delta=0.04)
 
+    def test_games_never_get_the_wave(self):
+        # the first move after standing still would otherwise reach the right column a whole wave late
+        b, buses = self.run_board(sync_refresh=True, sweep_ms=150)
+        self.assertTrue(self.wait_for(lambda: self.board_matches(b, buses, 0x84)))
+        b.interactive = True
+        time.sleep(0.8)
+        for c in buses:
+            c.events.clear()
+        b.set_canvas(random_canvas(b.width, b.height, 77))
+        self.assertTrue(self.wait_for(lambda: all(any(k == "refresh" for _, k in c.events) for c in buses)))
+        t = self.first_times(buses, "refresh")
+        self.assertLess(max(t) - min(t), 0.06)
+
     def test_timing_can_change_live(self):
         b, buses = self.run_board()
         self.assertEqual(b.set_timing(sweep_ms=40, sync_refresh=True)["sweep_ms"], 40)

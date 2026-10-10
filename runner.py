@@ -22,13 +22,15 @@ class Context:
     width: int
     height: int
     store: object
+    wake: object = None  # call to render again now (e.g. a frame arrived from an emulator); None inside layers
 
 
 class Runner:
     def __init__(self, board, store):
         self.board = board
         self.store = store
-        self.ctx = Context(board.width, board.height, store)
+        self.wake = threading.Event()
+        self.ctx = Context(board.width, board.height, store, self.wake.set)
         self.mode = "manual"  # manual | app | playlist | schedule
         self.app = None
         self.playlist = None
@@ -38,7 +40,6 @@ class Runner:
         self.transition = None
         self.prev_app = None  # the outgoing app keeps running during a transition
         self.lock = threading.RLock()
-        self.wake = threading.Event()
         self.listeners = []  # called with status() whenever the mode/app changes
         self.quiet = False  # quiet hours active (set by boardcare)
         self.slowdown = 1.0  # transitions take this many times longer (quiet hours)
@@ -159,6 +160,7 @@ class Runner:
             self.mode = "manual"
             self.playlist = None
             self.paused_at = None
+            self.board.interactive = False  # drawing by hand gets the wave again
             self._changed()
 
     # ---- live streams from a browser ------------------------------------------------
@@ -318,6 +320,12 @@ class Runner:
             self._changed()
 
     def input(self, key, action="down", player=1):
+        # an app that just passes input on (an emulator's pipe) takes it without waiting for a frame being rendered;
+        # input_now() returns False for anything that needs the usual path
+        target = self.notif["app"] if self.notif else self.app
+        fast = getattr(target, "input_now", None)
+        if fast is not None and fast(key, action, player):
+            return True
         with self.lock:
             target = self.notif["app"] if self.notif else self.app
             if target is None or not target.interactive:
@@ -519,6 +527,7 @@ class Runner:
                             self._drop_prev()
                     else:
                         out = c
+                    self.board.interactive = bool(app.interactive)
                     self.board.set_canvas(out)
                     tick = getattr(app, "status_tick", None) if app is self.app else None
                     if tick is not None and tick != self._tick:
