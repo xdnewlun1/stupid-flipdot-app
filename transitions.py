@@ -289,32 +289,42 @@ def _distance_field(c):
     """Signed distance (chamfer) to the white/black boundary: positive inside white areas."""
     w, h = c.w, c.h
     INF = 10**6
+    # work on a grid with a one-dot INF border, so neighbours never need bounds checks
+    W2 = w + 2
+    inner = [(y + 1) * W2 + 1 for y in range(h)]  # where each picture row starts in the padded grid
 
     def dist(target):
-        d = [0 if v == target else INF for v in c.px]
-        for y in range(h):  # forward pass
-            for x in range(w):
-                i = y * w + x
-                if d[i]:
-                    best = d[i]
-                    if x > 0: best = min(best, d[i - 1] + 3)
-                    if y > 0:
-                        best = min(best, d[i - w] + 3)
-                        if x > 0: best = min(best, d[i - w - 1] + 4)
-                        if x < w - 1: best = min(best, d[i - w + 1] + 4)
-                    d[i] = best
-        for y in range(h - 1, -1, -1):  # backward pass
-            for x in range(w - 1, -1, -1):
-                i = y * w + x
-                if d[i]:
-                    best = d[i]
-                    if x < w - 1: best = min(best, d[i + 1] + 3)
-                    if y < h - 1:
-                        best = min(best, d[i + w] + 3)
-                        if x < w - 1: best = min(best, d[i + w + 1] + 4)
-                        if x > 0: best = min(best, d[i + w - 1] + 4)
-                    d[i] = best
-        return d
+        d = [INF] * (W2 * (h + 2))
+        px = c.px
+        for y, s in enumerate(inner):
+            d[s:s + w] = [0 if v == target else INF for v in px[y * w:(y + 1) * w]]
+        for s in inner:  # forward pass
+            for i in range(s, s + w):
+                b = d[i]
+                if b:
+                    t = d[i - 1] + 3
+                    if t < b: b = t
+                    t = d[i - W2] + 3
+                    if t < b: b = t
+                    t = d[i - W2 - 1] + 4
+                    if t < b: b = t
+                    t = d[i - W2 + 1] + 4
+                    if t < b: b = t
+                    d[i] = b
+        for s in reversed(inner):  # backward pass
+            for i in range(s + w - 1, s - 1, -1):
+                b = d[i]
+                if b:
+                    t = d[i + 1] + 3
+                    if t < b: b = t
+                    t = d[i + W2] + 3
+                    if t < b: b = t
+                    t = d[i + W2 + 1] + 4
+                    if t < b: b = t
+                    t = d[i + W2 - 1] + 4
+                    if t < b: b = t
+                    d[i] = b
+        return [v for s in inner for v in d[s:s + w]]
 
     to_black, to_white = dist(0), dist(1)
     # inside white: distance to nearest black (>0); inside black: minus distance to nearest white
