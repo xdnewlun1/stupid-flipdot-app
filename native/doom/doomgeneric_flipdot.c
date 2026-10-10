@@ -1,10 +1,12 @@
 /* doomgeneric platform for the flipdot board (apps/doom.py drives it over pipes).
  *
  * stdout: one message per frame, 24-byte little-endian header + w*h bytes of 8-bit gray
- *   0  "FDM1"
+ *         + w*h bytes of geometry (see "what each pixel is" below)
+ *   0  "FDM2"
  *   4  u16 width, u16 height          (half of Doom's 320x200: 2x2 boxes averaged)
  *   8  i16 health, i16 armor, i16 ammo (ammo of the current weapon, -1 for fist/chainsaw)
- *   14 u8 weapon (0 fist .. 8 super shotgun), u8 flags (1 = in a level, 2 = dead)
+ *   14 u8 weapon (0 fist .. 8 super shotgun), u8 flags (1 = in a level, 2 = dead, 4 = menu open,
+ *      8 = automap, 16 = the geometry plane is valid this frame)
  *   16 u16 owned weapons (bit per weapon), u16 view rows (rows above the status bar)
  *   20 u32 frame number
  * stdin: 2 bytes per key event: pressed (0/1), Doom key code. EOF quits.
@@ -21,8 +23,14 @@
 #include "i_video.h"
 #include "m_argv.h"
 #include "m_controls.h"
+#include "r_state.h"
+#include "r_draw.h"
+#include "r_main.h"
+#include "r_sky.h"
+#include "r_things.h"
 
 #include <errno.h>
+#include <math.h>
 #include <fcntl.h>
 #include <signal.h>
 #include <stdio.h>
@@ -42,9 +50,77 @@ extern int screenblocks;
 
 static int out_fd = -1;
 static uint32_t frame_ms = 100, next_due = 0, frames = 0;
-static unsigned char msg[HEADER + OUT_W * OUT_H];
+static unsigned char msg[HEADER + 2 * OUT_W * OUT_H];
 static unsigned char inbuf[64];
 static int inlen = 0;
+
+/* ---- what each pixel is, and how far away -------------------------------------------------
+ * At 84x42 a far wall and the floor dither to the same gray, so we also send a "geometry" plane:
+ * one byte per pixel, surface type in the top 3 bits and distance (log scale, 0 = touching,
+ * 31 = far) in the low 5. We get it by wrapping the renderer's column/span drawers: walls are
+ * drawn as columns before any floor span, then floors/ceilings as spans (and the sky as columns
+ * using the sky's texture offset), then sprites as columns, the player's weapon last with no
+ * ceiling clip. Each drawer's step size is the distance to what it draws. */
+enum { G_NONE, G_WALL, G_FLOOR, G_CEIL, G_SKY, G_THING, G_WEAPON };
+static unsigned char geo[DOOMGENERIC_RESX * DOOMGENERIC_RESY];
+static int seen_span = 0;
+static void (*real_col)(void), (*real_fuzz)(void), (*real_trans)(void), (*real_span)(void);
+
+static unsigned char depth_code(uint32_t dist)  /* map units -> 0..31, 4 steps per doubling */
+{
+    if (dist <= 16) return 0;  /* closer than 16 units counts as touching */
+    int q = (int)(4 * log2f(dist / 16.0f) + 0.5f);
+    return q > 31 ? 31 : q;
+}
+
+static void mark_column(void)
+{
+    int type;
+    if (dc_texturemid == skytexturemid && dc_colormap == colormaps && dc_iscale == pspriteiscale >> detailshift) {
+        type = G_SKY;  /* exactly how R_DrawPlanes sets up a sky column */
+        seen_span = 1;  /* planes are being drawn: walls are done */
+    } else if (!seen_span) type = G_WALL;
+    else type = mceilingclip == negonearray ? G_WEAPON : G_THING;
+    uint32_t dist = (uint32_t)(((uint64_t)(uint32_t)abs(dc_iscale) * centerx) >> FRACBITS) << detailshift;
+    unsigned char v = type << 5 | (type == G_SKY ? 31 : depth_code(dist));
+    int w = 1 << detailshift, x0 = viewwindowx + (dc_x << detailshift);
+    for (int y = dc_yl; y <= dc_yh; y++) {
+        int yy = viewwindowy + y;
+        if (yy < 0 || yy >= DOOMGENERIC_RESY) continue;
+        for (int k = 0; k < w && x0 + k < DOOMGENERIC_RESX; k++) geo[yy * DOOMGENERIC_RESX + x0 + k] = v;
+    }
+}
+
+static void col_hook(void) { mark_column(); real_col(); }
+static void fuzz_hook(void) { mark_column(); real_fuzz(); }
+static void trans_hook(void) { mark_column(); real_trans(); }
+
+static void span_hook(void)
+{
+    seen_span = 1;
+    int yy = viewwindowy + ds_y;
+    if (yy >= 0 && yy < DOOMGENERIC_RESY) {
+        double sx = ds_xstep, sy = ds_ystep;  /* = distance / centerx, along the view's x axis */
+        uint32_t dist = (uint32_t)(__builtin_sqrt(sx * sx + sy * sy) * centerx / FRACUNIT) << detailshift;
+        unsigned char v = (ds_y > centery ? G_FLOOR : G_CEIL) << 5 | depth_code(dist);
+        int x1 = viewwindowx + (ds_x1 << detailshift), x2 = viewwindowx + ((ds_x2 + 1) << detailshift) - 1;
+        for (int x = x1 < 0 ? 0 : x1; x <= x2 && x < DOOMGENERIC_RESX; x++) geo[yy * DOOMGENERIC_RESX + x] = v;
+    }
+    real_span();
+}
+
+static void hook_renderer(void)
+{
+    /* R_ExecuteSetViewSize (screen size / detail changes) puts the stock drawers back */
+    if (basecolfunc != col_hook && basecolfunc) {
+        real_col = basecolfunc;
+        if (colfunc == basecolfunc) colfunc = col_hook;
+        basecolfunc = col_hook;
+    }
+    if (fuzzcolfunc != fuzz_hook && fuzzcolfunc) { real_fuzz = fuzzcolfunc; fuzzcolfunc = fuzz_hook; }
+    if (transcolfunc != trans_hook && transcolfunc) { real_trans = transcolfunc; transcolfunc = trans_hook; }
+    if (spanfunc != span_hook && spanfunc) { real_span = spanfunc; spanfunc = span_hook; }
+}
 
 static void put16(unsigned char *p, int v) { p[0] = v & 0xff; p[1] = (v >> 8) & 0xff; }
 
@@ -90,8 +166,12 @@ void DG_DrawFrame()
         configured = 1;
     }
 
+    hook_renderer();
+    int had_3d = seen_span;
+    seen_span = 0;  /* the next frame starts with walls again */
+
     uint32_t now = DG_GetTicksMs();
-    if ((int32_t)(now - next_due) < 0) return;
+    if ((int32_t)(now - next_due) < 0) { memset(geo, 0, sizeof geo); return; }
     next_due = (now - next_due > frame_ms * 2) ? now + frame_ms : next_due + frame_ms;
 
     /* 2x2 box average to 8-bit gray */
@@ -108,6 +188,11 @@ void DG_DrawFrame()
             *o++ = s >> 10;
         }
     }
+    /* geometry plane: the top-left sample of each 2x2 (types can't be averaged) */
+    for (int y = 0; y < OUT_H; y++)
+        for (int x = 0; x < OUT_W; x++)
+            *o++ = geo[(2 * y) * DOOMGENERIC_RESX + 2 * x];
+    memset(geo, 0, sizeof geo);
 
     player_t *pl = &players[consoleplayer];
     int in_level = gamestate == GS_LEVEL;
@@ -120,14 +205,15 @@ void DG_DrawFrame()
     }
     int view = (in_level && screenblocks <= 10) ? (DOOMGENERIC_RESY - STATUSBAR_H) / 2 : OUT_H;
 
-    memcpy(msg, "FDM1", 4);
+    memcpy(msg, "FDM2", 4);
     put16(msg + 4, OUT_W);
     put16(msg + 6, OUT_H);
     put16(msg + 8, in_level ? pl->health : 0);
     put16(msg + 10, in_level ? pl->armorpoints : 0);
     put16(msg + 12, ammo);
     msg[14] = in_level ? pl->readyweapon : 0;
-    msg[15] = (in_level ? 1 : 0) | (in_level && pl->playerstate == PST_DEAD ? 2 : 0);
+    msg[15] = (in_level ? 1 : 0) | (in_level && pl->playerstate == PST_DEAD ? 2 : 0)
+              | (menuactive ? 4 : 0) | (automapactive ? 8 : 0) | (had_3d ? 16 : 0);
     put16(msg + 16, owned);
     put16(msg + 18, view);
     frames++;

@@ -40,6 +40,61 @@ ALIASES = {"l": "strafe_left", "r": "strafe_right", "x": "weapon", "y": "run", "
 
 BAYER4 = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5]
 
+# geometry plane (see native/doom/doomgeneric_flipdot.c): surface type << 5 | distance 0..31
+G_NONE, G_WALL, G_FLOOR, G_CEIL, G_SKY, G_THING, G_WEAPON = range(7)
+FLAT = (G_NONE, G_FLOOR, G_CEIL, G_SKY)
+
+
+def draw_geometry(geo, w, h, look="outline"):
+    """Turn a board-sized geometry plane (w*h bytes) into dots: walls dithered by distance (near =
+    dense, far = sparse) or left empty ("wireframe"), floors/ceilings/sky dark, an outline wherever
+    surfaces meet or one wall stands in front of another, monsters/items solid with a dark ring
+    and the weapon as an outline. Pure Python, ~3k pixels: a few ms on a Pi."""
+    n = w * h
+    typ = [v >> 5 for v in geo]
+    dep = [v & 31 for v in geo]
+    out = bytearray(n)
+    if look != "wireframe":
+        for i in range(n):
+            if typ[i] == G_WALL:
+                y, x = divmod(i, w)
+                out[i] = 1 if 236 - dep[i] * 7 > BAYER4[(y & 3) * 4 + (x & 3)] * 16 + 8 else 0
+    lit, dark = set(), set()
+    for i in range(n):
+        t, d = typ[i], dep[i]
+        x = i % w
+        for j in ((i + 1,) if x < w - 1 else ()) + ((i + w,) if i + w < n else ()):
+            u, e = typ[j], dep[j]
+            if t == u and (t != G_WALL or abs(d - e) < 3):
+                continue
+            if G_THING in (t, u):  # dark ring around monsters/items so they stand out
+                if t != G_THING:
+                    dark.add(i)
+                if u != G_THING:
+                    dark.add(j)
+            elif G_WEAPON in (t, u):
+                lit.add(i if t == G_WEAPON else j)
+            elif t == u:  # one wall in front of another: light the near edge, gap behind it
+                near, far = (i, j) if d < e else (j, i)
+                lit.add(near)
+                dark.add(far)
+            elif t == G_WALL or u == G_WALL:  # where a wall meets floor/ceiling/sky
+                lit.add(i if t == G_WALL else j)
+            elif t != G_NONE and u != G_NONE:  # floor meeting ceiling (a closing door), steps…
+                lit.add(i if d <= e else j)
+    for i in range(n):
+        t = typ[i]
+        if t == G_THING:
+            out[i] = 1
+        elif t == G_WEAPON:
+            out[i] = 0
+    for i in dark:
+        out[i] = 0
+    for i in lit:
+        if i not in dark or typ[i] == G_WEAPON:
+            out[i] = 1
+    return out
+
 _active = None  # the one Doom app whose engine is running
 _active_lock = threading.Lock()
 
@@ -76,7 +131,11 @@ class Doom(App):
             ["1", "I'm too young to die"], ["2", "Hey, not too rough"], ["3", "Hurt me plenty"],
             ["4", "Ultra-violence"], ["5", "Nightmare!"]]),
         P("fps", "number", 10, "Board updates per second", min=2, max=20, step=1),
-        P("dither", "select", "bayer", options=[
+        P("look", "select", "outline", "Look", options=[
+            ["outline", "Outlines + walls shaded by distance (easiest to read)"],
+            ["wireframe", "Wireframe (edges and monsters only, fewest flips)"],
+            ["shaded", "Shaded picture (the textures, dithered)"]]),
+        P("dither", "select", "bayer", "Shaded picture: dithering", options=[
             ["bayer", "Ordered (steady, fewer flips)"], ["threshold", "Threshold (outlines only)"],
             ["diffusion", "Error diffusion (detailed, flickers)"]]),
         P("contrast", "select", "auto", options=[
@@ -163,9 +222,10 @@ class Doom(App):
                 if head is None:
                     break
                 h = HEADER.unpack(head)
-                if h[0] != b"FDM1":
+                if h[0] not in (b"FDM1", b"FDM2"):
                     raise ValueError("bad frame header")
-                buf = read(h[1] * h[2])
+                # FDM2 adds a geometry plane after the gray one (an older build sends FDM1)
+                buf = read(h[1] * h[2] * (2 if h[0] == b"FDM2" else 1))
                 if buf is None:
                     break
                 with self.frame_lock:
@@ -294,14 +354,23 @@ class Doom(App):
 
     def _draw(self, c, frame, now):
         from PIL import Image, ImageOps
-        h, gray = frame
+        h, buf = frame
         _, fw, fh, health, armor, ammo, weapon, flags, owned, view_rows, _n = h
+        gray, geo = buf[:fw * fh], buf[fw * fh:]
         in_level = flags & 1
         hud = bool(self.p["hud"]) and in_level
         img = Image.frombuffer("L", (fw, fh), gray, "raw", "L", 0, 1)
         if in_level and view_rows < fh:
             img = img.crop((0, 0, fw, view_rows))
         vh = self.h - STRIP if hud else self.h
+        # outlines need the geometry plane, and only make sense for the 3D view (not menus/automap)
+        if self.p["look"] != "shaded" and geo and flags & 16 and not flags & (4 | 8) and view_rows <= fh:
+            g = Image.frombuffer("L", (fw, fh), geo, "raw", "L", 0, 1).crop((0, 0, fw, view_rows))
+            c.px[:self.w * vh] = draw_geometry(g.resize((self.w, vh), Image.NEAREST).tobytes(), self.w, vh,
+                                               self.p["look"])
+            if hud:
+                self._hud(c, health, armor, ammo, flags, now)
+            return
         img = img.resize((self.w, vh), Image.BOX)
         if self.p["contrast"] == "auto":
             img = ImageOps.autocontrast(img, cutoff=2)

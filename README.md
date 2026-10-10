@@ -162,7 +162,7 @@ When Music Assistant moves to a new aiosendspin, update `requirements-sendspin.t
 ## Doom (optional)
 
 The *Doom* app (Apps → Games) runs the real Doom engine and shrinks each frame to 84×42: the 3D view
-on top (status bar cut off, ordered dithering by default) and health, armor and ammo in a strip at the
+on top and health, armor and ammo in a strip at the
 bottom. Set it up on the Pi once:
 
 ```sh
@@ -183,7 +183,15 @@ after dying; *Strafe left/right*, *Next weapon* and *Run* (toggle) appear while 
 Keyboard on the main page: arrows/WASD, Space fire, Enter use, Q/E strafe, R next weapon, Shift run.
 It starts straight in E1M1 (level and skill are settings); there's no menu and no sound.
 
-Settings: updates per second (default 10), dithering (ordered / threshold / error diffusion),
+**Look** (setting): a flat gray picture is hard to read at 84×42 (a far wall and the floor dither to
+the same gray), so by default the engine also reports what each pixel is (wall, floor, ceiling, sky,
+monster/item, weapon) and how far away it is, and the board draws that instead: walls dithered by
+distance (near = dense, far = sparse), floor, ceiling and sky dark, an outline wherever surfaces meet
+or one wall stands in front of another, monsters and items solid with a dark ring, the weapon as an
+outline. *Wireframe* keeps only the edges and monsters (fewest flips); *Shaded picture* is the plain
+dithered image. Menus and the automap always use the shaded picture.
+
+Settings: updates per second (default 10), look, dithering for the shaded picture (ordered / threshold / error diffusion),
 contrast stretch, gamma, brightness, and what to do in quiet hours (default: refuse to run;
 or run at 3 updates per second). One Doom runs at a time; stopping the app ends the process.
 
