@@ -212,9 +212,11 @@ peak caps, waterfall history).
 - **Styles in the mix**: a checklist, all by default; random order (never the same twice in a row) or
   in list order. **Random look** gives each new style a random layout, bar count, wave look and scale.
 - **Transition**: random, one of the list, or none. Random picks *swirl* or *zoom-through* half the time:
-  the old picture turns and grows past you while the new one turns in from small. Morph, migrate,
-  scatter, life, ghost, flash, glitch and zoom-in/out aren't offered: they're too slow live, are built from a
-  single frame, or flicker. **Length** (default 1.5 s) is rounded to whole beats when the beat is steady.
+  the old picture turns and grows past you while the new one turns in from small. *Morph* is offered too
+  (and is one of Random's picks): the same shape tween as the board-wide morph, recomputed for both moving
+  styles every frame (about 6 ms on a Pi 5; on a slower machine it updates one side a frame to keep the
+  visualizer's timing steady). Migrate, scatter, life, ghost, flash, glitch and zoom-in/out aren't offered:
+  they're built from a single frame or flicker. **Length** (default 1.5 s) is rounded to whole beats when the beat is steady.
 - The *Now showing* line names the current style: "Music visualizer · Mix (now: sunburst, …)". Mix
   works in layers and playlists too.
 

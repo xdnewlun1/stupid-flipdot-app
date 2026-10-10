@@ -17,7 +17,7 @@ import zlib
 
 import audio_signal
 from canvas import Canvas
-from transitions import Transition
+from transitions import Transition, _distance_field, smoothstep
 
 from .base import App, P, register
 
@@ -549,12 +549,12 @@ class Style:
 
 # ---- Mix: change styles while the music plays -------------------------------------------------
 
-# transitions that look right between two moving pictures. Left out: morph (a distance field per frame,
-# too slow live), migrate/scatter/life (built from the first frame only), ghost, flash and glitch (hard
-# flicker), zoom-in/out (zoom-through does it with both sides moving, and cheaper).
+# transitions that look right between two moving pictures. Left out: migrate/scatter/life (built from the
+# first frame only), ghost, flash and glitch (hard flicker), zoom-in/out (zoom-through does it with both sides
+# moving, and cheaper). Morph is LazyMorph below (the board-wide morph is too slow with both sides moving).
 # Random picks one of FLOWING half the time: they keep both pictures in motion.
 FLOWING = ["swirl", "zoom-through"]
-MIX_TRANSITIONS = FLOWING + ["dissolve", "fade", "wipe-right", "wipe-left", "wipe-up", "wipe-down", "wipe-ragged",
+MIX_TRANSITIONS = FLOWING + ["morph","dissolve", "fade", "wipe-right", "wipe-left", "wipe-up", "wipe-down", "wipe-ragged",
                    "diagonal", "iris-open", "iris-close", "diamond", "clock", "split-horizontal",
                    "split-vertical", "blinds", "tiles", "drip", "push-left", "push-right", "push-up", "push-down",
                    "flip", "melt", "pixelate"]
@@ -669,6 +669,46 @@ class MixScheduler:
             self.armed = True
 
 
+LAZY_AFTER = 0.012  # LazyMorph: two distance fields taking longer than this (s) switches to one a frame
+
+
+class LazyMorph:
+    """Morph between two moving styles: blends the two pictures' distance fields (transitions._morph's shape
+    tween, same field), so white shapes flow into each other. With both pictures changing every frame nothing
+    can be cached: both fields are recomputed each frame (the same result as the board-wide morph; about 6 ms
+    on a Pi 5). On a machine where that takes over LAZY_AFTER it goes lazy, recomputing one side a frame and
+    reusing the other's from the frame before, so the music visualizer's steady timing holds. The Transition
+    interface Mix uses: start, duration, mix(new, now, old), done(now)."""
+
+    def __init__(self, w, h, duration):
+        self.w, self.h = w, h
+        self.start, self.duration = time.time(), max(0.1, float(duration))
+        self.fields = [None, None]  # old, new
+        self.turn = 0
+        self.lazy = False
+
+    def done(self, now):
+        return now - self.start >= self.duration
+
+    def mix(self, new, now, old):
+        p = smoothstep(min(1.0, max(0.0, (now - self.start) / self.duration)))
+        if p >= 1:
+            return new.copy()
+        if self.fields[0] is None or not self.lazy:  # both sides (the first frame, or while there's time)
+            t = time.perf_counter()
+            self.fields = [_distance_field(old), _distance_field(new)]
+            # too slow for this machine: from now on one side a frame (a shape at most one frame old)
+            self.lazy = self.lazy or time.perf_counter() - t > LAZY_AFTER
+        else:  # one side a frame, taking turns
+            self.fields[self.turn] = _distance_field((old, new)[self.turn])
+            self.turn ^= 1
+        a, b = self.fields
+        q = 1 - p
+        out = Canvas(self.w, self.h)
+        out.px = bytearray(1 if q * da + p * db > 0 else 0 for da, db in zip(a, b))
+        return out
+
+
 class Mix:
     """Runs the styles of a Mix: the current one, and while a transition runs the outgoing one too, both
     following the music. Each style instance keeps its own state."""
@@ -717,7 +757,10 @@ class Mix:
         self.prev, self.cur = self.cur, self._make(self._pick(self.cur.style))
         self.switches += 1
         self.trans = None
-        if kind != "none":
+        if kind == "morph":
+            self.trans = LazyMorph(self.w, self.h, self._duration(period))
+            self.trans.start = now
+        elif kind != "none":
             self.trans = Transition(kind, Canvas(self.w, self.h), self.w, self.h, self._duration(period))
             self.trans.start = now
         else:
