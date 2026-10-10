@@ -75,6 +75,25 @@ def link(store):
     return source, None
 
 
+def next_frame_due(store, after):
+    """When the live link's next analysis frame comes due at or after `after` (wall time), or None (no live
+    link, or it doesn't schedule its frames: only Snapcast does)."""
+    if _injected is not None:
+        return None
+    _, lk = link(store)
+    fn = getattr(lk, "next_due", None)
+    return fn(after) if fn is not None and lk.connected() else None
+
+
+def steady_interval(store, now, fps):
+    """Seconds until the next draw for something kept a constant time behind the music: exactly when the live
+    link's next analysis frame comes due, about 1/fps from now (a free-running timer would add up to a whole
+    frame of wobble). None without a link that schedules its frames (only Snapcast does)."""
+    step = 1 / fps
+    due = next_frame_due(store, now + step * 0.75)
+    return None if due is None else max(0.005, due - now)
+
+
 def raw(store, now=None):
     """(name, signal) straight from the link (its own format), signal None when not connected."""
     with _lock:

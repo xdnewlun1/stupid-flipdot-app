@@ -162,6 +162,7 @@ class Doom(App):
         self.stopped = False
         self.last_draw = 0
         self.last_px = None
+        self.drawn = None  # the frame last drawn
         self.last_quiet_check = 0
         self.in_lock = threading.Lock()
         self._lut = self._make_lut()
@@ -230,6 +231,8 @@ class Doom(App):
                     break
                 with self.frame_lock:
                     self.frame = (h, bytes(buf))
+                if self.ctx.wake is not None:
+                    self.ctx.wake()  # draw it now, not on the runner's next tick
         except Exception as e:
             log.warning("doom: %s", e)
         rc = proc.wait()
@@ -276,6 +279,16 @@ class Doom(App):
                 proc.stdin.write(bytes((1 if pressed else 0, code)))
             except (OSError, ValueError):
                 pass
+
+    def input_now(self, key, action="down", player=1):
+        """A key for the running engine, straight down its pipe (called without the runner's lock).
+        Returns False for anything else (starting it, the run toggle), which goes through input() as usual."""
+        code = KEYS.get(ALIASES.get(key, key))
+        proc = self.proc
+        if code is None or proc is None or proc.poll() is not None:
+            return False
+        self._send(action == "down", code)
+        return True
 
     def input(self, key, action="down", player=1):
         down = action == "down"
@@ -345,9 +358,13 @@ class Doom(App):
         if frame is None:
             self._message(c, "DOOM", "Loading...")
             return
-        if self.last_px is not None and now - self.last_draw < self.interval * 0.8:
-            c.px[:] = self.last_px  # woken early (input): keep the board update rate capped
+        # the engine sends `fps` frames a second, and every tic for a moment after a key event: draw each one as
+        # it arrives, and keep the last picture when woken for anything else
+        slowed = self.interval > 1 / self.fps + 1e-6  # quiet hours, "slow": fewer updates than the engine sends
+        if self.last_px is not None and (frame is self.drawn or slowed and now - self.last_draw < self.interval * 0.8):
+            c.px[:] = self.last_px
             return
+        self.drawn = frame
         self.last_draw = now
         self._draw(c, frame, now)
         self.last_px = bytes(c.px)

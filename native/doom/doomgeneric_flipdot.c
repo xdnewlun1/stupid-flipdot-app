@@ -13,6 +13,8 @@
  * Doom's own console output goes to stderr.
  *
  * Extra arguments: -flipfps N  frames per second to render and send (default 10).
+ * After a key goes down or up it also renders and sends every tic (35 a second) for BOOST_MS, so the response
+ * reaches the board in a tic or two instead of waiting up to a whole 1/N s; then it carries on every 1/N s.
  */
 
 #include "doomgeneric.h"
@@ -44,12 +46,16 @@
 #define OUT_H (DOOMGENERIC_RESY / 2)
 #define HEADER 24
 #define STATUSBAR_H 32
+#define BOOST_MS 150     /* after a key event: send every tic for this long... */
+#define BOOST_GAP_MS 25  /* ...(at most this often: a tic is 28.6 ms) */
 
 extern int showMessages;
 extern int screenblocks;
 
 static int out_fd = -1;
 static uint32_t frame_ms = 100, next_due = 0, frames = 0;
+static uint32_t boost_until = 0;  /* send every tic until then (just after a key event)... */
+static int boosting = 0;          /* ...while this is set (the ms clock wraps, so 0 can't mean "off") */
 static unsigned char msg[HEADER + 2 * OUT_W * OUT_H];
 static unsigned char inbuf[64];
 static int inlen = 0;
@@ -147,6 +153,8 @@ void DG_Init()
     prctl(PR_SET_PDEATHSIG, SIGKILL);  /* never outlive the server */
     signal(SIGPIPE, SIG_DFL);
 
+    next_due = DG_GetTicksMs();  /* not 0: the ms clock passes 2^31 after ~25 days up, and 0 would look far ahead */
+
     int i = M_CheckParmWithArgs("-flipfps", 1);
     if (i > 0) {
         int fps = atoi(myargv[i + 1]);
@@ -173,6 +181,14 @@ void DG_DrawFrame()
     uint32_t now = DG_GetTicksMs();
     if ((int32_t)(now - next_due) < 0) { memset(geo, 0, sizeof geo); return; }
     next_due = (now - next_due > frame_ms * 2) ? now + frame_ms : next_due + frame_ms;
+    if (boosting) {
+        if ((int32_t)(boost_until - (now + BOOST_GAP_MS)) > 0) {
+            next_due = now + BOOST_GAP_MS;  /* still right after input: the next tic goes out too */
+        } else {
+            next_due = now + frame_ms;  /* the last quick one: the regular sends line up behind it */
+            boosting = 0;
+        }
+    }
 
     /* 2x2 box average to 8-bit gray */
     unsigned char *o = msg + HEADER;
@@ -244,6 +260,11 @@ int DG_GetKey(int *pressed, unsigned char *key)
     if (inlen < 2) return 0;
     *pressed = inbuf[0] ? 1 : 0;
     *key = inbuf[1];
+    uint32_t now = DG_GetTicksMs();
+    boost_until = now + BOOST_MS;
+    boosting = 1;
+    if ((int32_t)(next_due - (now + BOOST_GAP_MS)) > 0)
+        next_due = now + BOOST_GAP_MS;  /* render the tic that responds to it, not the one 1/N s later */
     memmove(inbuf, inbuf + 2, inlen - 2);
     inlen -= 2;
     return 1;

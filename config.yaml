@@ -4,6 +4,14 @@ panel_height: 7        # dots per panel, vertically
 transport: tcp         # tcp or udp (how the RS485 converter on 192.168.11.100 is configured)
 invert: false          # set true if "white" and "black" come out swapped on the board
 password: ""           # set to require a password for the web page and API
+baud: 57600            # RS485 speed of the converter's serial ports (e.g. 57600): sends are paced to it so
+                       # fast animations never queue up lag in the converter; 0 = don't pace
+sync_refresh: false    # true: write every panel first, then flip them all at once (no tearing between panels)
+sweep_ms: 85           # how long one panel takes to flip from its left edge to its right: each column of panels
+                       # then starts that much after the one to its left, so big changes cross the board as one
+                       # wave (no seams). Tune it live: POST /api/board/timing {"sweep_ms": 40}; 0 = off
+sweep_mode: auto       # auto: only changes that stand on their own get the wave; moving content (video, games,
+                       # transitions) flips every column together so it doesn't tear. always: every change
 
 # Pasted from Maestro
 panels:

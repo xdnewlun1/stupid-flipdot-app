@@ -61,6 +61,7 @@ if not AVAILABLE:
 BINS = 16
 TYPES = ["loudness", "beat", "spectrum", "peak"]
 UNIT = 65535.0  # uint16 scale: -60 dB .. 0 dB
+REF_DT = 0.05  # frame spacing the signal smoothing in _apply() was tuned at (20 frames a second)
 
 
 def _defined(value):
@@ -101,6 +102,10 @@ class SendspinLink:
         self.loop = None
         self.lock = threading.Lock()
         self._frames = collections.deque()  # (play_time_us, frame), oldest first
+        self.delay_us = 0  # frames come due this long after their audio plays (a fixed delay for the board)
+        self.frame_dt = None  # seconds between frames if not REF_DT: the smoothing below is scaled to it
+        self._bass_hist = collections.deque(maxlen=8)
+        self.raw_loudness = 0.0  # the latest frame's loudness, unsmoothed (0..1)
         self.metadata = {}
         self.playing = None
         # current signal, updated as frames come due
@@ -311,15 +316,20 @@ class SendspinLink:
         """Advance through frames that are due now; return the current music signal."""
         client = getattr(self, "_clock", None)
         now = time.time()
+        peak = None  # the loudest frame (unsmoothed) that came due in this call: a click is never smoothed away
         if client is not None:
-            now_us = client.now_us()
+            now_us = client.now_us() - self.delay_us
             with self.lock:
                 while self._frames and self._frames[0][0] <= now_us:
                     _, f = self._frames.popleft()
                     self._apply(f, now)
+                    if f.loudness is not None:
+                        self.raw_loudness = f.loudness / UNIT
+                        peak = max(peak or 0.0, self.raw_loudness)
         fresh = now - self.updated < 1.0
         return {
             "live": fresh, "loudness": self.loudness if fresh else 0.0,
+            "raw_peak": (self.raw_loudness if peak is None else peak) if fresh else 0.0,
             "spectrum": list(self.spectrum) if fresh else [0.0] * BINS,
             "beat_age": now - self.beat_at, "downbeat": self.downbeat, "peak": self.peak,
             "playing": self.playing, "metadata": self.metadata,
@@ -327,20 +337,28 @@ class SendspinLink:
 
     def _apply(self, f, now):
         self.updated = now
+        # the smoothing was tuned at one frame per REF_DT; at another frame rate the same time constants hold
+        r = 1.0 if not self.frame_dt else self.frame_dt / REF_DT
         if f.loudness is not None:
-            self.loudness = self.loudness * 0.3 + (f.loudness / UNIT) * 0.7
+            keep = 0.3 ** r
+            self.loudness = self.loudness * keep + (f.loudness / UNIT) * (1 - keep)
         if f.spectrum:
             vals = [v / UNIT for v in f.spectrum[:BINS]] + [0.0] * max(0, BINS - len(f.spectrum))
-            self.spectrum = [a * 0.35 + b * 0.65 for a, b in zip(self.spectrum, vals)]
+            keep = 0.35 ** r
+            self.spectrum = [a * keep + b * (1 - keep) for a, b in zip(self.spectrum, vals)]
             # our own beat detection, for servers that don't send beats: a sharp rise in bass energy
-            # compared with both the previous frame and the recent average (works at any volume)
+            # compared with both about REF_DT ago and the recent average (works at any volume)
             bass = sum(vals[:3]) / 3
+            back = max(1, int(1 / r + 0.5))  # frames in REF_DT
+            self._bass_hist.append(bass)
+            if len(self._bass_hist) > back:
+                self._prev_bass = self._bass_hist[-1 - back]
             rise = bass - self._prev_bass
             if (now - self._last_beat_frame > 2.0 and rise > max(0.04, self._bass_avg * 0.5)
                     and bass > self._bass_avg * 1.2 and now - self.beat_at > 0.25):
                 self.beat_at, self.downbeat = now, False
-            self._prev_bass = bass
-            self._bass_avg = bass if not self._bass_avg else self._bass_avg * 0.92 + bass * 0.08
+            keep = 0.92 ** r
+            self._bass_avg = bass if not self._bass_avg else self._bass_avg * keep + bass * (1 - keep)
         if f.is_downbeat is not None:  # a beat from the server's beat tracking
             self.beat_at, self.downbeat = now, bool(f.is_downbeat)
             self._last_beat_frame = now

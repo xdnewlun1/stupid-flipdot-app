@@ -79,6 +79,16 @@ checked every 10 minutes), `event`, `idle` (`minutes`). Actions: `app` (`app`, `
 waits `cooldown` seconds (default 60) before it can fire again.
 
 A panel mounted upside down can be fixed with `rotate: "180"` in its `config.yaml` entry.
+Each bus (ip:port) is sent to on its own thread, so one that is unreachable doesn't hold up the others. Set `baud:` in
+`config.yaml` to the converter's RS485 speed and sends are paced to it, so fast animations show the newest picture
+instead of queuing up lag; `sync_refresh: true` writes every panel first and then flips them all at once.
+Panels flip their columns left to right, so on a big change a panel's right edge lands after the left edge of the
+panel beside it. `sweep_ms:` (how long one panel takes to sweep) starts each column of panels that much after the
+one to its left, so the change crosses the board as one wave. Moving content (video, games, transitions) would
+tear across the seams that way, so with `sweep_mode: auto` (the default) only a change that stands on its own gets
+the wave; a change arriving while the last wave is still crossing flips every column together. Tune it by eye with the disc exerciser running and
+`POST /api/board/timing {"sweep_ms": 40, "sync_refresh": true}` (live, not saved), then put it in `config.yaml`.
+`python3 tests/bench_core.py` times the per-frame paths (worth running on the Pi).
 Flip counts are saved to `data/wear.json` every two minutes and on shutdown.
 
 Live updates: connect a WebSocket to `/ws`. The server pushes a binary message whenever the dots
@@ -87,7 +97,8 @@ and a text message `{"type":"status","runner":{...}}` when the status changes. Y
 `{"type":"input","key":"up","action":"down","player":1}` or `{"type":"dots","dots":[...]}`.
 The web pages use this and fall back to polling `/api/board` if the socket drops. Sending
 `{"type":"drawing_rows","drawing":ID,"rows":[...]}` replaces a drawing layer's picture (that's how live
-video streams into a layer without stopping the rest of the composition).
+video streams into a layer without stopping the rest of the composition), and
+`{"type":"frame","rows":[...],"stream":{"id":ID,"name":NAME}}` shows a frame of a live stream on the whole board.
 
 MQTT (Settings → Smart home & API): `flipdot/notify`, `flipdot/run`, `flipdot/command` (stop, schedule, next,
 black, white, invert), `flipdot/event` (an automation event name); status is published retained on `flipdot/status`,
@@ -201,9 +212,11 @@ peak caps, waterfall history).
 - **Styles in the mix**: a checklist, all by default; random order (never the same twice in a row) or
   in list order. **Random look** gives each new style a random layout, bar count, wave look and scale.
 - **Transition**: random, one of the list, or none. Random picks *swirl* or *zoom-through* half the time:
-  the old picture turns and grows past you while the new one turns in from small. Morph, migrate,
-  scatter, life, ghost, flash, glitch and zoom-in/out aren't offered: they're too slow live, are built from a
-  single frame, or flicker. **Length** (default 1.5 s) is rounded to whole beats when the beat is steady.
+  the old picture turns and grows past you while the new one turns in from small. *Morph* is offered too
+  (and is one of Random's picks): the same shape tween as the board-wide morph, recomputed for both moving
+  styles every frame (about 6 ms on a Pi 5; on a slower machine it updates one side a frame to keep the
+  visualizer's timing steady). Migrate, scatter, life, ghost, flash, glitch and zoom-in/out aren't offered:
+  they're built from a single frame or flicker. **Length** (default 1.5 s) is rounded to whole beats when the beat is steady.
 - The *Now showing* line names the current style: "Music visualizer · Mix (now: sunburst, …)". Mix
   works in layers and playlists too.
 
@@ -286,11 +299,31 @@ server), then play to the **Flipdot board** player or group it with the speaker 
 How it works (`snapcast_link.py`): the board's server runs `snapclient --player file --mixer none`, which
 writes the decoded audio to a pipe at the moment it's due to play, in sync with the other Snapcast
 speakers. Nothing goes to a sound card. The audio is analysed the same way as Sendspin's 2.7 mode
-(loudness, 16 spectrum bands and beats, pure Python, 20 frames a second). snapclient handles the
+(loudness, 16 spectrum bands and beats, pure Python, 50 frames a second). snapclient handles the
 codecs (flac by default; pcm, ogg and opus work too), clock sync and reconnecting; the link restarts it
 if it exits. Server *auto* means the host in the Music Assistant URL; ports 1704 (audio) and 1705
 (control, used once to name the player). Settings shows whether it's connected, receiving audio,
 the codec and the server buffer.
+
+**Keeping the board in step with the speakers.** The board shows the music a fixed time after the
+speakers play it: **Board delay** in Settings → Music (150 ms by default; changes apply at once, without
+reconnecting). Each analysis frame is stamped with when its audio plays (a sample clock anchored to when
+snapclient hands the audio over) and comes due exactly that delay later; the visualizer then draws 25
+times a second, each time just as a frame comes due, and while it runs the board sends every picture the
+same way at a fixed time after it was started (no sweep wave; a bus with any change gets all its panels in
+the same order). So every beat reaches the discs the same time behind the speakers, give or take the
+40 ms between pictures, and you can delay the other speakers in the group (their latency in Snapcast /
+Music Assistant) to match. Set the delay so the board keeps up on the Pi, then tune the speakers' latency
+by ear; for the tightest timing turn on `sync_refresh: true` in `config.yaml`.
+
+**Measuring the exact delay: the Sync test app** (Apps → Utilities). Download the click track from
+`/api/sync/click.wav` (a 10 ms 2 kHz click every 1.013 s for 2 minutes; `?period=` and `?seconds=` change it),
+play it in Music Assistant to a group with the board and a speaker, and run Sync test: every click flips
+every disc. Film the speaker and the board together in slow motion and count the frames from a click to
+the flip (in the middle of a panel: panels flip left to right). That's everything, panels included; delay
+the other speakers by it. Clicks land at different points between the board's 25 pictures a second, so
+average a few. It reads each click from the raw loudness and drives the board exactly like the visualizer
+(same delay, draw timing and steady timing); the visualizer's bars also take about 25 ms to rise.
 
 Compared with Sendspin:
 

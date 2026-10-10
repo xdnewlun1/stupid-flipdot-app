@@ -16,6 +16,13 @@ class Canvas:
         c.px = bytearray(1 if ch == "1" else 0 for r in rows for ch in r)
         return c
 
+    @classmethod
+    def from_dots(cls, w, h, dots):
+        """From one byte per dot (0/1), row-major, e.g. Board.dots()."""
+        c = cls(w, h)
+        c.px[:] = dots
+        return c
+
     def rows(self):
         w = self.w
         return ["".join("1" if v else "0" for v in self.px[y * w:(y + 1) * w]) for y in range(self.h)]

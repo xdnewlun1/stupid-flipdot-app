@@ -120,7 +120,7 @@ class BoardCare:
     def exercise(self, times=3):
         """Flip the least-used eighth of the discs `times` times, then go back to what was showing."""
         dots = self.least_used()
-        base = Canvas.from_rows(self.board.rows())
+        base = Canvas.from_dots(self.board.width, self.board.height, self.board.dots()[1])
         rate = self.board.max_flips_per_sec
         # under a flip budget, give each step time to reach the board instead of being coalesced away
         interval = max(0.6, len(dots) / rate * 1.2) if rate else 0.6

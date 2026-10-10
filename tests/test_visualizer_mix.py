@@ -206,3 +206,54 @@ def test_bass_disc_inverts_what_is_under_it():
     inside = row[42 - 11:42 + 11]
     assert 0 in inside and inside.count(1) > 10
     assert row[42 - 13] == 1 or row[42 - 14] == 1
+
+
+def _morph_frames(lazy_after=None):
+    """Mix switches with morph; returns (lazy morph output, the board-wide morph's output) for every frame of it."""
+    import transitions
+    from apps import visualizer
+    saved = visualizer.LAZY_AFTER
+    if lazy_after is not None:
+        visualizer.LAZY_AFTER = lazy_after
+    audio_signal.inject(_music, clock=lambda: 0)
+    try:
+        app = create(_Ctx(), {"app": "visualizer", "params": {"style": "mix", "mix_transition": "morph"}})
+        pairs = []
+        orig = visualizer.LazyMorph.mix
+
+        def spy(self, new, now, old):
+            out = orig(self, new, now, old)
+            p = transitions.smoothstep(min(1.0, max(0.0, (now - self.start) / self.duration)))
+            transitions._df_cache.clear()
+            pairs.append((bytes(out.px), bytes(transitions._morph(None, old, new, p).px), self.lazy))
+            return out
+        visualizer.LazyMorph.mix = spy
+        try:
+            for i in range(6 * FPS):
+                now = 1000 + i / FPS
+                if i % (3 * FPS) == 0:
+                    app.mix.switch(now)
+                    assert isinstance(app.mix.trans, visualizer.LazyMorph)
+                app.render(Canvas(84, 42), now)
+        finally:
+            visualizer.LazyMorph.mix = orig
+        return pairs
+    finally:
+        visualizer.LAZY_AFTER = saved
+        audio_signal.inject(None)
+
+
+def test_morph_in_a_mix_is_the_board_wide_morph():
+    from apps.visualizer import MIX_TRANSITIONS
+    assert "morph" in MIX_TRANSITIONS  # pickable, and one of Random's choices
+    pairs = _morph_frames()
+    assert len(pairs) > 10
+    assert all(lazy == exact for lazy, exact, _ in pairs)
+
+
+def test_morph_goes_lazy_on_a_slow_machine():
+    pairs = _morph_frames(lazy_after=0.0)  # "too slow" from the first frame
+    assert any(was_lazy for _, _, was_lazy in pairs)
+    # one side's shape a frame old: close to the full morph, not equal to it
+    differ = [sum(a != b for a, b in zip(x, y)) / len(x) for x, y, _ in pairs]
+    assert sum(differ) / len(differ) < 0.15

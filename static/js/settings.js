@@ -20,6 +20,7 @@ export async function loadSettings() {
   fill("scPort", sc.port || 1704);
   fill("scCtrl", sc.control_port || 1705);
   fill("scName", sc.name || "Flipdot board");
+  fill("scDelay", sc.delay_ms ?? 150);
   showAudioSource();
   const ma = settings.music_assistant || {};
   fill("maUrl", ma.url || "");
@@ -59,7 +60,7 @@ export async function loadSettings() {
 // fields per settings section, so saving one section refreshes only those (drafts elsewhere stay)
 const FIELDS = {
   weather: ["wxUnits"], display: ["trFps"], sendspin: ["ssName", "ssUnpaired", "ssServer"],
-  visualizer: ["vaSource"], snapcast: ["scHost", "scPort", "scCtrl", "scName"],
+  visualizer: ["vaSource"], snapcast: ["scHost", "scPort", "scCtrl", "scName", "scDelay"],
   music_assistant: ["maUrl", "maToken"], ai: ["aiKey", "aiModel"],
   mqtt: ["mqEnabled", "mqHost", "mqPort", "mqUser", "mqPass", "mqPrefix", "mqDiscovery", "mqDiscPrefix"],
   gamepad: ["gpEnabled", "gpDeadzone", "gpMenu"], quiet_hours: ["qhEnabled", "qhStart", "qhEnd", "qhMax", "qhSlow"],
@@ -81,10 +82,11 @@ const SECTIONS = [
     build: () => ({ music_assistant: { url: $("maUrl").value.trim(), token: $("maToken").value.trim(), player: (maPlayer = $("maPlayer").value) } }) },
   { note: "vaSaved", ids: ["vaSource"], after: () => setTimeout(showAudioSource, 1500),
     build: () => ({ visualizer: { source: $("vaSource").value } }) },
-  { note: "scSaved", ids: ["scHost", "scPort", "scCtrl", "scName"],
+  { note: "scSaved", ids: ["scHost", "scPort", "scCtrl", "scName", "scDelay"],
     after: () => setTimeout(() => refreshSnapcast().catch(() => {}), 2500),
     build: () => ({ snapcast: { host: $("scHost").value.trim() || "auto", port: +$("scPort").value || 1704,
-                                control_port: +$("scCtrl").value || 1705, name: $("scName").value.trim() || "Flipdot board" } }) },
+                                control_port: +$("scCtrl").value || 1705, name: $("scName").value.trim() || "Flipdot board",
+                                delay_ms: Math.max(50, Math.min(2000, +$("scDelay").value || 150)) } }) },
   { note: "spSaved", ids: ["ssName", "ssUnpaired", "ssServer"],
     after: () => setTimeout(() => refreshSendspin().catch(() => {}), 1500),
     build: () => ({ sendspin: { name: $("ssName").value.trim() || "Flipdot board",

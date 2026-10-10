@@ -202,9 +202,12 @@ def save_settings(new):
     else:
         ha_sync()
     source_changed = merged.get("visualizer") != old.get("visualizer")
-    if source_changed or (merged.get("snapcast") != old.get("snapcast")
+    nodelay = lambda cfg: {k: v for k, v in (cfg or {}).items() if k != "delay_ms"}
+    if source_changed or (nodelay(merged.get("snapcast")) != nodelay(old.get("snapcast"))
                           or merged.get("music_assistant", {}).get("url") != old.get("music_assistant", {}).get("url")):
         start_snapcast()
+    elif merged.get("snapcast", {}).get("delay_ms") != old.get("snapcast", {}).get("delay_ms") and snapcast_link.get_link():
+        snapcast_link.get_link().set_delay(merged["snapcast"].get("delay_ms"))  # live, no reconnect: tune it by ear
     if merged.get("sendspin") != old.get("sendspin") or source_changed:
         start_sendspin()
         link = sendspin_link.get_link()
@@ -346,6 +349,12 @@ def ws_message(msg):
     """Messages from browsers over the WebSocket (low-latency drawing and game input)."""
     if msg.get("type") == "input":
         runner.input(msg["key"], msg.get("action", "down"), int(msg.get("player", 1)))
+    elif msg.get("type") == "frame":
+        # a frame of a browser's live stream to the whole board (Import, Stream live): no HTTP round trip per frame
+        board.check_frame(msg["rows"])
+        if not runner.stream_frame(msg.get("stream"), "board"):
+            return  # that stream was stopped here; frames still on their way are dropped
+        board.set_frame(msg["rows"])
     elif msg.get("type") == "drawing_rows":
         # a whole picture for a drawing layer, e.g. live video streamed into a composition
         if msg.get("stream") and not runner.stream_frame(msg["stream"], "layer"):
@@ -376,7 +385,8 @@ def start_snapcast():
     cfg = store.settings.get("snapcast", {})
     host = snapcast_link.resolve_host(cfg.get("host", "auto"), store.settings.get("music_assistant", {}).get("url"))
     snapcast_link.start_link(store.dir, host=host, port=int(cfg.get("port") or 1704),
-                             control_port=int(cfg.get("control_port") or 1705), name=cfg.get("name") or "Flipdot board")
+                             control_port=int(cfg.get("control_port") or 1705), name=cfg.get("name") or "Flipdot board",
+                             delay_ms=int(cfg.get("delay_ms") or snapcast_link.DELAY_MS))
 
 
 def start_sendspin():
@@ -1488,6 +1498,19 @@ def post_panels(req):
     return {"saved": True, "applied": True, "panels": panelsetup.panel_list(board)}
 
 
+@route("GET", "/api/board/timing")
+def get_board_timing(req):
+    return board.timing()
+
+
+@route("POST", "/api/board/timing")
+def post_board_timing(req):
+    """{"sweep_ms": 40, "sync_refresh": true, "sweep_mode": "auto"}: change how panel columns are timed, live, to tune
+    it by eye. Not saved: put the values that look right in config.yaml."""
+    body = req.json()
+    return board.set_timing(body.get("sweep_ms"), body.get("sync_refresh"), body.get("sweep_mode"))
+
+
 @route("POST", "/api/panels/identify")
 def post_panels_identify(req):
     """Label panels on the board: {"index": n} for one panel (with an outline), or no index for all."""
@@ -1512,6 +1535,15 @@ def get_timelapse_gif(req):
     scale = int(max(2, min(12, q("scale", 4))))
     gif = timelapse.render_gif(recorder, minutes, speed, scale)
     return Raw(gif, "image/gif", {"Content-Disposition": 'attachment; filename="flipdot-timelapse.gif"'})
+
+
+@route("GET", r"/api/sync/click\.wav")
+def get_click_track(req):
+    """?period=1.013&seconds=120 — the click track for the Sync test app (play it to the board's Snapcast group)."""
+    from apps import synctest
+    q = lambda k, d: float(req.query.get(k, [d])[0])
+    wav = synctest.click_wav(q("period", synctest.CLICK_PERIOD), q("seconds", 120))
+    return Raw(wav, "audio/wav", {"Content-Disposition": 'attachment; filename="flipdot-click-track.wav"'})
 
 
 @route("GET", "/api/storage")

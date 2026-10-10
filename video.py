@@ -59,18 +59,30 @@ def have_ffmpeg():
 
 # ---- the chunked file format -------------------------------------------------------------
 
+def _line(data):
+    """Bytes as a one-row grey image, so Pillow can do byte-wise maths on them in C."""
+    from PIL import Image
+    return Image.frombytes("L", (len(data), 1), bytes(data))
+
+
 def _delta(frames):
-    out = bytearray(frames[0])
-    for a, b in zip(frames, frames[1:]):
-        out += bytes([(y - x) & 255 for x, y in zip(a, b)])
-    return bytes(out)
+    from PIL import ImageChops
+    out = [bytes(frames[0])]
+    prev = _line(frames[0])
+    for f in frames[1:]:
+        cur = _line(f)
+        out.append(ImageChops.subtract_modulo(cur, prev).tobytes())
+        prev = cur
+    return b"".join(out)
 
 
 def _undelta(data, n):
-    frames = [data[:n]]
+    from PIL import ImageChops
+    frames = [bytes(data[:n])]
+    prev = _line(frames[0])
     for k in range(1, len(data) // n):
-        prev = frames[-1]
-        frames.append(bytes([(x + y) & 255 for x, y in zip(prev, data[k * n:(k + 1) * n])]))
+        prev = ImageChops.add_modulo(prev, _line(data[k * n:(k + 1) * n]))
+        frames.append(prev.tobytes())
     return frames
 
 
@@ -127,14 +139,18 @@ class Writer:
 
 
 class Reader:
-    """Random access to the frames of one converted video. Keeps the last decoded chunk."""
+    """Random access to the frames of one converted video. Keeps the last few decoded chunks, and decodes the
+    next one in the background while the current one plays, so playback never waits on a decompress."""
+
+    KEEP = 3  # decoded chunks kept
 
     def __init__(self, folder, frames, w, h, fps=15.0, times=None):
         self.dir, self.frames, self.w, self.h = Path(folder), frames, w, h
         self.fps, self.times = float(fps), times  # times: each frame's start (uneven timing), else frame = t * fps
         self.size = w * h
         self._tables = {}
-        self._chunk = (None, None)
+        self._chunks = {}  # chunk number -> decoded frames
+        self._loading = {}  # chunk number -> Event, set when a background decode finishes
         self._lock = threading.Lock()
 
     def _table(self, seg):
@@ -146,6 +162,38 @@ class Reader:
                     raise ValueError(f"{self.dir.name}: not a video segment this version can read")
                 t = self._tables[seg] = struct.unpack(f"<{k + 1}I", f.read(4 * (k + 1)))
         return t
+
+    def _decode(self, key):
+        seg, c = divmod(key, SEG_CHUNKS)
+        offs = self._table(seg)
+        with open(self.dir / f"seg{seg:05d}.fdv", "rb") as f:
+            f.seek(offs[c])
+            data = zlib.decompress(f.read(offs[c + 1] - offs[c]))
+        return _undelta(data, self.size)
+
+    def _keep(self, key, frames):
+        self._chunks[key] = frames
+        while len(self._chunks) > self.KEEP:
+            self._chunks.pop(next(iter(self._chunks)))
+
+    def _prefetch(self, key):
+        """Decode chunk `key` in the background (call with the lock held)."""
+        if key * CHUNK >= self.frames or key in self._chunks or key in self._loading:
+            return
+        done = self._loading[key] = threading.Event()
+
+        def work():
+            try:
+                frames = self._decode(key)
+            except Exception as e:  # a missing/broken file: frame() will hit (and report) it itself
+                log.debug("prefetching chunk %d of %s failed: %s", key, self.dir, e)
+                frames = None
+            with self._lock:
+                if frames is not None:
+                    self._keep(key, frames)
+                self._loading.pop(key, None)
+            done.set()
+        threading.Thread(target=work, daemon=True, name="video-prefetch").start()
 
     def index(self, t):
         """The frame showing at `t` seconds (later frames are dropped, never blended)."""
@@ -163,16 +211,19 @@ class Reader:
         i = max(0, min(self.frames - 1, int(i)))
         key = i // CHUNK
         with self._lock:
-            ck, frames = self._chunk
-            if ck != key:
-                seg, c = divmod(key, SEG_CHUNKS)
-                offs = self._table(seg)
-                with open(self.dir / f"seg{seg:05d}.fdv", "rb") as f:
-                    f.seek(offs[c])
-                    data = zlib.decompress(f.read(offs[c + 1] - offs[c]))
-                frames = _undelta(data, self.size)
-                self._chunk = (key, frames)
-            return frames[min(i % CHUNK, len(frames) - 1)]
+            frames = self._chunks.get(key)
+            pending = self._loading.get(key) if frames is None else None
+        if pending is not None:
+            pending.wait(5)
+            with self._lock:
+                frames = self._chunks.get(key)
+        if frames is None:
+            frames = self._decode(key)
+            with self._lock:
+                self._keep(key, frames)
+        with self._lock:
+            self._prefetch(key + 1)
+        return frames[min(i % CHUNK, len(frames) - 1)]
 
 
 def write_thumbs(folder, frames):
@@ -201,6 +252,16 @@ def _bayer_map(w, h):
     if m is None:
         m = _maps[(w, h)] = bytes(BAYER8[y % 8][x % 8] * 4 + 2 for y in range(h) for x in range(w))
     return m
+
+
+def _bayer_line(w, h):
+    m = _maps.get(("img", w, h))
+    if m is None:
+        m = _maps[("img", w, h)] = _line(_bayer_map(w, h))
+    return m
+
+
+_NONZERO = bytes([0] + [1] * 255)
 
 
 def display_opts(p):
@@ -244,7 +305,9 @@ def to_dots(gray, w, h, d):
     if d["dither"] == "diffusion":
         from PIL import Image
         return Image.frombytes("L", (w, h), g).convert("1").convert("L").tobytes().translate(_BIT)
-    return bytes([a > b for a, b in zip(g, _bayer_map(w, h))])
+    from PIL import ImageChops
+    # a dot is white where the level is above the dither threshold: the clipped difference is non-zero there
+    return ImageChops.subtract(_line(g), _bayer_line(w, h)).tobytes().translate(_NONZERO)
 
 
 _BIT = bytes([0] * 128 + [1] * 128)

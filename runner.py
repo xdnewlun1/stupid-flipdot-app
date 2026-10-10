@@ -15,6 +15,7 @@ log = logging.getLogger("runner")
 
 OFF = "__off__"  # schedule target meaning "all black"
 LIVE_TIMEOUT = 4  # seconds without a frame before a browser's live stream counts as gone
+STEADY_BUDGET = 0.025  # steady timing (music visualizer): frames go to the board this long after they're started
 
 
 @dataclass
@@ -22,13 +23,15 @@ class Context:
     width: int
     height: int
     store: object
+    wake: object = None  # call to render again now (e.g. a frame arrived from an emulator); None inside layers
 
 
 class Runner:
     def __init__(self, board, store):
         self.board = board
         self.store = store
-        self.ctx = Context(board.width, board.height, store)
+        self.wake = threading.Event()
+        self.ctx = Context(board.width, board.height, store, self.wake.set)
         self.mode = "manual"  # manual | app | playlist | schedule
         self.app = None
         self.playlist = None
@@ -38,7 +41,6 @@ class Runner:
         self.transition = None
         self.prev_app = None  # the outgoing app keeps running during a transition
         self.lock = threading.RLock()
-        self.wake = threading.Event()
         self.listeners = []  # called with status() whenever the mode/app changes
         self.quiet = False  # quiet hours active (set by boardcare)
         self.slowdown = 1.0  # transitions take this many times longer (quiet hours)
@@ -58,7 +60,7 @@ class Runner:
     # ---- control (called from HTTP/MQTT threads) --------------------------------
 
     def _current_canvas(self):
-        return Canvas.from_rows(self.board.rows())
+        return Canvas.from_dots(self.board.width, self.board.height, self.board.dots()[1])
 
     def _start_transition(self, kind, duration=1.0):
         if kind and kind != "none":
@@ -159,6 +161,7 @@ class Runner:
             self.mode = "manual"
             self.playlist = None
             self.paused_at = None
+            self.board.interactive = self.board.steady = False  # drawing by hand gets the wave again
             self._changed()
 
     # ---- live streams from a browser ------------------------------------------------
@@ -318,6 +321,12 @@ class Runner:
             self._changed()
 
     def input(self, key, action="down", player=1):
+        # an app that just passes input on (an emulator's pipe) takes it without waiting for a frame being rendered;
+        # input_now() returns False for anything that needs the usual path
+        target = self.notif["app"] if self.notif else self.app
+        fast = getattr(target, "input_now", None)
+        if fast is not None and fast(key, action, player):
+            return True
         with self.lock:
             target = self.notif["app"] if self.notif else self.app
             if target is None or not target.interactive:
@@ -471,8 +480,10 @@ class Runner:
     def _loop(self):
         while True:
             delay = 0.5
+            ticked = False
             with self.lock:
                 now = time.time()
+                started = time.monotonic()
                 try:
                     if self.paused_at is None:
                         self._advance(now)
@@ -518,12 +529,14 @@ class Runner:
                             self._drop_prev()
                     else:
                         out = c
-                    self.board.set_canvas(out)
+                    self.board.interactive = bool(app.interactive)
+                    self.board.steady = bool(getattr(app, "steady_timing", False))
+                    # steady timing: the picture goes out a fixed time after this frame started, whatever the render took
+                    self.board.set_canvas(out, started + STEADY_BUDGET if self.board.steady else None)
                     tick = getattr(app, "status_tick", None) if app is self.app else None
                     if tick is not None and tick != self._tick:
                         self._tick = tick
-                        for fn in self.ticks:
-                            fn()
+                        ticked = True
                     if getattr(app, "restore", False) and not self.transition:
                         self.app = None  # restore finished; back to plain manual mode
                     delay = min(app.interval, 1 / self.transition_fps()) if self.transition else app.interval
@@ -538,6 +551,9 @@ class Runner:
                             self.item_until = 0
                         delay = 0.01
                 self._check_problem()
+            if ticked:  # outside the lock: listeners may ask for status()
+                for fn in self.ticks:
+                    fn()
             # time the next tick from when this frame started, so rendering time doesn't slow the frame rate
             self.wake.wait(max(0.0, now + delay - time.time()) if delay > 0.011 else delay)
             self.wake.clear()

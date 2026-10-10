@@ -1,7 +1,7 @@
 // Import page: the one place to drop files. Photos and GIFs are converted to dots and saved to Pictures, videos
 // go to the Videos library, several images or a .zip can become a slideshow; each then opens where it landed.
 // A video file or the webcam can also be streamed live without saving.
-import { $, api, ask, board, bus, choose, renderDots, gridToRows, safe, scenesCache, toast, refreshScenes, loadDrawings, uploadFile, wsSend } from "./common.js";
+import { $, api, ask, board, bus, choose, renderDots, gridToRows, safe, scenesCache, toast, refreshScenes, loadDrawings, uploadFile, wsSend, wsBacklog } from "./common.js";
 import { importVideos } from "./videos.js";
 import { importToSlideshow } from "./slideshows.js";
 
@@ -361,8 +361,10 @@ async function toggleLive() {
     const rows = gridToRows(convertFrame(video));
     try {
       const stream = streamInfo();
-      if (!layerId) { if ((await api("/api/frame", { rows, stream })).stopped) stopLive(); }
-      else if (!wsSend({ type: "drawing_rows", drawing: layerId, rows, stream })) {
+      if (wsBacklog() > 32768) { /* the connection is behind: drop this frame */ }
+      else if (!layerId) {
+        if (!wsSend({ type: "frame", rows, stream }) && (await api("/api/frame", { rows, stream })).stopped) stopLive();
+      } else if (!wsSend({ type: "drawing_rows", drawing: layerId, rows, stream })) {
         if ((await api(`/api/drawings/${layerId}`, { rows, stream })).stopped) stopLive();
       }
     } catch (e) { toast(e.message, true); stopLive(); }

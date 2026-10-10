@@ -289,6 +289,7 @@ class NES(App):
         self.stopped = False
         self.last_draw = 0
         self.last_px = None
+        self.drawn = None  # the frame last drawn
         self.last_quiet_check = 0
         self.last_frame_no = 0
         self.scroll = None
@@ -374,6 +375,8 @@ class NES(App):
                     self._event(h[5])
                 with self.frame_lock:
                     self.frame = (h, bytes(buf))
+                if self.ctx.wake is not None:
+                    self.ctx.wake()  # draw it now, not on the runner's next tick
         except Exception as e:
             log.warning("nes: %s", e)
         rc = proc.wait()
@@ -429,6 +432,16 @@ class NES(App):
                 proc.stdin.write(bytes((ord(cmd), 2 if player == 2 else 1, button)))
             except (OSError, ValueError):
                 pass
+
+    def input_now(self, key, action="down", player=1):
+        """A button for the running emulator, straight down its pipe (called without the runner's lock).
+        Returns False for anything else (restarting, save/load), which goes through input() as usual."""
+        key = ALIASES.get(key, key)
+        proc = self.proc
+        if key not in BUTTONS or proc is None or proc.poll() is not None:
+            return False
+        self._send("D" if action == "down" else "U", player, BUTTONS[key])
+        return True
 
     def input(self, key, action="down", player=1):
         down = action == "down"
@@ -491,9 +504,13 @@ class NES(App):
         if frame is None:
             self._message(c, "NES", "Loading...")
             return
-        if self.last_px is not None and now - self.last_draw < self.interval * 0.8:
-            c.px[:] = self.last_px  # woken early (input): keep the board update rate capped
+        # the emulator sends `fps` frames a second, and every 2nd frame for a moment after a button changes: draw
+        # each one as it arrives, and keep the last picture when woken for anything else
+        slowed = self.interval > 1 / self.fps + 1e-6  # quiet hours, "slow": fewer updates than the emulator sends
+        if self.last_px is not None and (frame is self.drawn or slowed and now - self.last_draw < self.interval * 0.8):
+            c.px[:] = self.last_px
         else:
+            self.drawn = frame
             self.last_draw = now
             t = time.perf_counter()
             c.px[:] = self._dots(frame, now)
