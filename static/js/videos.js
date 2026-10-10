@@ -7,6 +7,7 @@ let playhead = 0;            // seconds, in the panel
 let dragging = false;        // the timeline (or a range handle) is being dragged
 let pollTimer = null;
 const uploads = [];          // { name, loaded, total, error, done }
+const fresh = new Set();     // videos just added from Import: highlighted in the grid until another page is opened
 
 export const fmtTime = s => {
   s = Math.max(0, Math.floor(s || 0));
@@ -38,6 +39,15 @@ function dots(canvas, rows, cell) {
   renderDots(canvas.getContext("2d"), grid, cell, { seams: false });
 }
 
+const native = v => !!v?.native;
+// a source that's a whole multiple of the board (e.g. 168×84) is still scaled like any video: just say so
+function sourceNote(v) {
+  if (native(v) || !v.source_w) return "";
+  const k = v.source_w / board.W;
+  return Number.isInteger(k) && k > 1 && v.source_h === board.H * k ? ` · source ${v.source_w}×${v.source_h} (${k}× board size, scaled)` : "";
+}
+const fpsText = f => (Math.abs(f - Math.round(f)) < 0.01 ? Math.round(f) : f.toFixed(2));
+
 function statusLine(v) {
   if (v.status === "queued") return "Waiting to convert";
   if (v.status === "converting") return v.progress != null ? `Converting… ${Math.round(v.progress * 100)}%` : "Converting…";
@@ -54,9 +64,10 @@ function card(v) {
     ? el("div", { class: "vdBar", role: "progressbar", "aria-label": `Converting ${v.name}`, "aria-valuemin": 0, "aria-valuemax": 100,
                   "aria-valuenow": Math.round((v.progress || 0) * 100) }, el("span", { style: `width:${(v.progress || 0) * 100}%` }))
     : null;
-  return el("div", { class: "ssItem vdItem" + (v.id === current ? " selected" : "") + (playing ? " playing" : ""), "data-id": v.id },
+  return el("div", { class: "ssItem vdItem" + (v.id === current ? " selected" : "") + (playing ? " playing" : "") + (fresh.has(v.id) ? " justAdded" : ""), "data-id": v.id },
     el("button", { class: "vdPick", "aria-label": `Open ${v.name}`, "aria-pressed": String(v.id === current), onclick: () => select(v.id) }, c),
     el("div", { class: "name", title: v.name }, v.name),
+    native(v) ? el("span", { class: "vdBadge", title: "Board-size video: shown dot for dot" }, "84×42 · dot for dot") : null,
     el("div", { class: "vdMeta" + (v.status === "failed" ? " bad" : "") }, statusLine(v)),
     bar,
     el("div", { class: "ctl" },
@@ -93,11 +104,11 @@ function renderUploads() {
 }
 
 let uploading = Promise.resolve();
-function addFiles(files) {
+function addFiles(files, { focus = false } = {}) {
   if (!lib.ffmpeg) return toast(lib.no_ffmpeg, true);
   const max = (lib.settings.max_upload_mb || 1024) * 1024 * 1024;
   for (const f of files) {
-    const u = { name: f.name, loaded: 0, total: f.size, done: false, error: null };
+    const u = { name: f.name, loaded: 0, total: f.size, done: false, error: null, focus };
     uploads.push(u);
     if (f.size > max) { u.error = `${fmtSize(f.size)} is over the ${lib.settings.max_upload_mb} MB limit (Options, below).`; continue; }
     uploading = uploading.then(() => upload(f, u));
@@ -115,8 +126,12 @@ function upload(file, u) {
       let j = {};
       try { j = JSON.parse(x.responseText); } catch {}
       if (x.status >= 400) u.error = `${file.name}: ${j.error || `upload failed (HTTP ${x.status})`}`;
-      else { u.done = true; if (!current) current = j.id; }
-      loadVideos().catch(() => {}).finally(resolve);
+      else {
+        u.done = true;
+        if (!current || u.focus) current = j.id;
+        if (u.focus) fresh.add(j.id);
+      }
+      loadVideos().then(() => { if (u.focus && !u.error && j.id) reveal(j.id); }).catch(() => {}).finally(resolve);
     };
     x.onerror = () => { u.error = `${file.name}: the upload was cut off. Check the connection and try again.`; renderUploads(); resolve(); };
     x.send(file);
@@ -129,6 +144,20 @@ $("vdFile").onchange = () => { addFiles([...$("vdFile").files]); $("vdFile").val
 $("vdDrop").addEventListener("dragover", e => { e.preventDefault(); $("vdDrop").classList.add("over"); });
 $("vdDrop").addEventListener("dragleave", () => $("vdDrop").classList.remove("over"));
 $("vdDrop").addEventListener("drop", e => { e.preventDefault(); $("vdDrop").classList.remove("over"); addFiles([...e.dataTransfer.files]); });
+
+// From Import: upload these into the library, then show each one selected, with its conversion progress.
+export async function importVideos(files) {
+  await loadVideos();
+  addFiles(files, { focus: true });
+  requestAnimationFrame(() => $("vdUploads").scrollIntoView({ block: "center", behavior: "smooth" }));
+}
+
+// scroll the video's card into view and open it in the player panel
+function reveal(id) {
+  if ($("tab-videos").hidden) return;
+  select(id, false);
+  $("vdPlayer").scrollIntoView({ block: "start", behavior: "smooth" });
+}
 
 // ---- rename / delete ----
 
@@ -155,12 +184,12 @@ async function remove(v) {
 // ---- the player panel ----
 
 let strip = [], panelFor = null, stripKey = "";
-function select(id) {
+function select(id, scroll = true) {
   current = id;
   const v = cur();
   playhead = onBoard() ? onBoard().pos : (v?.range?.start || 0);
   render();
-  $("vdPlayer").scrollIntoView({ block: "nearest" });
+  if (scroll) $("vdPlayer").scrollIntoView({ block: "nearest" });
 }
 
 const displayQuery = v => new URLSearchParams(Object.entries(v.display || {}).map(([k, x]) => [k, String(x)])).toString();
@@ -171,13 +200,24 @@ function renderPanel() {
   if (!v) { panelFor = null; return; }
   const ready = v.status === "ready";
   $("vdName").textContent = v.name;
+  $("vdNative").hidden = !native(v);
   $("vdInfo").textContent = ready
-    ? `${fmtTime(v.duration)} · ${v.fps} frames a second · ${fmtSize(v.bytes)} (about ${v.mb_per_hour} MB an hour) · ${MODES[v.mode] || v.mode}` +
-      (v.has_original ? " · original kept" : "")
+    ? `${fmtTime(v.duration)} · ${fpsText(v.fps)} frames a second · ${fmtSize(v.bytes)} (about ${v.mb_per_hour} MB an hour) · ` +
+      (native(v) ? "board size, shown dot for dot" : MODES[v.mode] || v.mode) + sourceNote(v) + (v.has_original ? " · original kept" : "")
     : statusLine(v);
+  $("vdNativeNote").hidden = !native(v) || !ready;
+  $("vdLook").classList.toggle("native", native(v));
+  $("vdLook").querySelector("summary").textContent = native(v) ? "Display options (Negative only)" : "Display options";
+  renderTitleMode(v);
   $("vdBody").hidden = !ready;
-  if (panelFor !== v.id) {
-    panelFor = v.id;
+  const conv = v.status === "converting" || v.status === "queued";
+  $("vdConvBar").hidden = !conv;
+  if (conv) {
+    $("vdConvBar").firstChild.style.width = `${(v.progress || 0) * 100}%`;
+    $("vdConvBar").setAttribute("aria-valuenow", Math.round((v.progress || 0) * 100));
+  }
+  if (panelFor !== v.id + v.status) {  // filled again once it's converted: the title is known by then
+    panelFor = v.id + v.status;
     $("vdTitle").value = v.title || "";
     $("vdTitleNote").textContent = v.meta_title ? `From the file: "${v.meta_title}"` : "The file has no title of its own.";
     const d = v.display || {};
@@ -190,7 +230,7 @@ function renderPanel() {
     $("vdRemode").value = v.mode;
     showDisplayValues();
   }
-  $("vdReconvert").hidden = !v.has_original;
+  $("vdReconvert").hidden = !v.has_original || native(v);
   if (!ready) return;
   $("vdSeek").max = v.duration;
   const key = v.id + displayQuery(v);
@@ -388,6 +428,23 @@ $("vdPrev").onclick = step(-1);
 $("vdNext").onclick = step(1);
 $("vdSpeed").onchange = safe(async () => { if (onBoard()) await control({ speed: +$("vdSpeed").value }); });
 
+// whether the title shows when it starts: this video's choice, else the setting at the top
+function renderTitleMode(v) {
+  const all = lib.settings?.show_title !== false;
+  $("vdTitleMode").options[0].textContent = native(v) ? "Default: off (board-size video)" : `As set for all videos (${all ? "on" : "off"})`;
+  if (document.activeElement !== $("vdTitleMode")) $("vdTitleMode").value = v.show_title || "auto";
+}
+$("vdTitleMode").onchange = safe(() => autosave("vdTitleModeSaved", async () => {
+  const v = cur();
+  await api(`/api/videos/${v.id}`, { show_title: $("vdTitleMode").value });
+  v.show_title = $("vdTitleMode").value;
+}));
+$("vdShowTitles").onchange = safe(() => autosave("vdShowTitlesSaved", async () => {
+  await api("/api/settings", { videos: { show_title: $("vdShowTitles").checked } });
+  lib.settings = { ...lib.settings, show_title: $("vdShowTitles").checked };
+  if (cur()) renderTitleMode(cur());
+}));
+
 // title shown when it starts
 $("vdTitle").onchange = safe(() => autosave("vdTitleSaved", async () => {
   await api(`/api/videos/${current}`, { title: $("vdTitle").value });
@@ -436,13 +493,14 @@ function renderOptions() {
   $("vdKeep").checked = !!lib.settings.keep_original;
   $("vdFps").value = lib.settings.fps;
   $("vdTitleSource").value = lib.settings.title_source;
+  $("vdShowTitles").checked = lib.settings.show_title !== false;
 }
 for (const id of ["vdMaxMb", "vdKeepDefault", "vdFps", "vdTitleSource"]) {
   $(id).addEventListener("change", safe(() => autosave("vdOptsSaved", async () => {
     const videos = { max_upload_mb: Math.max(1, +$("vdMaxMb").value || 1024), keep_original: $("vdKeepDefault").checked,
                      fps: Math.max(1, Math.min(30, Math.round(+$("vdFps").value) || 15)), title_source: $("vdTitleSource").value };
     await api("/api/settings", { videos });
-    lib.settings = videos;
+    lib.settings = { ...lib.settings, ...videos };
     if (id === "vdKeepDefault") $("vdKeep").checked = videos.keep_original;
   })));
 }
@@ -474,4 +532,7 @@ function renderProgress(r) {
   });
 }
 
-bus.addEventListener("tabShown", e => { if (e.detail === "videos") loadVideos().catch(err => toast(err.message, true)); });
+bus.addEventListener("tabShown", e => {
+  if (e.detail === "videos") loadVideos().catch(err => toast(err.message, true));
+  else if (fresh.size) fresh.clear();
+});

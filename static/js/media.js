@@ -1,5 +1,9 @@
-// Import page: convert images, GIFs, video files and the webcam to dots.
-import { $, api, ask, board, bus, renderDots, gridToRows, safe, toast, refreshScenes, loadDrawings, wsSend, wsBacklog } from "./common.js";
+// Import page: the one place to drop files. Photos and GIFs are converted to dots and saved to Pictures, videos
+// go to the Videos library, several images or a .zip can become a slideshow; each then opens where it landed.
+// A video file or the webcam can also be streamed live without saving.
+import { $, api, ask, board, bus, choose, renderDots, gridToRows, safe, scenesCache, toast, refreshScenes, loadDrawings, uploadFile, wsSend, wsBacklog } from "./common.js";
+import { importVideos } from "./videos.js";
+import { importToSlideshow } from "./slideshows.js";
 
 const MAX_FRAMES = 500;
 const preview = $("preview"), pctx = preview.getContext("2d");
@@ -9,6 +13,7 @@ const work = document.createElement("canvas"), wctx = work.getContext("2d", { wi
 let source = null;      // { kind: "image", frames: [{bitmap, delay}] } | { kind: "video"|"webcam" }
 let converted = [];     // [{ grid, delay }]
 let previewTimer = null, liveTimer = null, sourceName = "";
+let saved = null;       // { id, name }: the picture in Pictures made from the image loaded here; option changes update it
 
 const fps = () => Math.max(1, Math.min(20, +$("fps").value || 10));
 
@@ -117,11 +122,29 @@ function reconvert() {
   startPreview();
 }
 
+// after an import, changing the options re-saves that picture (same id, so playlists and layers using it follow)
+let resaveTimer = null;
+function resave() {
+  if (!saved || source?.kind !== "image" || !converted.length) return;
+  clearTimeout(resaveTimer);
+  const s = saved;
+  resaveTimer = setTimeout(safe(async () => {
+    $("imSaved").textContent = "Saving…";
+    try {
+      await api("/api/scenes", { id: s.id, name: s.name, frames: framesPayload() });
+      $("imSaved").textContent = `Saved: "${s.name}" in Pictures is updated`;
+    } catch (e) { $("imSaved").textContent = "Not saved"; throw e; }
+    await refreshScenes();
+  }), 400);
+}
+
 function updateButtons() {
   const hasFrames = converted.length > 0;
   const isVideo = source && source.kind !== "image";
   $("send").disabled = !hasFrames;
   $("saveMedia").disabled = !hasFrames;
+  $("saveMedia").hidden = !!saved;
+  $("openSaved").hidden = !saved;
   $("addAsLayer").disabled = !hasFrames;
   $("live").disabled = !isVideo;
   $("clip").disabled = !isVideo;
@@ -136,46 +159,150 @@ function resetSource() {
   if (video.srcObject) { video.srcObject.getTracks().forEach(t => t.stop()); video.srcObject = null; }
   if (video.src) { URL.revokeObjectURL(video.src); video.removeAttribute("src"); video.load(); }
   source = null; converted = [];
+  if (saved) { saved = null; bus.dispatchEvent(new Event("importReset")); }
+  $("imSaved").textContent = "";
 }
 
-async function decodeImage(file) {
+async function decodeImage(file, onprogress) {
   // Decode on the server (Pillow handles animated GIF/WebP/PNG reliably); fall back to the browser.
   try {
-    const j = await api("/api/decode", file, { raw: true });
+    const j = await uploadFile("/api/decode", file, onprogress);
     return Promise.all(j.frames.slice(0, MAX_FRAMES).map(async f => ({
       bitmap: await createImageBitmap(await (await fetch("data:image/png;base64," + f.png)).blob()),
       delay: f.delay,
     })));
   } catch (err) {
     console.warn("server decode failed, using browser decode:", err);
-    return [{ bitmap: await createImageBitmap(file), delay: 100 }];
+    try {
+      return [{ bitmap: await createImageBitmap(file), delay: 100 }];
+    } catch {
+      throw new Error(`${file.name || "That file"} couldn't be read as an image (${err.message})`);
+    }
   }
 }
 
-async function loadFile(file) {
+// a video file to stream live (or convert a clip of): played here in the browser, nothing uploaded
+async function loadStream(file) {
   if (!file) return;
-  bus.dispatchEvent(new CustomEvent("tab", { detail: "import" }));
   resetSource();
-  sourceName = file.name || "pasted image";
-  if (file.type.startsWith("video/")) {
-    video.src = URL.createObjectURL(file);
-    video.loop = true;
-    await new Promise((ok, fail) => { video.onloadeddata = ok; video.onerror = () => fail(new Error("can't play this video")); });
-    await video.play().catch(() => {});
-    source = { kind: "video" };
-    $("imgInfo").textContent = `${sourceName} · ${video.videoWidth}×${video.videoHeight} · ${video.duration.toFixed(1)} s. Stream it live, or convert a clip.`;
-  } else if (file.type.startsWith("image/")) {
-    $("imgInfo").textContent = "Decoding…";
-    const frames = await decodeImage(file);
-    source = { kind: "image", frames };
-    const b = frames[0].bitmap;
-    const native = b.width % board.W === 0 && b.height % board.H === 0 && b.width / board.W === b.height / board.H;
-    $("imgInfo").textContent = `${sourceName} · ${b.width}×${b.height}` + (frames.length > 1 ? ` · ${frames.length} frames` : "")
-      + (native ? " · board-size art: shown dot for dot" : "");
-  } else {
-    return toast("That isn't an image or video", true);
-  }
+  sourceName = file.name;
+  video.src = URL.createObjectURL(file);
+  video.loop = true;
+  await new Promise((ok, fail) => { video.onloadeddata = ok; video.onerror = () => fail(new Error(`This browser can't play ${file.name}`)); });
+  await video.play().catch(() => {});
+  source = { kind: "video" };
+  $("imgInfo").textContent = `${sourceName} · ${video.videoWidth}×${video.videoHeight} · ${video.duration.toFixed(1)} s. Not saved: stream it live, or convert a clip.`;
   reconvert();
+  $("live").scrollIntoView({ block: "nearest", behavior: "smooth" });
+}
+
+// one image or GIF: decode, convert with the options on this page, save to Pictures. Returns the new picture's id.
+async function importImage(file, label) {
+  resetSource();
+  sourceName = file.name || "Pasted image";
+  progress(`Converting ${sourceName}${label}…`, 0);
+  const frames = await decodeImage(file, (loaded, total) => progress(`Uploading ${sourceName}${label} to convert it…`, loaded / total));
+  source = { kind: "image", frames };
+  const b = frames[0].bitmap;
+  const native = b.width % board.W === 0 && b.height % board.H === 0 && b.width / board.W === b.height / board.H;
+  reconvert();
+  const name = sourceName.replace(/\.[^.]+$/, "") || "Image";
+  const { id } = await api("/api/scenes", { name, frames: framesPayload() });
+  saved = { id, name };
+  updateButtons();
+  $("imgInfo").textContent = `${sourceName} · ${b.width}×${b.height}` + (frames.length > 1 ? ` · ${frames.length} frames` : "")
+    + (native ? " · board-size art: shown dot for dot" : "") + `. Saved to Pictures as "${name}".`;
+  return id;
+}
+
+const ext = f => (f.name.match(/\.([^.]+)$/)?.[1] || "").toLowerCase();
+const isZip = f => ext(f) === "zip" || /zip/.test(f.type);
+const isVideo = f => f.type.startsWith("video/") || ["webm", "mp4", "mov", "mkv", "m4v", "avi", "ogv", "mpg", "mpeg"].includes(ext(f));
+const isImage = f => f.type.startsWith("image/") || ["png", "jpg", "jpeg", "gif", "webp", "bmp"].includes(ext(f));
+const stem = f => f.name.replace(/\.[^.]+$/, "");
+const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
+
+function progress(text, frac = null, bad = false) {
+  $("imProgressRow").hidden = !text;
+  $("imProgressRow").classList.toggle("bad", bad);
+  $("imStatus").textContent = text || "";
+  $("imProgress").hidden = frac === null;
+  if (frac !== null) {
+    const pct = Math.round(100 * Math.max(0, Math.min(1, frac)));
+    $("imProgress").firstChild.style.width = `${pct}%`;
+    $("imProgress").setAttribute("aria-valuenow", pct);
+  }
+}
+
+const go = tab => bus.dispatchEvent(new CustomEvent("tab", { detail: tab }));
+
+// Everything dropped, chosen or pasted on Import comes through here and is sent where it belongs.
+// An error also shows in the progress line, so it stays visible on this page.
+async function importFiles(list) {
+  try { await routeFiles(list); } catch (e) { progress(e.message, null, true); throw e; }
+}
+
+async function routeFiles(list) {
+  const files = [...list].filter(Boolean);
+  if (!files.length) return;
+  const videos = files.filter(f => isVideo(f) && !isZip(f));
+  const zips = files.filter(isZip);
+  const images = files.filter(f => !isZip(f) && !isVideo(f) && isImage(f));
+  const other = files.filter(f => !videos.includes(f) && !zips.includes(f) && !images.includes(f));
+  if (other.length) toast(`Skipped ${other.map(f => f.name).join(", ")}: not a photo, GIF, video or .zip`, true);
+  if (!videos.length && !zips.length && !images.length) return;
+
+  // several pictures, or a zip: a slideshow, or (pictures only) each one into Pictures
+  let pictures = images.length || zips.length ? "pictures" : null;
+  if (zips.length || images.length > 1) {
+    const what = [images.length ? plural(images.length, "image") : "", zips.length ? plural(zips.length, ".zip") : ""].filter(Boolean).join(" and ");
+    if (zips.length === 1 && !images.length) pictures = "slideshow";
+    else {
+      pictures = await choose({
+        title: `Import ${what}`,
+        message: zips.length
+          ? "They'll go into a new slideshow, which shows them one after another. (A .zip can only go into a slideshow.)"
+          : "Make them a new slideshow that shows them one after another, or save each one to Pictures as its own picture.",
+        choices: [...(zips.length ? [] : [["pictures", "Save each to Pictures"]]), ["slideshow", "Make a slideshow", true]],
+      });
+      if (!pictures) return videos.length ? sendVideos(videos, true) : undefined;
+    }
+  }
+  if (videos.length) await sendVideos(videos, !pictures);
+  if (pictures === "slideshow") {
+    const first = zips[0] || images[0];
+    const others = zips.length + images.length - 1;
+    const name = others ? `${stem(first)} and ${others} more` : stem(first);
+    go("slideshows");
+    await importToSlideshow([...zips, ...images], name);
+  } else if (pictures === "pictures") {
+    const ids = [];
+    try {
+      for (const [n, f] of images.entries()) ids.push(await importImage(f, images.length > 1 ? ` (${n + 1} of ${images.length})` : ""));
+    } catch (e) {
+      progress(e.message, null, true);
+      if (!ids.length) throw e;
+      toast(e.message, true);
+    }
+    if (ids.length) {
+      progress("");
+      await refreshScenes();
+      go("pictures");
+      bus.dispatchEvent(new CustomEvent("picturesAdded", { detail: { ids, adjust: ids.at(-1) } }));
+      toast(ids.length === 1 ? `Saved "${saved?.name}" to Pictures` : `Saved ${ids.length} pictures to Pictures`);
+    }
+  }
+}
+
+// videos go to the Videos library; with `land`, open it (otherwise say where they went)
+async function sendVideos(videos, land) {
+  if (land) {
+    go("videos");
+    await importVideos(videos);
+  } else {
+    await importVideos(videos);
+    toast(`${plural(videos.length, "video")} uploading to Videos`, false, { label: "Open Videos", onclick: () => go("videos") }, 6000);
+  }
 }
 
 async function startWebcam() {
@@ -292,7 +419,7 @@ async function convertClip() {
     $("clip").disabled = false;
   }
   converted = frames;
-  $("imgInfo").textContent = `${sourceName} clip · ${frames.length} frames at ${rate} fps. Show it on the board or save it to Pictures.`;
+  $("imgInfo").textContent = `${sourceName} clip · ${frames.length} frames at ${rate} fps. Not saved yet: show it on the board or save it to Pictures.`;
   updateButtons();
   startPreview();
 }
@@ -310,9 +437,21 @@ $("send").onclick = safe(async () => {
 $("saveMedia").onclick = safe(async () => {
   const name = await ask({ title: "Save to Pictures", label: "Name", value: sourceName.replace(/\.[^.]+$/, ""), confirmText: "Save" });
   if (!name) return;
-  await api("/api/scenes", { name, frames: framesPayload() });
+  const { id } = await api("/api/scenes", { name, frames: framesPayload() });
   await refreshScenes();
-  toast(`Saved "${name}" to Pictures`);
+  toast(`Saved "${name}" to Pictures`, false, { label: "Open Pictures", onclick: () => {
+    go("pictures");
+    bus.dispatchEvent(new CustomEvent("picturesAdded", { detail: { ids: [id] } }));
+  } }, 6000);
+});
+$("openSaved").onclick = () => {
+  if (!saved) return;
+  go("pictures");
+  bus.dispatchEvent(new CustomEvent("picturesAdded", { detail: { ids: [saved.id], adjust: saved.id } }));
+};
+// the imported picture was deleted in Pictures: stop updating it
+bus.addEventListener("scenes", () => {
+  if (saved && !scenesCache.list.some(s => s.id === saved.id)) { saved = null; updateButtons(); $("imSaved").textContent = ""; }
 });
 $("live").onclick = safe(toggleLive);
 $("addAsLayer").onclick = safe(async () => {
@@ -323,8 +462,8 @@ $("addAsLayer").onclick = safe(async () => {
     await api("/api/drawings", { name, rows: gridToRows(converted[0].grid), show: true, position });
     await loadDrawings();
   } else {
-    // animations and clips become a saved scene, shown as a layer
-    const { id } = await api("/api/scenes", { name, frames: framesPayload() });
+    // animations and clips become a saved scene (the imported one, if there is one), shown as a layer
+    const id = saved?.id || (await api("/api/scenes", { name, frames: framesPayload() })).id;
     await refreshScenes();
     await api("/api/layers/add", { layer: { app: "scene", params: { scene: id, loop: $("loop").checked } }, position });
   }
@@ -336,17 +475,22 @@ $("webcam").onclick = safe(startWebcam);
 const drop = $("drop");
 drop.onclick = () => $("file").click();
 drop.onkeydown = e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); $("file").click(); } };
-$("file").onchange = safe(e => loadFile(e.target.files[0]));
+$("file").onchange = safe(async e => { const files = [...e.target.files]; e.target.value = ""; await importFiles(files); });
+$("streamFile").onclick = () => $("streamFileInput").click();
+$("streamFileInput").onchange = safe(async e => { const f = e.target.files[0]; e.target.value = ""; await loadStream(f); });
 drop.addEventListener("dragover", e => { e.preventDefault(); drop.classList.add("over"); });
 drop.addEventListener("dragleave", () => drop.classList.remove("over"));
-drop.addEventListener("drop", safe(e => { e.preventDefault(); drop.classList.remove("over"); return loadFile(e.dataTransfer.files[0]); }));
+drop.addEventListener("drop", safe(e => { e.preventDefault(); drop.classList.remove("over"); return importFiles(e.dataTransfer.files); }));
+// paste an image anywhere (outside text fields) to import it
 document.addEventListener("paste", safe(e => {
-  if (e.target.closest("input, textarea")) return;
+  if (e.target.closest("input, textarea, [contenteditable]")) return;
   const item = [...e.clipboardData.items].find(i => i.type.startsWith("image/"));
-  if (item) return loadFile(item.getAsFile());
+  if (!item) return;
+  const f = item.getAsFile();
+  return importFiles([new File([f], `Pasted image.${(f.type.split("/")[1] || "png").replace("jpeg", "jpg")}`, { type: f.type })]);
 }));
-for (const id of ["imgMode", "dither", "threshold", "invertImg"]) $(id).addEventListener("input", reconvert);
-$("speed").addEventListener("input", () => converted.length && startPreview());
+for (const id of ["imgMode", "dither", "threshold", "invertImg"]) $(id).addEventListener("input", () => { reconvert(); resave(); });
+$("speed").addEventListener("input", () => { if (converted.length) startPreview(); resave(); });
 $("fps").addEventListener("change", () => { if (liveTimer) { stopLive(); toggleLive(); } });
 if (!window.isSecureContext) $("webcamNote").textContent = "(webcam only works on http://localhost or https)";
 reconvert();

@@ -263,16 +263,16 @@
 
   <!-- ===================== IMPORT ===================== -->
   <section class="tab card" id="tab-import" hidden>
+    <div id="drop" class="drop" role="button" tabindex="0">Drop photos, GIFs, videos or a .zip here, or click to choose files. You can paste an image too.</div>
+    <input type="file" id="file" accept="image/*,video/*,.zip,application/zip,.mkv,.webm,.mov,.mp4,.m4v" multiple hidden>
+    <div class="imProgressRow" id="imProgressRow" hidden>
+      <p class="muted" id="imStatus" role="status"></p>
+      <div class="vdBar" id="imProgress" role="progressbar" aria-label="Import progress" aria-valuemin="0" aria-valuemax="100"><span></span></div>
+    </div>
     <div class="importGrid">
-      <div class="imSource">
-        <div id="drop" class="drop" role="button" tabindex="0">Drop an image, GIF or video here, or click to choose one. You can also paste an image.</div>
-        <input type="file" id="file" accept="image/*,video/*" hidden>
-        <div class="row">
-          <button id="webcam">Use webcam</button>
-          <span class="muted" id="webcamNote"></span>
-        </div>
-      </div>
       <div class="imSettings">
+        <h3>How pictures are converted</h3>
+        <p class="muted">Used for the next photo or GIF. Change them after an import and the picture saved in Pictures is updated. <span class="savedNote" id="imSaved" role="status"></span></p>
         <div class="form">
           <label for="imgMode">Sizing</label>
           <select id="imgMode">
@@ -289,27 +289,23 @@
           <input type="range" id="threshold" min="1" max="254" value="128">
           <label for="invertImg">Negative</label>
           <div class="row tight"><input type="checkbox" id="invertImg"><span class="muted">Swap lit and dark dots.</span></div>
-          <label for="speed">Speed</label>
+          <label for="speed">Animation speed</label>
           <select id="speed">
             <option value="0.5">0.5×</option><option value="1" selected>1×</option>
             <option value="1.5">1.5×</option><option value="2">2×</option><option value="3">3×</option>
           </select>
           <label for="loop">Loop</label>
           <input type="checkbox" id="loop" checked>
-          <label for="fps">Video frames per second</label>
-          <input type="number" id="fps" min="1" max="20" value="10">
-          <label for="clipSecs">Video clip length (seconds)</label>
-          <input type="number" id="clipSecs" min="1" max="60" value="10">
         </div>
       </div>
       <div class="imResult">
         <div class="wrap"><canvas id="preview"></canvas></div>
         <video id="video" playsinline muted hidden></video>
-        <p class="muted" id="imgInfo">Nothing loaded yet. Choose a file, paste an image or use the webcam.</p>
+        <p class="muted" id="imgInfo">Nothing loaded yet.</p>
         <div class="row">
           <button class="primary" id="send" disabled><svg class="i" aria-hidden="true"><use href="#i-play"/></svg>Show on board</button>
           <button id="saveMedia" disabled>Save to Pictures</button>
-          <button id="clip" disabled>Convert video clip</button>
+          <button id="openSaved" hidden>Open in Pictures</button>
         </div>
         <div class="row">
           <button id="addAsLayer" disabled title="Combine it with what's on the board instead of replacing it">Add as layer</button>
@@ -318,14 +314,31 @@
             <option value="bottom">behind what's running</option>
           </select>
         </div>
-        <div class="row">
-          <button id="live" disabled>Stream live</button>
-          <label class="muted">to <select id="streamTarget">
-            <option value="board">the whole board</option>
-            <option value="top">a layer on top of what's running</option>
-            <option value="bottom">a layer behind what's running</option>
-          </select></label>
-        </div>
+      </div>
+    </div>
+    <div class="imStream">
+      <h3>Stream without saving</h3>
+      <p class="muted">Send a video file or the webcam to the board live. Nothing is stored, unless you convert a short clip and save it.</p>
+      <div class="row">
+        <button id="streamFile">Choose a video to stream…</button>
+        <input type="file" id="streamFileInput" accept="video/*,.mkv,.webm,.mov,.mp4,.m4v" hidden>
+        <button id="webcam">Use webcam</button>
+        <span class="muted" id="webcamNote"></span>
+      </div>
+      <div class="row">
+        <button id="live" disabled>Stream live</button>
+        <label class="muted">to <select id="streamTarget">
+          <option value="board">the whole board</option>
+          <option value="top">a layer on top of what's running</option>
+          <option value="bottom">a layer behind what's running</option>
+        </select></label>
+        <button id="clip" disabled>Convert a clip</button>
+      </div>
+      <div class="form">
+        <label for="fps">Frames per second</label>
+        <input type="number" id="fps" min="1" max="20" value="10">
+        <label for="clipSecs">Clip length (seconds)</label>
+        <input type="number" id="clipSecs" min="1" max="60" value="10">
       </div>
     </div>
   </section>
@@ -422,7 +435,8 @@
         <label class="muted"><input type="checkbox" id="ssSkipCovers" checked> <span>Skip cover images in zips (such as <code>clip.png</code> next to <code>clip.gif</code>)</span></label>
         <button id="ssRemoveCovers" title="Remove still images that are just covers for the GIFs already in this slideshow">Remove cover images</button>
       </div>
-      <p class="muted" id="ssStatus"></p>
+      <p class="muted" id="ssStatus" role="status"></p>
+      <div class="vdBar" id="ssProgress" role="progressbar" aria-label="Upload progress" aria-valuemin="0" aria-valuemax="100" hidden><span></span></div>
       <div id="ssItems" class="ssItems"></div>
 
       <details class="disclosure" id="ssOptions">
@@ -431,6 +445,11 @@
         <div class="form">
           <label for="ssImageSecs">Seconds per image</label><input id="ssImageSecs" type="number" min="1" max="3600" step="1">
           <label for="ssGifLoops">Times to play each GIF</label><input id="ssGifLoops" type="number" min="1" max="100">
+          <label for="ssGifSpeed">GIF speed</label>
+          <div class="row tight"><select id="ssGifSpeed">
+            <option value="0.5">0.5× (slow motion)</option><option value="0.75">0.75×</option><option value="1">1× (as made)</option>
+            <option value="1.5">1.5×</option><option value="2">2×</option><option value="3">3×</option><option value="4">4×</option>
+          </select><span class="muted">Each GIF can override this. Fast GIFs at high speed skip frames the board can't flip in time.</span></div>
           <label for="ssGifMin">Minimum seconds per GIF</label>
           <div class="row tight"><input id="ssGifMin" type="number" min="0" max="600" style="width:90px"><span class="muted">Short GIFs repeat until this much time has passed.</span></div>
           <label for="ssTransition">Transition between pictures</label>
@@ -482,6 +501,11 @@
   <!-- ===================== VIDEOS (static/js/videos.js, static/videos.css) ===================== -->
   <section class="tab card" id="tab-videos" hidden>
     <div id="vdNoFfmpeg" class="statusWarn" role="alert" hidden></div>
+    <div class="row vdTitles">
+      <label><input type="checkbox" id="vdShowTitles" checked> <span>Show the title when a video starts</span></label>
+      <span class="savedNote" id="vdShowTitlesSaved" role="status"></span>
+      <span class="muted">Each video can say otherwise in its player panel. Board-size videos leave it off unless you turn it on for them.</span>
+    </div>
     <div id="vdDrop" class="drop" role="button" tabindex="0">Drop videos here (WebM, MP4, MOV, MKV, GIF…), or click to choose files</div>
     <input type="file" id="vdFile" accept="video/*,image/gif,.mkv,.webm,.mov" multiple hidden>
     <div class="row">
@@ -501,7 +525,9 @@
         <button id="vdRename">Rename</button>
         <button id="vdDelete" class="danger">Delete</button>
       </div>
+      <span class="vdBadge" id="vdNative" hidden>84×42 · dot for dot</span>
       <p id="vdInfo" class="muted"></p>
+      <div class="vdBar" id="vdConvBar" role="progressbar" aria-label="Converting" aria-valuemin="0" aria-valuemax="100" hidden><span></span></div>
       <div id="vdBody">
         <div class="vdStage">
           <canvas id="vdPreview" width="504" height="252" role="img" aria-label="Preview of the frame at the playhead"></canvas>
@@ -544,28 +570,36 @@
           <span class="savedNote" id="vdRangeSaved" role="status"></span>
         </div>
         <div class="form">
-          <label for="vdTitle">Title shown when it starts <span class="savedNote" id="vdTitleSaved" role="status"></span></label>
+          <label for="vdTitleMode">Show the title when it starts <span class="savedNote" id="vdTitleModeSaved" role="status"></span></label>
+          <select id="vdTitleMode">
+            <option value="auto">As set for all videos</option>
+            <option value="on">Yes, for this video</option>
+            <option value="off">No, not for this video</option>
+          </select>
+          <label for="vdTitle">Title <span class="savedNote" id="vdTitleSaved" role="status"></span></label>
           <div>
             <div class="row tight"><input id="vdTitle" type="text" maxlength="120" placeholder="No title: nothing scrolls by"><button id="vdTitleClear">Clear</button></div>
             <p class="help" id="vdTitleNote"></p>
           </div>
         </div>
+        <p class="help vdNativeNote" id="vdNativeNote" hidden>Board-size video: shown dot for dot, lit from mid-grey up.
+          Lossy files (most MP4s, ordinary WebM) can shift pixels; for exact pixel art upload lossless VP9 WebM or a GIF.</p>
         <details class="disclosure" id="vdLook">
           <summary>Display options</summary>
           <p class="muted">Saved with this video and applied on the board right away. <span class="savedNote" id="vdDisplaySaved" role="status"></span></p>
           <div class="form">
-            <label for="vdDither">Style</label>
-            <select id="vdDither">
+            <label for="vdDither" class="vdScaledOnly">Style</label>
+            <select id="vdDither" class="vdScaledOnly">
               <option value="ordered">Ordered dither (shading, fewest flips)</option>
               <option value="diffusion">Diffusion dither (more detail, flips more)</option>
               <option value="threshold">Threshold (crisp, no shading)</option>
             </select>
-            <label for="vdThreshold">Brightness cutoff <span id="vdThVal"></span></label>
-            <input id="vdThreshold" type="range" min="1" max="254">
-            <label for="vdContrast">Contrast <span id="vdConVal"></span></label>
-            <input id="vdContrast" type="range" min="0.2" max="3" step="0.1">
-            <label for="vdGamma">Gamma <span id="vdGamVal"></span></label>
-            <div><input id="vdGamma" type="range" min="0.3" max="3" step="0.1"><p class="help">Below 1 brightens the shadows, above 1 darkens them.</p></div>
+            <label for="vdThreshold" class="vdScaledOnly">Brightness cutoff <span id="vdThVal"></span></label>
+            <input id="vdThreshold" class="vdScaledOnly" type="range" min="1" max="254">
+            <label for="vdContrast" class="vdScaledOnly">Contrast <span id="vdConVal"></span></label>
+            <input id="vdContrast" class="vdScaledOnly" type="range" min="0.2" max="3" step="0.1">
+            <label for="vdGamma" class="vdScaledOnly">Gamma <span id="vdGamVal"></span></label>
+            <div class="vdScaledOnly"><input id="vdGamma" type="range" min="0.3" max="3" step="0.1"><p class="help">Below 1 brightens the shadows, above 1 darkens them.</p></div>
             <label for="vdInvert">Negative</label>
             <div class="row tight"><input id="vdInvert" type="checkbox"><span class="muted">Swap lit and dark dots.</span></div>
           </div>
@@ -764,7 +798,6 @@
       </div>
     </div>
     <div class="setGroup" data-set="music" hidden>
-    <div class="setGroup" data-set="music" hidden>
       <h2>Music Assistant <span class="savedNote" id="maSaved" role="status"></span></h2>
       <p class="lede">For the Now playing app. Enter your Music Assistant server address (usually port 8095, for example
         <code>http://homeassistant.local:8095</code>). If your server asks you to log in, create a long-lived token in
@@ -777,13 +810,46 @@
       </div>
       <div class="row"><button id="maTest">Test connection</button></div>
 
-      <h2 class="spaced">Visualizer stream (Sendspin) <span class="savedNote" id="spSaved" role="status"></span></h2>
-      <p class="lede">Lets Music Assistant stream live visualizer data (loudness, spectrum, beats) to the board, so the
-        <b>Music visualizer</b> app follows the music that's playing. The board joins as a display-only Sendspin client: it plays no
-        audio and uses no microphone. It needs <code>pip install -r requirements-sendspin.txt</code> on the server (Python 3.12+, and the
-        version must match Music Assistant's). Without it, the visualizer uses a generated beat.</p>
+      <h2 class="spaced">Live audio for the visualizer <span class="savedNote" id="vaSaved" role="status"></span></h2>
+      <p class="lede">With live audio from Music Assistant, the <b>Music visualizer</b> app follows the music that's playing
+        (loudness, spectrum, beats). Without it, the visualizer uses a generated beat.</p>
       <div class="form">
-        <label for="ssEnabled">Sendspin</label><input id="ssEnabled" type="checkbox">
+        <label for="vaSource">Audio source</label>
+        <select id="vaSource">
+          <option value="sendspin">Sendspin</option>
+          <option value="snapcast">Snapcast</option>
+          <option value="off">Off (generated beat)</option>
+        </select>
+      </div>
+
+      <div id="scBlock" hidden>
+      <h2 class="spaced">Snapcast <span class="savedNote" id="scSaved" role="status"></span></h2>
+      <p class="lede">The board joins Music Assistant as a Snapcast player and analyses the audio it receives. It plays nothing:
+        snapclient hands the audio to the board's server instead of a sound card. Works with Music Assistant 2.7 and later.</p>
+      <div class="form">
+        <label for="scHost">Snapcast server</label><input id="scHost" type="text" placeholder="auto" aria-describedby="scHostHelp">
+        <span></span><div id="scHostHelp" class="muted">auto uses the host of the Music Assistant server URL above, where its built-in Snapcast server runs.</div>
+        <label for="scPort">Audio port</label><input id="scPort" type="number" min="1" max="65535" placeholder="1704">
+        <label for="scCtrl">Control port</label><input id="scCtrl" type="number" min="1" max="65535" placeholder="1705">
+        <label for="scName">Name in Music Assistant</label><input id="scName" type="text">
+        <label>Status</label><div id="scStatus" class="muted" role="status">Loading…</div>
+      </div>
+      <ol class="muted">
+        <li>On the Pi: <code>sudo apt install snapclient</code> and <code>sudo systemctl disable --now snapclient</code>, or run
+          <code>./scripts/setup-snapcast.sh</code>. The package's own snapclient service would play the music through the Pi's audio
+          output; the board runs a separate snapclient that plays nothing.</li>
+        <li>In Music Assistant: <b>Settings → Providers → Add → Snapcast</b>, keeping the built-in Snapcast server.</li>
+        <li>Play to the <b>Flipdot board</b> player, or group it with the speaker that's playing. Keep it unmuted: Snapcast sends no audio
+          to muted players.</li>
+      </ol>
+      </div>
+
+      <div id="ssBlock" hidden>
+      <h2 class="spaced">Sendspin <span class="savedNote" id="spSaved" role="status"></span></h2>
+      <p class="lede">Music Assistant streams live visualizer data to the board. The board joins as a display-only Sendspin client: it plays no
+        audio and uses no microphone. It needs <code>pip install -r requirements-sendspin.txt</code> on the server (Python 3.12+, and the
+        version must match Music Assistant's).</p>
+      <div class="form">
         <label for="ssName">Name in Music Assistant</label><input id="ssName" type="text">
         <label for="ssServer">Connect to</label>
         <div class="row tight">
@@ -799,6 +865,7 @@
       <p class="muted">A changed <b>Connect to</b> takes effect when the server restarts.</p>
       <div class="row">
         <button id="ssPair" title="Opens a short pairing window. Music Assistant then shows the code to enter, or the board displays it.">Pair with Music Assistant</button>
+      </div>
       </div>
     </div>
     <div class="setGroup" data-set="home" hidden>
@@ -818,7 +885,6 @@
       <h2 class="spaced">Webhooks and the HTTP API</h2>
       <div id="hooks" class="docs"></div>
     </div>
-    <div class="setGroup" data-set="controllers" hidden>
     <div class="setGroup" data-set="controllers" hidden>
       <h2>Gamepad <span class="savedNote" id="gpSaved" role="status"></span></h2>
       <p class="lede">Plug USB gamepads or a Mayflash GameCube adapter (PC mode) into the server to play the board's games. Each

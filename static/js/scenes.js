@@ -5,6 +5,7 @@ import {
 } from "./common.js";
 
 let kind = "all";
+let fresh = new Set(), adjustable = null;  // just imported (highlighted until another page opens); the one Import can still re-convert
 
 // one shape for both: what it is, and what each button does with it
 function pictures() {
@@ -59,13 +60,16 @@ function pictures() {
 }
 
 function pictureCard(p) {
-  return el("div", { class: "scene" + (p.live ? " live" : "") },
+  const isNew = fresh.has(p.key);
+  return el("div", { class: "scene" + (p.live ? " live" : "") + (isNew ? " justAdded" : ""), "data-key": p.key },
     p.thumb ? thumbCanvas(p.thumb, 3) : el("div", { class: "noThumb" }),
-    el("div", { class: "name" }, el("span", {}, p.name), el("small", {}, p.meta)),
+    el("div", { class: "name" }, el("span", {}, p.name), el("small", {}, isNew ? `Just imported · ${p.meta}` : p.meta)),
     el("div", { class: "row" },
       el("button", { class: "primary", onclick: safe(async () => { await p.show(); toast(`Showing "${p.name}"`); }) }, icon("play"), "Show on board"),
       p.layer ? el("button", { title: "Add it on top of what's on the board", onclick: safe(async () => { await p.layer(); toast(`Added "${p.name}" as a layer`); }) }, "Add as layer") : null,
-      el("button", { title: "Open it in Draw", onclick: p.edit }, icon("edit"), "Edit")),
+      el("button", { title: "Open it in Draw", onclick: p.edit }, icon("edit"), "Edit"),
+      adjustable === p.key ? el("button", { title: "Back to Import: change sizing, style, cutoff or negative, and this picture is updated",
+        onclick: () => bus.dispatchEvent(new CustomEvent("tab", { detail: "import" })) }, "Change conversion") : null),
     el("div", { class: "row minor" },
       el("button", { class: "ghost", onclick: safe(async () => {
         const name = await ask({ title: "Rename", label: "Name", value: p.name, confirmText: "Rename" });
@@ -95,6 +99,20 @@ function render() {
   grid.replaceChildren(...list.map(pictureCard));
 }
 
+// From Import: show the new pictures highlighted, the first one scrolled into view
+bus.addEventListener("picturesAdded", e => {
+  fresh = new Set(e.detail.ids.map(id => "s" + id));
+  adjustable = e.detail.adjust ? "s" + e.detail.adjust : null;
+  kind = "all";
+  render();
+  const first = document.querySelector(`#sceneGrid [data-key="s${CSS.escape(e.detail.ids[0])}"]`);
+  if (first) {
+    first.scrollIntoView({ block: "center", behavior: "smooth" });
+    first.querySelector("button.primary")?.focus({ preventScroll: true });
+  }
+});
+bus.addEventListener("importReset", () => { adjustable = null; });
+
 $("pcFilter").addEventListener("click", e => { const b = e.target.closest("[data-kind]"); if (b) { kind = b.dataset.kind; render(); } });
 $("scSaveCurrent").onclick = safe(async () => {
   const name = await ask({ title: "Save what's on the board", label: "Name", value: "Board " + new Date().toLocaleString(), confirmText: "Save" });
@@ -113,4 +131,7 @@ bus.addEventListener("state", () => {
   const k = (board.runner?.drawings || []).join();
   if (k !== liveKey) { liveKey = k; if (!$("tab-pictures").hidden) render(); }
 });
-bus.addEventListener("tabShown", e => { if (e.detail === "pictures") render(); });
+bus.addEventListener("tabShown", e => {
+  if (e.detail === "pictures") render();
+  else if (fresh.size) fresh = new Set();
+});

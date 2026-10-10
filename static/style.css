@@ -551,9 +551,15 @@ body[data-tab=draw] .device { max-width: max(520px, calc((100vh - 480px) * 2)); 
 
 /* Import: source and settings on the left, the result and its buttons on the right; on a phone the result comes
    straight after the source, before the settings */
-.importGrid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-areas: "source result" "settings result"; gap: 0 var(--s5); align-items: start; }
-.imSource { grid-area: source; } .imSettings { grid-area: settings; } .imResult { grid-area: result; }
-@media (max-width: 900px) { .importGrid { grid-template-columns: minmax(0, 1fr); grid-template-areas: "source" "result" "settings"; gap: var(--s4); } }
+.importGrid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-areas: "settings result"; gap: 0 var(--s5); align-items: start; margin-top: var(--s4); }
+.imSettings { grid-area: settings; } .imResult { grid-area: result; }
+.imSettings h3, .imStream h3 { margin: 0 0 var(--s1); }
+.imProgressRow { margin-top: var(--s3); }
+.imProgressRow p { margin: 0; }
+.imProgressRow.bad p { color: var(--danger); }
+.imStream { margin-top: var(--s5); padding-top: var(--s4); border-top: 1px solid var(--line); }
+.imStream .form { max-width: 520px; margin-top: var(--s3); }
+@media (max-width: 900px) { .importGrid { grid-template-columns: minmax(0, 1fr); grid-template-areas: "result" "settings"; gap: var(--s4); } }
 
 /* phone tab bar: hidden until the sidebar goes away */
 .tabbar { display: none; }
@@ -602,3 +608,8 @@ body[data-tab=draw] .device { max-width: max(520px, calc((100vh - 480px) * 2)); 
   .scene .row.minor button, .zoomCtl button { min-height: 44px; min-width: 44px; }
   .stripThumb { min-height: 44px; }
 }
+
+/* just imported: highlighted where it landed (Pictures, Slideshows) */
+.scene.justAdded, #ssSelect.justAdded { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.scene.justAdded .name small { color: var(--text); }
+.ssItems.justAdded .ssItem { border-color: var(--accent); }

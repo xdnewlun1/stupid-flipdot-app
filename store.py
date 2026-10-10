@@ -66,6 +66,10 @@ DEFAULT_SETTINGS = {
     "weather": {"units": "fahrenheit"},
     "music_assistant": {"url": "", "token": "", "player": ""},
     "sendspin": {"enabled": False, "name": "Flipdot board", "port": 8928, "unpaired": True, "server_url": "auto"},
+    # live audio for the music visualizer: "sendspin", "snapcast" or "off"
+    "visualizer": {"source": "off"},
+    # host "auto" = the Music Assistant URL's host (its built-in Snapserver)
+    "snapcast": {"host": "auto", "port": 1704, "control_port": 1705, "name": "Flipdot board"},
     "mqtt": {"enabled": False, "host": "", "port": 1883, "username": "", "password": "", "prefix": "flipdot",
              "discovery": False, "discovery_prefix": "homeassistant"},
     "quiet_hours": {"enabled": False, "start": "22:00", "end": "07:00", "max_flips": 150, "slowdown": 3},
@@ -82,6 +86,9 @@ class Store:
         (self.dir / "scenes").mkdir(parents=True, exist_ok=True)
         self._lock = threading.Lock()
         self.settings = self._load("settings.json", DEFAULT_SETTINGS)
+        if "visualizer" not in self.settings:  # older installs had only Sendspin's on/off switch
+            on = self.settings.get("sendspin", {}).get("enabled")
+            self.settings["visualizer"] = {"source": "sendspin" if on else "off"}
         for k, v in DEFAULT_SETTINGS.items():
             self.settings.setdefault(k, v)
         self.playlists = self._load("playlists.json", DEFAULT_PLAYLISTS)
@@ -205,7 +212,7 @@ class Store:
     # ---- slideshows (galleries of uploaded images/GIFs) ---------------------------
 
     GALLERY_DEFAULTS = {"mode": "crop", "dither": False, "threshold": 128, "invert": False, "image_seconds": 10,
-                        "gif_loops": 1, "gif_min_seconds": 0, "shuffle": False, "transition": "morph",
+                        "gif_loops": 1, "gif_min_seconds": 0, "gif_speed": 1, "shuffle": False, "transition": "morph",
                         "transition_duration": 1.0,
                         # random effects: chance per item (%), which ones, whole item or a burst
                         "fx_chance": 0, "fx_effects": ["invert", "flash", "glitch", "mirror", "kaleidoscope", "wave",
