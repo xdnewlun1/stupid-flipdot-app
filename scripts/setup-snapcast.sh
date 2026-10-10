@@ -70,6 +70,7 @@ for i in $(seq 1 20); do
     echo "Done. In Music Assistant (Settings → Providers → Snapcast) the board is the player \"Flipdot board\"."
     echo "Play to it, or group it with the speaker that's playing; keep it unmuted."
     echo "The Music visualizer app then says \"live from Music Assistant (Snapcast)\" while music plays."
+    echo "Settings live in the web page under Settings → Music → Live audio (reload the page if it was open)."
     exit 0
   fi
   sleep 2

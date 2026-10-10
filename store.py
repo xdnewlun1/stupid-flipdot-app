@@ -217,7 +217,11 @@ class Store:
                         # random effects: chance per item (%), which ones, whole item or a burst
                         "fx_chance": 0, "fx_effects": ["invert", "flash", "glitch", "mirror", "kaleidoscope", "wave",
                                                        "scanlines", "pixelate", "outline", "static", "life", "melt"],
-                        "fx_mode": "burst", "fx_seconds": 3, "fx_strength": 50}
+                        "fx_mode": "burst", "fx_seconds": 3, "fx_strength": 50,
+                        # React to music: signal -> effect rows (see apps/slidefx.py REACT_DEFAULTS), GIF speed
+                        # follows loudness, a frame skipped per beat, and what to do without live audio
+                        "react_enabled": False, "react_map": None, "react_speed": True, "react_skip": False,
+                        "react_fallback": "none"}
 
     def gallery_dir(self, gid):
         if not re.fullmatch(r"g[0-9]+", gid or ""):

@@ -494,6 +494,27 @@
           <div class="row tight"><input id="ssFxStrength" type="range" min="0" max="100" step="5"><output id="ssFxStrengthVal" for="ssFxStrength" class="rangeVal"></output></div>
           <span></span><span class="muted">Strength changes Glitch, Wave, Pixelate, Static, Melt and Flash.</span>
         </div>
+        <h3>React to music</h3>
+        <p class="muted">Let the music playing in the room drive effects and GIF speed: the bass can glitch the picture, each beat can flash it. Random effects still happen as set above; the music's effects are added on top of them. Paused during quiet hours.</p>
+        <div class="form">
+          <label for="ssReact">React to music</label><input id="ssReact" type="checkbox">
+        </div>
+        <p class="reactStatus" id="ssReactStatus" role="status"></p>
+        <div id="ssReactBody">
+          <div class="reactRows" id="ssReactRows" role="group" aria-label="What each part of the music does"></div>
+          <p class="help">Amount is how strong the effect gets at full signal. Sensitivity sets how loud that part has to be before anything happens. Levels adjust to each song, so quiet and loud songs both work.</p>
+          <div class="form">
+            <label for="ssReactSpeed">GIF speed</label>
+            <div class="row tight"><input id="ssReactSpeed" type="checkbox"><span class="muted">Loudness drives GIF speed: quiet parts play at 0.75×, loud parts up to 2×, on top of the GIF speed above.</span></div>
+            <label for="ssReactSkip">Beats</label>
+            <div class="row tight"><input id="ssReactSkip" type="checkbox"><span class="muted">Skip a frame on each beat, so GIFs jump forward in time with the music.</span></div>
+            <label for="ssReactFallback">Without live music</label>
+            <div>
+              <select id="ssReactFallback"><option value="none">Do nothing</option><option value="beat">Use a generated beat (120 BPM)</option></select>
+              <p class="help">When there's no live audio, the slideshow plays normally, or reacts to a steady made-up beat.</p>
+            </div>
+          </div>
+        </div>
       </details>
     </div>
   </section>

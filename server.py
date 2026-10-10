@@ -641,9 +641,14 @@ def create_gallery(req):
     return {"id": gid}
 
 
+def gallery_out(gid, g):
+    from apps import slidefx  # the React to music table, filled in with its defaults
+    return {"id": gid, **g, "settings": {**g["settings"], "react_map": slidefx.clean_react_map(g["settings"].get("react_map"))}}
+
+
 @route("GET", "/api/galleries/(g[0-9]+)")
 def get_gallery(req, gid):
-    return {"id": gid, **store.gallery(gid)}
+    return gallery_out(gid, store.gallery(gid))
 
 
 @route("POST", "/api/galleries/(g[0-9]+)")
@@ -656,6 +661,11 @@ def update_gallery(req, gid):
     reconvert = False
     if isinstance(body.get("settings"), dict):
         new = {k: v for k, v in body["settings"].items() if k in store.GALLERY_DEFAULTS}
+        if "react_map" in new:
+            from apps import slidefx
+            new["react_map"] = slidefx.clean_react_map(new["react_map"])
+        if "react_fallback" in new and new["react_fallback"] not in ("none", "beat"):
+            new["react_fallback"] = "none"
         reconvert = any(g["settings"].get(k) != v for k, v in new.items() if k in ("mode", "dither", "threshold", "invert"))
         g["settings"].update(new)
     if isinstance(body.get("items"), list):
@@ -684,7 +694,7 @@ def update_gallery(req, gid):
             if app is not None:
                 app.reload()  # the picture on the board follows the new look right away
     runner.wake.set()
-    return {"id": gid, **g}
+    return gallery_out(gid, g)
 
 
 @route("POST", "/api/galleries/(g[0-9]+)/upload")
@@ -1391,6 +1401,20 @@ def post_image(req):
 def get_gamepad(req):
     st = gamepad.status() if gamepad else {"running": False, "message": "Off", "pads": [], "events": []}
     return {**st, "defaults": gamepad_mod.DEFAULT_MAPPING}
+
+
+@route("GET", "/api/audio/levels")
+def audio_levels(req):
+    """Live music levels for the slideshow's React to music meter (polled a few times a second)."""
+    import audio_signal
+    fallback = "beat" if (req.query.get("fallback") or [""])[0] == "beat" else None
+    r = audio_signal.reading(store, fallback)
+    from boardcare import quiet_active
+    import datetime as dt
+    return {**audio_signal.status(store), "live": r["live"], "generated": r["generated"],
+            "quiet": quiet_active(store.settings.get("quiet_hours") or {}, dt.datetime.now()),
+            "levels": {k: round(r[k], 3) for k in ("bass", "lowmid", "mid", "high", "level")},
+            "beat": round(r["pulse"], 3)}
 
 
 @route("GET", "/api/snapcast")
