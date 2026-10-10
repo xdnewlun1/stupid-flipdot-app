@@ -20,6 +20,9 @@
   .pick { display: flex; flex-wrap: wrap; gap: var(--s2); align-items: center; }
   .pick .group button { min-height: 40px; touch-action: manipulation; }
   .group button.active { background: var(--surface); }
+  .gamePick { flex: 1; min-width: 180px; }
+  .gamePick select { width: 100%; min-height: 40px; }
+  .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
   #status { color: var(--text-2); font-size: var(--fs-sm); min-height: 20px; text-align: center; margin: 0; }
   .pad { flex: 1; display: flex; align-items: center; justify-content: space-between; gap: var(--s4); min-height: 228px; }
   .dpad { display: grid; grid-template-columns: repeat(3, 72px); grid-template-rows: repeat(3, 72px); gap: var(--s2); }
@@ -48,18 +51,9 @@
     <a href="/">Back to the board</a>
   </header>
   <div class="pick">
-    <div class="group" role="group" aria-label="Game">
-      <button data-game="snake">Snake</button>
-      <button data-game="tetris">Tetris</button>
-      <button data-game="pong">Pong</button>
-      <button data-game="blackjack">Blackjack</button>
-      <button data-game="breakout">Breakout</button>
-      <button data-game="invaders">Invaders</button>
-      <button data-game="tron">Tron</button>
-      <button data-game="flappy">Flappy</button>
-      <button data-game="platformer">Platformer</button>
-      <button data-game="doom">Doom</button>
-    </div>
+    <label class="gamePick"><span class="sr">Game</span>
+      <select id="gamePick" aria-label="Game"><option value="">Pick a game…</option></select>
+    </label>
     <div class="group" role="group" aria-label="Player">
       <button data-player="1" class="active" aria-pressed="true">Player 1</button>
       <button data-player="2" aria-pressed="false">Player 2</button>
@@ -77,6 +71,12 @@
       <button data-key="a">A<small id="hintA"></small></button>
       <button data-key="b">B<small id="hintB"></small></button>
     </div>
+  </div>
+  <div class="extra" id="gameKeys" role="group" aria-label="More buttons" hidden>
+    <button data-key="start">Start</button>
+    <button data-key="x">X</button>
+    <button data-key="y">Y</button>
+    <button data-key="z">Z</button>
   </div>
   <div class="extra" id="doomKeys" role="group" aria-label="Doom" hidden>
     <button data-key="strafe_left">Strafe left</button>
@@ -101,25 +101,50 @@ function drawBits(W, H, isOn) {
   for (let y = 0, i = 0; y < H; y++) for (let x = 0; x < W; x++, i++) if (isOn(x, y, i)) ctx.fillRect(x * cell + 1, y * cell + 1, cell - 2, cell - 2);
 }
 
+// the picker: [id, name], grouped
+const GAMES = {
+  "Classics": [["snake", "Snake"], ["tetris", "Tetris"], ["pong", "Pong"], ["breakout", "Breakout"], ["invaders", "Space Invaders"],
+    ["tron", "Tron"], ["flappy", "Flappy"], ["platformer", "Platformer"], ["blackjack", "Blackjack"], ["doom", "Doom"]],
+  "Arcade": [["asteroids", "Asteroids"], ["galaxian", "Galaxian"], ["missile_command", "Missile Command"], ["centipede", "Centipede"],
+    ["lunar_lander", "Lunar Lander"]],
+  "Maze & action": [["pacman", "Pac-Man"], ["frogger", "Frogger"], ["qix", "Qix"], ["bomberman", "Bomberman"], ["tanks", "Tank Combat"]],
+  "Runners & racing": [["dino", "Dino Run"], ["racer", "Road Racer"], ["copter", "Cave Copter"], ["stacker", "Stacker"],
+    ["skyjump", "Sky Jump"], ["pitfall", "Pitfall Run"]],
+  "Two players": [["connect4", "Connect Four"], ["tictactoe", "Tic-tac-toe"], ["artillery", "Artillery"], ["checkers", "Checkers"],
+    ["battleship", "Battleship"], ["quickdraw", "Quick Draw"], ["air_hockey", "Air Hockey"]],
+  "Puzzles": [["game2048", "2048"], ["minesweeper", "Minesweeper"], ["sokoban", "Sokoban"], ["lights_out", "Lights Out"],
+    ["simon", "Simon"], ["columns", "Columns"], ["mastermind", "Mastermind"]],
+};
+const gamePick = document.getElementById("gamePick");
+for (const [group, games] of Object.entries(GAMES)) {
+  const og = document.createElement("optgroup");
+  og.label = group;
+  for (const [id, name] of games) og.append(new Option(name, id));
+  gamePick.append(og);
+}
 const HINTS = { tetris: ["rotate", "drop"], blackjack: ["deal / hit", "stand"], snake: ["", ""], pong: ["", ""],
-  breakout: ["launch", "launch"], invaders: ["fire", "fire"], tron: ["", ""], flappy: ["flap", "flap"], platformer: ["jump", "run"], doom: ["fire", "use"] };
+  breakout: ["launch", "launch"], invaders: ["fire", "fire"], tron: ["", ""], flappy: ["flap", "flap"], platformer: ["jump", "run"], doom: ["fire", "use"],
+  asteroids: ["fire", "hyperspace"], galaxian: ["fire", "fire"], missile_command: ["fire", "fire"], centipede: ["fire", "fire"], lunar_lander: ["thrust", ""],
+  pacman: ["", ""], frogger: ["", ""], qix: ["draw", "slow draw"], bomberman: ["bomb", "bomb"], tanks: ["fire", "fire"],
+  dino: ["jump", "jump"], racer: ["gas", "brake"], copter: ["climb", ""], stacker: ["stop / go on", "take prize"], skyjump: ["", ""], pitfall: ["jump / let go", ""],
+  connect4: ["drop", "drop"], tictactoe: ["place", "place"], artillery: ["fire", ""], checkers: ["select / move", "cancel"],
+  battleship: ["fire / place", "rotate"], quickdraw: ["draw", "draw"], air_hockey: ["", ""],
+  game2048: ["keep going", "new game"], minesweeper: ["open / chord", "flag"], sokoban: ["restart (×2)", "undo"], lights_out: ["toggle", "undo"],
+  simon: ["", ""], columns: ["cycle", "drop"], mastermind: ["check", "clear slot"] };
 function showStatus() {
   if (!runner) return;
   const game = runner.interactive ? (runner.description || "").toLowerCase() : "";
-  const key = Object.keys(HINTS).find(k => game.includes(k) || runner.app === k);
+  const key = runner.interactive && HINTS[runner.app] ? runner.app : Object.keys(HINTS).find(k => game.includes(k));
   const [ha, hb] = HINTS[key] || ["", ""];
   document.getElementById("hintA").textContent = ha;
   document.getElementById("hintB").textContent = hb;
   // Doom-only buttons; "Run" is a toggle in the game, so it resets whenever Doom isn't running
   const doom = !!runner.interactive && runner.app === "doom";
   document.getElementById("doomKeys").hidden = !doom;
+  document.getElementById("gameKeys").hidden = !runner.interactive || doom;
   if (!doom) runKey.setAttribute("aria-pressed", "false");
   statusEl.textContent = (runner.interactive ? runner.description : "No game running. Pick one above.") + (wsOpen ? "" : " (reconnecting…)");
-  document.querySelectorAll("[data-game]").forEach(b => {
-    const on = !!runner.interactive && runner.app === b.dataset.game;
-    b.classList.toggle("active", on);
-    b.setAttribute("aria-pressed", String(on));
-  });
+  if (document.activeElement !== gamePick) gamePick.value = runner.interactive && HINTS[runner.app] ? runner.app : "";
 }
 
 // Live updates over a WebSocket; plain polling while it's down.
@@ -168,12 +193,15 @@ document.querySelectorAll("[data-key]").forEach(b => {
   b.addEventListener("pointercancel", up);
   b.addEventListener("contextmenu", e => e.preventDefault());
 });
-document.querySelectorAll("[data-game]").forEach(b => b.onclick = async () => {
+gamePick.onchange = async () => {
+  const id = gamePick.value;
+  if (!id) return;
   try {
-    const r = await fetch("/api/run", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ app: b.dataset.game }) });
+    const r = await fetch("/api/run", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ app: id }) });
     if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || `error ${r.status}`);
-  } catch (e) { statusEl.textContent = `Couldn't start ${b.textContent}: ${e.message}`; }
-});
+  } catch (e) { statusEl.textContent = `Couldn't start ${gamePick.selectedOptions[0].text}: ${e.message}`; }
+  gamePick.blur();
+};
 document.querySelectorAll("[data-player]").forEach(b => b.onclick = () => {
   player = +b.dataset.player;
   document.querySelectorAll("[data-player]").forEach(x => { x.classList.toggle("active", x === b); x.setAttribute("aria-pressed", String(x === b)); });
