@@ -4,7 +4,7 @@ panel_height: 7        # dots per panel, vertically
 transport: tcp         # tcp or udp (how the RS485 converter on 192.168.11.100 is configured)
 invert: false          # set true if "white" and "black" come out swapped on the board
 password: ""           # set to require a password for the web page and API
-baud: 0                # RS485 speed of the converter's serial ports (e.g. 57600): sends are paced to it so
+baud: 57600            # RS485 speed of the converter's serial ports (e.g. 57600): sends are paced to it so
                        # fast animations never queue up lag in the converter; 0 = don't pace
 sync_refresh: false    # true: write every panel first, then flip them all at once (no tearing between panels)
 
