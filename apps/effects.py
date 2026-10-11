@@ -437,13 +437,15 @@ def _rand_params(app_id, r):
         "maze": lambda: {"speed": r.choice([40, 80, 150]), "hold": r.choice([2, 3, 4]), "restart_transition": "random"},
         "lissajous": lambda: {"a": r.randint(1, 5), "b": r.randint(1, 5), "speed": round(r.uniform(0.4, 1.6), 1)},
         "fire": lambda: {"height": round(r.uniform(0.7, 1.5), 1)},
+        "mushrooms": lambda: {"species": r.choice(["mix", "mix", "odd"]), "crowd": r.randint(4, 9),
+                              "pace": r.choice([10, 15, 20]), "sizes": r.choice(["mixed", "mixed", "big"])},
         "visualizer": lambda: {"style": r.choice(["rain", "bars", "rings", "wave", "warp", "sparkle"]),
                                "source": "beat", "bpm": r.choice([96, 110, 124, 132]), "song_change": "none"},
     }.get(app_id, dict)()
 
 
 POOL = ["life", "rain", "plasma", "bounce", "starfield", "fireworks", "ripples", "metaballs",
-        "tunnel", "spiral", "maze", "lissajous", "fire"]
+        "tunnel", "spiral", "maze", "lissajous", "fire", "mushrooms"]
 NICE_TRANSITIONS = ["morph", "migrate", "scatter", "life", "dissolve", "fade", "iris-open", "iris-close", "clock",
                     "spiral", "tiles", "drip", "diagonal", "wipe-ragged", "push-left", "push-up", "zoom-in",
                     "melt", "pixelate", "glitch", "blinds", "checker"]
