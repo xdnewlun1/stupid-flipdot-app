@@ -45,7 +45,7 @@ class Fireworks(App):
     def render(self, c, now):
         m = self.music
         rate, size = 1.0, 1.0
-        if m.enabled:  # rockets go up on the beat and on bass notes; louder music, bigger bursts
+        if m.motion:  # rockets go up on the beat and on bass notes; louder music, bigger bursts
             rate = 1 - 0.7 * m.presence  # a few random ones still, so a quiet passage isn't empty
             size = 0.7 + 0.6 * min(1.5, m.level("level"))
             if m.beat:  # rockets near the top burst on the beat
@@ -102,7 +102,7 @@ class Ripples(App):
 
     def render(self, c, now):
         m = self.music
-        if m.enabled:
+        if m.motion:
             return self.render_music(c, now, m)
         if self.rng.random() < float(self.p["rate"]) * self.interval:
             self.drops.append((self.rng.uniform(0, c.w), self.rng.uniform(0, c.h), now))
@@ -161,7 +161,7 @@ class Metaballs(App):
     def render(self, c, now):
         m = self.music
         go, grow, edge = 1.0, 1.0, 1.0
-        if m.enabled:  # the bass swells the blobs; the mids stir them faster and thin the outline band
+        if m.motion:  # the bass swells the blobs; the mids stir them faster and thin the outline band
             go = m.speed * (1 + 1.2 * min(1.5, m.level("mid"))) * m.surge(0.5)
             grow = 1 + 0.25 * min(1.5, m.level("bass")) + 0.5 * min(1.5, m.hits("bass"))
             edge = 1 + 0.4 * min(1.0, m.level("mid"))
@@ -209,7 +209,7 @@ class Tunnel(App):
         # following the tempo, one ring passes per beat (landing on it); else the bass and loudness push
         t = m.clock("t", now, float(self.p["speed"]), per_beat=7 / 12)
         swell = 1.0
-        if m.enabled:
+        if m.motion:
             swell = 1 + 0.25 * min(1.5, m.both("bass"))  # the rings breathe out on the kick
             if m.follow != "tempo":
                 self.push = getattr(self, "push", 0.0) + m.dt * 1.2 * min(1.5, m.both("bass"))
@@ -249,7 +249,7 @@ class Spiral(App):
         # following the tempo: an arm moves round to the next one every 4 beats, in step with the beat
         t = m.clock("t", now, float(self.p["speed"]), per_beat=math.pi / 2)
         arms, twist = int(self.p["arms"]), float(self.p["twist"])
-        if m.enabled:  # a bass note kicks it round a little further; the mids widen the arms
+        if m.motion:  # a bass note kicks it round a little further; the mids widen the arms
             self.kick = getattr(self, "kick", 0.0) + m.dt * 5 * min(1.5, m.hits("bass"))
             t += self.kick
             thr = 0.15 - 0.3 * min(1.0, m.level("mid")) - 0.3 * min(1.0, m.hits("mid"))
@@ -341,7 +341,7 @@ class Lissajous(App):
         # following the tempo: a quarter turn per beat, in step with it
         t = m.clock("t", now, float(self.p["speed"]), per_beat=math.pi / 2)
         a, b = int(self.p["a"]), int(self.p["b"])
-        if m.enabled:
+        if m.motion:
             return self.render_music(c, t, a, b, m)
         prev = None
         for k in range(361):
@@ -388,7 +388,7 @@ class Fire(App):
         w, h, heat, rnd = c.w, c.h, self.heat, self.rng.random
         m = self.music
         tall, flare = 1.0, 0
-        if m.enabled:  # the bass makes the flames leap (a bass note flares them up); quiet passages burn low
+        if m.motion:  # the bass makes the flames leap (a bass note flares them up); quiet passages burn low
             tall = 1 - 0.45 * m.presence + 0.2 * min(1.5, m.level("bass"))
             flare = int(14 * min(1.5, m.hits("bass")))
             self.interval = max(0.04, 0.06 / max(0.6, min(1.5, m.speed)))
@@ -495,7 +495,11 @@ class RandomEffects(App):
         app_id = self.rng.choice(pool)
         params = _rand_params(app_id, self.rng)
         if self.p.get("react") and app_id != "visualizer":  # the effect reacts itself; the effects on top stay here
-            params.update(react_params(self.p), react_overlay=False)
+            # the picked app does the motion (if any); the effects on top stay here, on the whole picture
+            mode = self.music.mode
+            params.update(react_params(self.p), react_mode="motion")
+            if mode == "effects":
+                params["react"] = False
         app = create(type(self.ctx)(w, h, self.ctx.store), {"app": app_id, "params": params})
         self.name = app.title
         return _Child(app, w, h)

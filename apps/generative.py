@@ -64,7 +64,7 @@ class Life(App):
 
     def render(self, c, now):
         m = self.music
-        if m.enabled:  # generations on the music's clock: faster with the tempo, landing on the beat
+        if m.motion:  # generations on the music's clock: faster with the tempo, landing on the beat
             gens = m.ticks("gen", now, float(self.p["fps"]), per_beat=float(self.p["fps"]) / 2)
             if m.beat or m.hit("bass"):  # seed bursts on beats and bass notes, bigger when it's loud
                 self.burst(1 + 3 * min(1.5, m.level("bass") + 0.5 * m.amount))
@@ -89,7 +89,7 @@ class Life(App):
         c.px[:] = self.cells
         self.fx.finish(c, now)
         # reacting: come back often enough to catch each beat and the clock's next generation
-        self.interval = self.fx.interval(0.05 if m.enabled else max(0.01, self.next_gen - now))
+        self.interval = self.fx.interval(0.05 if m.motion else max(0.01, self.next_gen - now))
 
 
 @register
@@ -117,7 +117,7 @@ class Rain(App):
     def render(self, c, now):
         m = self.music
         go, dense = 1.0, 1.0
-        if m.enabled:  # the highs speed the streams up; hats start new ones, so busy cymbals fill the board
+        if m.motion:  # the highs speed the streams up; hats start new ones, so busy cymbals fill the board
             go = m.speed * (1 - 0.3 * m.presence + 0.6 * m.level("high") + 1.2 * m.hits("high"))
             dense = 1 - 0.4 * m.presence + 0.9 * m.level("high")
             if m.hit("high"):
@@ -156,7 +156,7 @@ class Plasma(App):
         t = m.clock("t", now, float(self.p["speed"]))
         k = 1 / float(self.p["scale"])
         shift = warp = 0.0
-        if m.enabled:
+        if m.motion:
             # bass warps the rings from the centre outwards; the mids roll the palette (the bands flow)
             warp = 1.1 * min(1.5, m.both("bass"))
             self.shift = getattr(self, "shift", 0.0) + m.dt * (0.5 * m.level("mid") + 1.5 * m.hits("mid"))
@@ -197,7 +197,7 @@ class Bounce(App):
     def render(self, c, now):
         m = self.music
         go, grow = 1.0, 0.0
-        if m.enabled:
+        if m.motion:
             go = m.speed
             grow = 0.1 * min(1.5, m.level("bass")) + 0.5 * min(1.5, m.hits("bass"))
         if m.on:  # bass notes kick every ball upwards (sideways too, a little); loud bass swells them
@@ -253,7 +253,7 @@ class Starfield(App):
     def render(self, c, now):
         m = self.music
         go, streak = 1.0, 0.4
-        if m.enabled:  # warp speed on the kick: the bass surges you forward, loud passages fly faster
+        if m.motion:  # warp speed on the kick: the bass surges you forward, loud passages fly faster
             kick = min(1.5, m.hits("bass"))
             go = m.speed * (1 - 0.4 * m.presence + 0.5 * m.level("level") + 0.3 * m.level("bass") + 2.5 * kick)
             streak = 0.4 + 0.25 * min(1.0, kick)

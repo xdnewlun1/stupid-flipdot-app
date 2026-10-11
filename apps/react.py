@@ -40,15 +40,21 @@ def overlay_defaults():
     return rows
 
 
+# what the music drives: only the effects on top (the picture moves exactly as it does without music, so slow
+# songs don't make it jumpy), only the app's own motion (it dances to the beat and volume), or both
+MODES = [["effects", "Effects only: the picture moves as usual, the music adds effects"],
+         ["motion", "Motion only: beats and volume drive the movement"],
+         ["both", "Effects and motion"]]
 _on = {"react": True}
+_moving = {"react": True, "react_mode": ["motion", "both"]}
 REACT_PARAMS = [
     P("react", "music", False, "React to music"),
+    P("react_mode", "select", "effects", "Reacts with", options=MODES, show_if=_on),
     P("react_amount", "number", 100, "Music amount (%)", min=0, max=200, step=10, show_if=_on),
-    P("react_follow", "select", "tempo", "Speed follows", options=FOLLOW, show_if=_on),
+    P("react_follow", "select", "tempo", "Speed follows", options=FOLLOW, show_if=_moving),
     P("react_fallback", "select", "none", "Without live music",
       options=[["none", "Do nothing"], ["beat", "Use a generated beat (120 BPM)"]], show_if=_on),
-    P("react_overlay", "checkbox", False, "Effects on top", show_if=_on),
-    P("react_fx", "react_map", overlay_defaults(), "Effects", show_if={"react": True, "react_overlay": True},
+    P("react_fx", "react_map", overlay_defaults(), "Effects", show_if={"react": True, "react_mode": ["effects", "both"]},
       motion=slidefx.MOTION_DEFAULTS),
 ]
 REACT_NAMES = [p["name"] for p in REACT_PARAMS]
@@ -96,6 +102,17 @@ def _sample_loop():
         raise
 
 
+def react_mode(params):
+    """"effects", "motion" or "both" from the params as given (not filled with defaults). Set up before the
+    choice existed: "Effects on top" ticked = both, otherwise the motion it always had."""
+    mode = params.get("react_mode")
+    if mode in ("effects", "motion", "both"):
+        return mode
+    if "react_overlay" in params or params.get("react"):
+        return "both" if params.get("react_overlay") else "motion"
+    return "effects"
+
+
 def quiet_now(store):
     t = time.time()
     if t - _quiet[0] > 1:
@@ -112,7 +129,10 @@ def _k(dt, tau):
 class Music:
     """One app's view of the music. After update(now):
       enabled   the app's "React to music" option
-      on        reacting right now: enabled, music (or the generated beat), not quiet hours
+      motion    the music drives the app's own motion ("Reacts with" motion or both); with effects only, every
+                value below stays neutral (0, speed 1, on False) so the app moves exactly as without music
+      on        the motion is reacting right now: motion, music (or the generated beat), not quiet hours
+      listening music (or the generated beat) is there right now, for the effects on top
       amount    0..2 ("Music amount")
       level(b)  eased band level x amount (b: level, bass, lowmid, mid, high); 0 when not on
       both(b)   eased level and hits of a band mixed (as slideshows' "level and hits") x amount
@@ -124,19 +144,22 @@ class Music:
       bpm, phase, groove   tempo (0 = unknown), beat phase 0..1 (None unless sure), off-beat share
     """
 
-    def __init__(self, app):
+    def __init__(self, app, given=None):
         self.app = app
         p = app.p
         self.enabled = bool(p.get("react"))
+        self.mode = react_mode(app.p if given is None else given)
+        self.motion = self.enabled and self.mode in ("motion", "both")
         try:
             self.amount = max(0.0, min(2.0, float(p.get("react_amount", 100)) / 100))
         except (TypeError, ValueError):
             self.amount = 1.0
         self.follow = p.get("react_follow") if p.get("react_follow") in ("fixed", "music", "tempo") else "tempo"
         self.fallback = "beat" if p.get("react_fallback") == "beat" else None
-        self.overlay = slidefx.clean_react_map(p.get("react_fx")) if self.enabled and p.get("react_overlay") else None
+        self.overlay = (slidefx.clean_react_map(p.get("react_fx"))
+                        if self.enabled and self.mode in ("effects", "both") else None)
         self.fx = slidefx.Reactive(random.Random()) if self.overlay else None
-        self.on = False
+        self.on = self.listening = False
         self.reading = None
         self.vals = dict.fromkeys(BANDS, 0.0)
         self.hitp = dict.fromkeys(BANDS[1:], 0.0)
@@ -164,8 +187,9 @@ class Music:
             r = audio_signal.reading(self.app.ctx.store, self.fallback)
             if not (r["live"] or r["generated"]):
                 r = None
-        self.on, self.reading = r is not None, r
-        a = self.amount if r is not None else 0.0
+        self.listening, self.reading = r is not None, r
+        self.on = self.listening and self.motion
+        a = self.amount if self.on else 0.0
         for k in BANDS:
             target = r[k] * a if r is not None else 0.0
             v = self.vals[k]
@@ -179,7 +203,7 @@ class Music:
         self.beat = fire and counts[0] != self._counts[0]
         self.new_hits = {k for k, n in counts[1].items() if n != self._counts[1].get(k)} if fire else set()
         self._counts = counts
-        if r is not None:
+        if self.on:
             sure = r["bpm_confidence"] >= 0.3 and r["bpm"] > 0
             self.bpm, self.phase, self.groove = (r["bpm"] if sure else 0.0), r["beat_phase"], r["groove"]
         else:
@@ -189,7 +213,7 @@ class Music:
         self.speed += (target - self.speed) * _k(dt, SPEED_EASE)
         if abs(self.speed - 1.0) < 1e-3 and target == 1.0:
             self.speed = 1.0
-        if self.fx is not None and not self.on:
+        if self.fx is not None and not self.listening:
             self.fx.last = None  # the effects' clocks pause rather than catch up
         return self
 
@@ -204,7 +228,7 @@ class Music:
 
     def finish(self, c, now):
         """After the app drew: the "effects on top" (slidefx), when chosen."""
-        if self.fx is None or not self.on:
+        if self.fx is None or not self.listening:
             return
         plan = {k: (min(1.0, v * self.amount), row, sig)
                 for k, (v, row, sig) in slidefx.react_plan(self.overlay, self.reading).items()}
@@ -237,7 +261,7 @@ class Music:
         rate, as before. Enabled: it moves on by rate x speed x dt each frame, so a change of speed changes how
         fast it moves from here on, never where it is. per_beat: following the tempo with a sure beat, it moves
         this many units per beat instead, nudged so whole multiples of per_beat land on the beat."""
-        if not self.enabled:
+        if not self.motion:
             return (now - self.app.started) * rate
         c = self._clocks.get(key)
         if c is None:  # [value at t0, t0, units per second since t0]: exact while the speed holds
@@ -271,7 +295,7 @@ def reactive(cls):
 
     def __init__(self, ctx, **params):
         init(self, ctx, **params)
-        self.music = Music(self)
+        self.music = Music(self, params)
 
     def wrapped(self, c, now):
         m = self.music

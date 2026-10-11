@@ -580,7 +580,7 @@ class Pendulums(App):
         resting = into < rest
         tau = 0.0 if resting else into - rest
         amp = (self.h - 3) / 2
-        if m.enabled:
+        if m.motion:
             amp *= max(0.4, min(1.0, 0.75 + 0.25 * m.level("bass") + 0.2 * m.pulse - 0.15 * m.presence))
         ys = self.positions(tau, amp)
         colw = self.w / self.n

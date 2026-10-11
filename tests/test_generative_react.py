@@ -230,3 +230,49 @@ def test_random_effects_pass_it_on():
     child = a.cur.app
     if child.id != "visualizer":
         assert child.music.enabled and child.music.amount == 1.5 and child.music.overlay is None
+
+
+def _no_effects():
+    rows = react.overlay_defaults()
+    for r in rows:
+        r["effect"] = "none"
+    return rows
+
+
+def test_effects_only_leaves_the_motion_alone():
+    """Effects only: with nothing in the effects table the picture is exactly the app without music, even on a
+    pumping beat, so slow songs can't make it jumpy."""
+    for app_id in ["fire", "starfield", "fireworks", "plasma", "life", "rain", "tunnel", "spiral", "bounce", "maze"]:
+        frames, a = _frames(app_id, {"react": True, "react_mode": "effects", "react_fx": _no_effects()}, signal=_pump)
+        m = a.music
+        assert m.listening and not m.on and not m.motion, app_id
+        assert m.speed == 1.0 and m.presence == 0.0 and m.bpm == 0.0 and not m.beat, app_id
+        assert _hash(frames) == GOLDEN[app_id], app_id
+
+
+def test_effects_only_still_draws_the_effects():
+    rows = _no_effects()
+    for r in rows:
+        if r["signal"] == "beat":
+            r.update(effect="invert", threshold=0)
+    frames, a = _frames("plasma", {"react": True, "react_mode": "effects", "react_fx": rows}, signal=_pump)
+    assert a.music.overlay is not None and not a.music.on
+    assert _hash(frames) != GOLDEN["plasma"]
+
+
+def test_mode_choice_and_older_setups():
+    assert react.react_mode({"react": True, "react_mode": "motion"}) == "motion"
+    assert react.react_mode({"react": True, "react_mode": "both"}) == "both"
+    assert react.react_mode({}) == "effects"  # new setups default to effects only
+    assert react.react_mode({"react": True}) == "motion"  # set up before the choice existed: as it was
+    assert react.react_mode({"react": True, "react_overlay": True}) == "both"
+    _, a = _frames("plasma", {"react": True, "react_mode": "both"}, n=5, signal=_pump)
+    assert a.music.motion and a.music.overlay is not None
+
+
+def test_random_effects_effects_only_keeps_the_picked_app_still():
+    _, a = _frames("random_effects", {"react": True, "react_mode": "effects"}, n=3, signal=_pump)
+    child = a.cur.app
+    if child.id != "visualizer":
+        assert not child.music.enabled  # the picked effect moves as usual...
+    assert a.music.overlay is not None  # ...and the effects go on top of the whole picture

@@ -611,13 +611,17 @@ so the effect dances rather than getting a filter on top:
 | Bouncing balls | bass notes kick every ball upwards |
 | Maze | carves faster with the tempo, a spurt on each beat; the head blinks on the beat |
 
-- **Music amount** (0–200 %) scales all of it; 0 % changes nothing. **Speed follows**: Fixed, The music
+- **Music amount** (0–200 %) scales all of it; 0 % changes nothing. **Speed follows** (motion only): Fixed, The music
   (louder is faster), or Tempo (in time with the beat: periodic motion is locked to the beat phase). Speeds
   ease and every clock carries on from where it is, so nothing jumps.
 - **Without live music**: do nothing (default) or use the generated 120 BPM beat. The switch shows the
   status ("Listening: Snapcast · ≈ 104 BPM", or "No live audio — Settings → Music").
-- **Effects on top** (optional) adds the slideshows' table (bass → glitch, …) over the app's frames; the
-  table is the same component as on the Slideshows page (`static/js/musicreact.js`).
+- **Reacts with**: **Effects only** (the default for new setups): the app moves exactly as it does without
+  music, so slow songs never make it jumpy, and the music only drives the slideshows' effects table
+  (bass → glitch, …) over its frames. **Motion only**: beats and volume drive the movement (the table above).
+  **Effects and motion**: both. Apps set up before this choice existed keep what they did (motion, plus the
+  effects if "Effects on top" was ticked). The table is the same component as on the Slideshows page
+  (`static/js/musicreact.js`).
 - It works standalone, as a layer and in playlists; several reactive layers share one cached reading, and a
   small sampler thread reads the signal 25 times a second while any app listens, so slow apps still get
   steady beats and tempo. Reacting pauses in quiet hours.
