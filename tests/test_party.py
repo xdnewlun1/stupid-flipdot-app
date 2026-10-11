@@ -134,10 +134,11 @@ class Lobby(unittest.TestCase):
         app.rnd = random.Random(2)
         app.mini, app.bag = None, []
         picked = []
-        for _ in range(len(pack_party.MINIGAMES)):
+        pool = app.choices()  # the rounds for two seats (the phone and team rounds need three or four)
+        for _ in range(len(pool)):
             app.mini_cls = app.pick()
             picked.append(app.mini_cls)
-        self.assertEqual(len(set(picked)), len(pack_party.MINIGAMES))  # every game once
+        self.assertEqual(len(set(picked)), len(pool))  # every game once
         same = sum(1 for a, b in zip(picked, picked[1:]) if a.kind == b.kind)
         self.assertLessEqual(same, 4)  # only when the bag runs low
         app.p["games"] = "brain"

@@ -105,12 +105,44 @@ def gif_speed(item, settings):
     return max(0.25, min(4.0, v))
 
 
+GIF_MODES = ("repeat", "boomerang", "random")
+RANDOM_PASSES = 4  # random mode plays this many different shuffles before its sequence comes round again
+
+
+def gif_mode(item, settings):
+    """How a GIF plays: the item's own mode, else the slideshow's (repeat / boomerang / random)."""
+    m = item.get("play") or settings.get("gif_mode") or "repeat"
+    return m if m in GIF_MODES else "repeat"
+
+
+def sequence(frames, mode, seed=0):
+    """The frames in play order for a mode. -> (frames, passes): one "play" of the GIF is len(frames) / passes.
+    Boomerang: forward then back (the end frames once each, so the turn doesn't stutter). Random: a few shuffles of
+    all the frames, each different, never the same frame twice running across a seam."""
+    n = len(frames)
+    if n < 2 or mode == "repeat":
+        return frames, 1
+    if mode == "boomerang":
+        return frames + frames[-2:0:-1], 1
+    rng = random.Random(seed)
+    out, last = [], None
+    for _ in range(RANDOM_PASSES):
+        order = list(range(n))
+        rng.shuffle(order)
+        if order[0] == last:
+            order[0], order[-1] = order[-1], order[0]
+        out += [frames[i] for i in order]
+        last = order[-1]
+    return out, RANDOM_PASSES
+
+
 class Player:
     """Plays one item's frames from a start time. The play position is computed from the clock, so it never
     drifts: position = pos + (now - base) * rate. A rate change (music-driven speed) folds the position so
     far into `pos`, so playback stays continuous; skip_frame() jumps to the start of the next frame."""
 
-    def __init__(self, item, frames, started, speed=1.0):
+    def __init__(self, item, frames, started, speed=1.0, mode="repeat"):
+        frames, self.passes = sequence(frames, mode, hash(item.get("file", "")) ^ int(started))
         self.item, self.frames, self.started = item, frames, started
         self.pos, self.base, self.rate = 0.0, started, 1.0
         self.cum = []
@@ -164,8 +196,9 @@ class Player:
         if self.length > 0:  # GIF: whole loops, at least `loops` of them and at least the minimum time
             loops = int(self.item.get("loops") or settings["gif_loops"] or 1)
             min_secs = float(settings.get("gif_min_seconds") or 0)
-            loops = max(loops, math.ceil(min_secs / self.length - 1e-9))
-            return self.base + (loops * self.length - self.pos) / self.rate
+            one = self.length / self.passes  # one play of the GIF (random mode's sequence holds several)
+            loops = max(loops, math.ceil(min_secs / one - 1e-9))
+            return self.base + (loops * one - self.pos) / self.rate
         return self.started + float(self.item.get("seconds") or settings["image_seconds"] or 10)
 
 
@@ -327,7 +360,7 @@ class Slideshow(App):
                     _PASSES[self.gid] = {"files": [items[i]["file"] for i in self.order], "pos": self.pos}
                 if not frames:
                     continue  # couldn't be converted; skip it
-                incoming = Player(nxt, frames, now, gif_speed(nxt, settings))
+                incoming = Player(nxt, frames, now, gif_speed(nxt, settings), gif_mode(nxt, settings))
                 cut, self.cut = self.cut, False
                 if self.cur is not None and tdur > 0 and not cut:
                     self.prev = self.cur

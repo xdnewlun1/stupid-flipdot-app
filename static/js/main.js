@@ -12,6 +12,7 @@ import "./scenes.js";
 import { loadSettings } from "./settings.js";
 import { loadQuietHours } from "./boardcare.js";
 import { loadGuestWall } from "./guestwall.js";
+import { loadLeaderboard } from "./leaderboard.js";
 import { loadFriends } from "./friends.js";
 import "./people.js";
 import "./plugins.js";
@@ -28,6 +29,7 @@ const PAGES = {
   apps: ["library", "Apps", "Clocks, text, widgets, patterns and games. Pick one to set it up and show it."],
   layers: ["library", "Layers", "Stack apps and pictures so they play at the same time, like a clock over Game of Life."],
   slideshows: ["library", "Slideshows", "A playlist made of your own images and GIFs: each one stays up for a set time, then the next one starts."],
+  leaderboard: ["library", "Leaderboard", "Today's game, the best scores in every game, and the achievements earned on this board."],
   videos: ["library", "Videos", "Longer clips (WebM, MP4, MOV, GIF…), converted for the board. Pick one to play it, scrub through it or loop part of it."],
   playlists: ["programme", "Playlists", "Items that play one after another, each for a set time. The schedule decides when each playlist runs."],
   schedule: ["programme", "Schedule", "What plays when: by weekday, date or sunset, with one-off events, plus quiet hours for the night."],
@@ -89,6 +91,7 @@ function showTab(spec) {
   if (name === "schedule") api("/api/settings").then(loadQuietHours).catch(e => toast(e.message, true));
   if (name === "automations" && catalog.apps.length) loadAutomations().catch(e => toast(e.message, true));
   if (name === "guests") loadGuestWall().catch(e => toast(e.message, true));
+  if (name === "leaderboard") loadLeaderboard().catch(e => toast(e.message, true));
   if (name === "friends") loadFriends().catch(e => toast(e.message, true));
   if (name === "now") renderWelcome().catch(() => {});
   if (changed) { window.scrollTo(0, 0); renderMini(); }

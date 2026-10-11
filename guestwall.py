@@ -9,6 +9,7 @@ import unicodedata
 
 NAME_MAX = 24
 TEXT_MAX = 140
+DOODLE = 21              # a doodle is DOODLE x DOODLE dots, drawn on the /guest page
 BODY_MAX = 2048          # bytes accepted by the submit endpoint
 KEEP_MAX = 300           # messages kept in total (oldest rejected/approved go first)
 PENDING_MAX = 100        # queue full: new messages are refused until someone moderates
@@ -52,6 +53,19 @@ def clean(s, limit):
     return " ".join(s.split())[:limit]
 
 
+def clean_doodle(rows):
+    """A doodle as DOODLE rows of DOODLE '0'/'1' characters, or None when there isn't one (or it's blank/bad)."""
+    if not isinstance(rows, (list, tuple)) or len(rows) != DOODLE:
+        return None
+    out = []
+    for r in rows:
+        r = str(r)
+        if len(r) != DOODLE or set(r) - {"0", "1"}:
+            return None
+        out.append(r)
+    return out if any("1" in r for r in out) else None
+
+
 class GuestWall:
     def __init__(self, store):
         self.store = store
@@ -79,16 +93,19 @@ class GuestWall:
             self.hits[ip] = recent + [now]
             return True
 
-    def submit(self, name, text, ip=""):
-        """Returns the new message. Raises ValueError with a message for the guest."""
-        name, text = clean(name, NAME_MAX), clean(text, TEXT_MAX)
-        if not text:
+    def submit(self, name, text, ip="", doodle=None):
+        """Returns the new message. Raises ValueError with a message for the guest. A doodle (DOODLE x DOODLE
+        rows of 0/1) is kept with the message and moderated with it."""
+        name, text, doodle = clean(name, NAME_MAX), clean(text, TEXT_MAX), clean_doodle(doodle)
+        if not text and not doodle:
             raise ValueError("Write a message first.")
         with self.lock:
             if sum(1 for m in self.messages if m["status"] == "pending") >= PENDING_MAX:
                 raise ValueError("The wall has too many messages waiting right now. Try again later.")
             msg = {"id": f"m{time.time_ns() // 1000 % 10**12}", "name": name, "text": text, "ts": int(time.time()),
                    "status": "approved" if self.auto_approve else "pending"}
+            if doodle:
+                msg["doodle"] = doodle
             self.messages.append(msg)
             if len(self.messages) > KEEP_MAX:
                 drop = next((m for m in self.messages if m["status"] != "pending"), self.messages[0])
@@ -125,7 +142,7 @@ class GuestWall:
     def info(self):
         return {"auto_approve": self.auto_approve, "messages": list(reversed(self.messages)),
                 "pending": sum(1 for m in self.messages if m["status"] == "pending"),
-                "url": default_url(), "limits": {"name": NAME_MAX, "text": TEXT_MAX}}
+                "url": default_url(), "limits": {"name": NAME_MAX, "text": TEXT_MAX, "doodle": DOODLE}}
 
 
 _get_lock = threading.Lock()

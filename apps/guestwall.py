@@ -89,7 +89,9 @@ class GuestWallApp(App):
         m = self.queue.pop(0)
         scale = 2 if self.p["size"] == "large" else 1
         name = _strip(m["name"].upper(), SMALL) if self.p["show_names"] and m.get("name") else None
-        self.phase = ("msg", now, _strip(m["text"], NORMAL, scale), name)
+        doodle = Canvas.from_rows(m["doodle"]) if m.get("doodle") else None
+        text = _strip(m["text"], NORMAL, scale) if m.get("text") else None
+        self.phase = ("msg", now, text, name, doodle)
 
     def render(self, c, now):
         if self.phase is None:
@@ -101,17 +103,34 @@ class GuestWallApp(App):
             elif now >= self.phase[1]:
                 self.phase = None  # no messages yet: keep showing the code, check again
             return
-        _, started, strip, name = self.phase
+        _, started, strip, name, doodle = self.phase
         offset = int((now - started) * float(self.p["speed"] or 20))
-        if offset > strip.w + c.w:
+        # a doodle sits on the left, framed; the name and text scroll in the room to its right
+        left = doodle.w + 4 if doodle else 0
+        room = c.w - left
+        width = strip.w if strip else 0
+        done = offset > width + room if strip else now - started > 6.0  # a doodle alone stays a few seconds
+        if done:
             self._next(now)
             return self.render(c, now)
+        if doodle:
+            _paste(c, doodle, 1, (c.h - doodle.h) // 2)
+            for yy in range(c.h):
+                c.set(left - 2, yy)
         if name:
-            _paste(c, name, (c.w - name.w) // 2, 3)
-            y = 3 + name.h + max(0, (c.h - 3 - name.h - strip.h) // 2)
+            _paste(c, name, left + (room - name.w) // 2, 3)
+            y = 3 + name.h + max(0, (c.h - 3 - name.h - (strip.h if strip else 0)) // 2)
         else:
-            y = (c.h - strip.h) // 2
-        _paste(c, strip, c.w - offset, y)
+            y = (c.h - (strip.h if strip else 0)) // 2
+        if strip:
+            x = c.w - offset
+            # clip the scrolling text to its own column so it never runs over the doodle
+            for sy in range(strip.h):
+                dy = y + sy
+                if 0 <= dy < c.h:
+                    x0, x1 = max(left, x), min(c.w, x + strip.w)
+                    if x0 < x1:
+                        c.px[dy * c.w + x0:dy * c.w + x1] = strip.px[sy * strip.w + x0 - x:sy * strip.w + x1 - x]
 
     def describe(self):
         return self.title

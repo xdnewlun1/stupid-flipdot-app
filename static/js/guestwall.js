@@ -5,6 +5,16 @@ let timer = null;
 const when = ts => new Date(ts * 1000).toLocaleString([], { dateStyle: "short", timeStyle: "short" });
 const LABEL = { pending: "waiting", approved: "approved", rejected: "rejected" };
 
+// a guest's doodle (21 rows of 0/1) as a small dot picture
+function doodle(rows) {
+  const n = rows.length, cell = 3, c = el("canvas", { width: n * cell, height: n * cell, class: "gwDoodle", role: "img", "aria-label": "Doodle" });
+  const ctx = c.getContext("2d");
+  ctx.fillStyle = "#050506"; ctx.fillRect(0, 0, c.width, c.height);
+  ctx.fillStyle = "#f4f4f0";
+  rows.forEach((r, y) => [...r].forEach((v, x) => { if (v === "1") ctx.fillRect(x * cell, y * cell, cell - 1, cell - 1); }));
+  return c;
+}
+
 function render(info) {
   $("gwLink").href = info.url;
   $("gwLink").textContent = info.url;
@@ -17,7 +27,8 @@ function render(info) {
   });
   const act = (m, action) => safe(async () => render(await api(`/api/guest/messages/${m.id}/${action}`, {})));
   $("gwList").replaceChildren(...(info.messages.length ? info.messages.map(m => el("div", { class: "item" + (m.status === "pending" ? " editing" : "") },
-    el("div", { class: "name" }, m.text, el("small", {}, `${m.name || "Anonymous"} · ${when(m.ts)} · ${LABEL[m.status] || m.status}`)),
+    m.doodle ? doodle(m.doodle) : "",
+    el("div", { class: "name" }, m.text || (m.doodle ? "(a doodle)" : ""), el("small", {}, `${m.name || "Anonymous"} · ${when(m.ts)} · ${LABEL[m.status] || m.status}`)),
     m.status !== "approved" ? el("button", { class: "primary", onclick: act(m, "approve") }, "Approve") : "",
     m.status !== "rejected" ? el("button", { onclick: act(m, "reject") }, m.status === "approved" ? "Hide" : "Reject") : "",
     el("button", { class: "danger", onclick: act(m, "delete") }, "Delete"),

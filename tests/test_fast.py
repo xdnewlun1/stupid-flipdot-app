@@ -235,6 +235,45 @@ class TransitionsTest(unittest.TestCase):
         self.assertEqual(tr.mix(new, 1.0).px, new.px)
         self.assertIn("vortex", transitions.NAMES)
 
+    def test_new_transitions_start_old_and_end_new(self):
+        old, new = Canvas(W, H), Canvas(W, H)
+        old.rect(4, 4, 30, 20, fill=True)
+        new.rect(50, 16, 30, 20, fill=True)
+        for name in ("page-curl", "shatter", "ripple-out", "wave-morph", "typewriter"):
+            tr = transitions.Transition(name, old, W, H, 1.0)
+            tr.start = 0.0
+            self.assertEqual(tr.mix(new, 0.0).px, old.px, name)
+            self.assertEqual(tr.mix(new, 1.0).px, new.px, name)
+            mids = [bytes(tr.mix(new, p).px) for p in (0.3, 0.5, 0.7)]
+            for m in mids:
+                self.assertNotEqual(m, bytes(old.px), name)
+                self.assertNotEqual(m, bytes(new.px), name)
+            self.assertGreater(len(set(mids)), 1, name)
+            self.assertIn(name, transitions.NAMES)
+
+    def test_typewriter_pops_whole_cells_in_reading_order(self):
+        old, new = Canvas(W, H), Canvas(W, H, fill=1)
+        tr = transitions.Transition("typewriter", old, W, H, 1.0)
+        tr.start = 0.0
+        got = tr.mix(new, 0.5)  # about half the cells typed
+        cols, rows = -(-W // 6), -(-H // 8)
+        typed = [all(got.px[y * W + x] for y in range(cy * 8, min(H, cy * 8 + 8)) for x in range(cx * 6, min(W, cx * 6 + 6)))
+                 for cy in range(rows) for cx in range(cols)]
+        first_blank = typed.index(False)
+        self.assertGreater(first_blank, 5)
+        self.assertTrue(all(typed[:first_blank]))      # everything before it is typed...
+        self.assertFalse(any(typed[first_blank + 1:]))  # ...and nothing after (the cursor cell may be lit)
+
+    def test_moods_resolve_to_their_members(self):
+        for mood, members in transitions.MOODS.items():
+            self.assertIn(mood, transitions.NAMES)
+            for _ in range(20):
+                tr = transitions.Transition(mood, Canvas(W, H), W, H, 1.0)
+                self.assertIn(tr.kind, members)
+                self.assertTrue(tr.kind in transitions.REVEALS or tr.kind in transitions.MOVES)
+        for _ in range(30):
+            self.assertNotIn(transitions.Transition("random", Canvas(W, H), W, H).kind, transitions.MOODS)
+
     def test_reveal_mix_matches_per_dot_loop(self):
         for kind in ("dissolve", "wipe-right", "iris-open", "clock", "spiral", "tiles", "interlace"):
             old = blobs(self.rnd)
@@ -337,6 +376,52 @@ class EffectsTest(unittest.TestCase):
         e.strength = 0.3
         self.assertNotEqual(e.apply(c, 0.5).px, peak)  # a weaker strength twists less
         self.assertEqual(peak, bytes(transitions.vortex(c.px, W, H, Effect.VORTEX_TURN)) or peak)
+
+    def test_new_effects_change_the_picture_and_leave_it_at_zero(self):
+        c = blobs(self.rnd)
+        for name in ("pulse", "ripple", "shake", "echo", "strobe"):
+            e = Effect(name, 0, None, 1.0, self.rnd)
+            e.reacting = True
+            e.strength = 1.0
+            changed = False
+            for i in range(8):
+                src = blobs(self.rnd) if name == "echo" else c
+                changed |= e.apply(src, 0.05 * i).px != src.px
+            self.assertTrue(changed, name)
+            e.idle()
+            e.strength = 0.0
+            e.prev_strength = 0.0
+            still = Effect(name, 0, None, 1.0, self.rnd)
+            still.reacting, still.strength = True, 0.0
+            for i in range(3):
+                self.assertEqual(still.apply(c, 0.05 * i).px, c.px, name)  # the strength never passed half: no hit
+
+    def test_echo_leaves_a_trail_and_forgets_it_when_idle(self):
+        e = Effect("echo", 0, None, 1.0, self.rnd)
+        e.reacting, e.strength = True, 1.0
+        a, b = Canvas(W, H), Canvas(W, H)
+        a.rect(10, 10, 6, 6, fill=True)
+        b.rect(40, 10, 6, 6, fill=True)
+        e.apply(a, 0.0)
+        got = e.apply(b, 0.1)
+        self.assertEqual(got.get(42, 12), 1)
+        self.assertGreater(sum(got.px[12 * W + 10:12 * W + 16]), 0)  # some of the old square is still there
+        e.idle()
+        self.assertEqual(e.apply(b, 0.2).px, b.px)  # the trail was forgotten
+
+    def test_shake_offsets_the_whole_picture_on_a_hit(self):
+        c = Canvas(W, H)
+        c.rect(30, 15, 20, 10, fill=True)
+        e = Effect("shake", 0, None, 1.0, random.Random(3))
+        e.reacting = True
+        e.strength = 0.0
+        e.apply(c, 0.0)
+        e.strength = 1.0  # a hit
+        got = e.apply(c, 0.05)
+        self.assertNotEqual(got.px, c.px)
+        self.assertEqual(sum(got.px), sum(c.px))  # moved, not changed (the square stays on the board)
+        later = e.apply(c, 1.0)
+        self.assertEqual(later.px, c.px)  # settled
 
     def test_glitch_only_shifts_and_inverts_rows(self):
         c = blobs(self.rnd)

@@ -795,6 +795,10 @@ def update_gallery(req, gid):
         for it in body["items"]:
             if it.get("file") in known:
                 item = dict(known.pop(it["file"]))
+                if it.get("play") in ("repeat", "boomerang", "random"):  # how a GIF plays; blank = the slideshow's
+                    item["play"] = it["play"]
+                else:
+                    item.pop("play", None)
                 for k in ("seconds", "loops", "speed"):
                     if it.get(k) in (None, ""):
                         item.pop(k, None)
@@ -1327,6 +1331,59 @@ def counter_value(req, name):
     return out
 
 
+
+# ---- habits and packages (apps/pack_home.py) ---------------------------------------
+
+@route("GET", "/api/habits")
+def habits_list(req):
+    from apps import pack_home
+    return {"habits": pack_home.habit_summary(store)}
+
+
+@route("POST", "/api/habits/([A-Za-z0-9 _.'%-]+)")
+def habit_tick(req, name):
+    """POST {"done": true|false, "day": "YYYY-MM-DD"} ticks (or unticks) a habit; {"remove": true} removes it."""
+    from apps import pack_home
+    from urllib.parse import unquote
+    name = unquote(name)
+    b = req.json() if req.raw() else {}
+    if b.get("remove"):
+        return {"removed": pack_home.remove_habit(store, name)}
+    try:
+        out = pack_home.set_habit(store, name, b.get("done", True), b.get("day"))
+    except ValueError as e:
+        raise HttpError(400, str(e)) from None
+    runner.wake.set()
+    return out
+
+
+@route("GET|POST", "/api/packages")
+def packages_api(req):
+    """GET the parcels; POST {"name", "number", "carrier"} adds one."""
+    from apps import pack_home
+    if req.command == "GET":
+        return pack_home.packages(store)
+    b = req.json() if req.raw() else {}
+    try:
+        return pack_home.add_package(store, b.get("name"), b.get("number"), b.get("carrier") or "")
+    except ValueError as e:
+        raise HttpError(400, str(e)) from None
+
+
+@route("POST", "/api/packages/([A-Za-z0-9 -]+)")
+def package_one(req, pid):
+    """POST {"status", "eta", "delivered"} sets a parcel's status (e.g. from an automation); {"remove": true} removes it."""
+    from apps import pack_home
+    b = req.json() if req.raw() else {}
+    if b.get("remove"):
+        return {"removed": pack_home.remove_package(store, pid)}
+    try:
+        out = pack_home.set_package_status(store, pid, b.get("status"), b.get("eta") or "", b.get("delivered"))
+    except KeyError:
+        raise HttpError(404, "no such package") from None
+    runner.wake.set()
+    return out
+
 # ---- guest wall -------------------------------------------------------------------
 
 GUEST_PUBLIC = {("GET", "/guest"), ("POST", "/api/guest/submit")}  # the only paths that skip the password
@@ -1347,13 +1404,14 @@ def guest_submit(req):
         return 400, {"error": "Couldn't read the message."}, is_form
     if body.get("website"):  # hidden field only bots fill in
         return 200, {"ok": True}, is_form
-    if not guestwall.clean(body.get("message"), guestwall.TEXT_MAX):
+    doodle = guestwall.clean_doodle(body.get("doodle"))
+    if not guestwall.clean(body.get("message"), guestwall.TEXT_MAX) and not doodle:
         return 400, {"error": "Write a message first."}, is_form
     wall = guestwall.get(store)
     if not wall.rate_ok(req.client_address[0]):
         return 429, {"error": "You've sent a few messages already. Please wait a few minutes."}, is_form
     try:
-        msg = wall.submit(body.get("name"), body.get("message"), req.client_address[0])
+        msg = wall.submit(body.get("name"), body.get("message"), req.client_address[0], doodle=doodle)
     except ValueError as e:
         return 400, {"error": str(e)}, is_form
     return 200, {"ok": True, "status": msg["status"]}, is_form
@@ -1717,6 +1775,22 @@ def get_scores(req):
     """The games' high-score tables: {game key: {"lower", "top": [{score, name, at}]}}."""
     from apps import scores
     return {"scores": scores.everything(store)}
+
+
+@route("GET", "/api/leaderboard")
+def get_leaderboard(req):
+    """Everything the Leaderboard page shows: the tables, today's scores, the game of the day, play counts, the
+    achievements earned."""
+    import datetime as dt
+    from apps import games, scores
+    midnight = dt.datetime.combine(dt.date.today(), dt.time.min).timestamp()
+    featured = games.featured_game()
+    return {"scores": scores.everything(store), "today": scores.recent(store, since=midnight),
+            "recent": scores.recent(store)[:30], "played": scores.played(store),
+            "achievements": scores.achievements(store),
+            "featured": {"id": featured, "title": apps.REGISTRY[featured].title if featured in apps.REGISTRY else None,
+                         "best": scores.best(store, featured) if featured else None},
+            "titles": {cid: cls.title for cid, cls in apps.REGISTRY.items() if cls.category == "Games"}}
 
 
 @route("GET", "/api/panels")

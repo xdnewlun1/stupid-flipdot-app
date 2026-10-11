@@ -70,6 +70,7 @@
       <button data-tab="layers"><svg class="i" aria-hidden="true"><use href="#i-layers"/></svg>Layers</button>
       <button data-tab="slideshows"><svg class="i" aria-hidden="true"><use href="#i-slides"/></svg>Slideshows</button>
       <button data-tab="videos"><svg class="i" aria-hidden="true"><use href="#i-video"/></svg>Videos</button>
+      <button data-tab="leaderboard"><svg class="i" aria-hidden="true"><use href="#i-apps"/></svg>Leaderboard</button>
       <p class="navGroup">Programme</p>
       <button data-tab="playlists"><svg class="i" aria-hidden="true"><use href="#i-playlist"/></svg>Playlists</button>
       <button data-tab="schedule"><svg class="i" aria-hidden="true"><use href="#i-schedule"/></svg>Schedule</button>
@@ -526,6 +527,11 @@
             <option value="0.5">0.5× (slow motion)</option><option value="0.75">0.75×</option><option value="1">1× (as made)</option>
             <option value="1.5">1.5×</option><option value="2">2×</option><option value="3">3×</option><option value="4">4×</option>
           </select><span class="muted">Each GIF can override this. Fast GIFs at high speed skip frames the board can't flip in time.</span></div>
+          <label for="ssGifMode">GIFs play</label>
+          <div class="row tight"><select id="ssGifMode">
+            <option value="repeat">Repeat (start to end, again)</option><option value="boomerang">Boomerang (forward, then backward)</option>
+            <option value="random">Random (frames in a random order)</option>
+          </select><span class="muted">Each GIF can override this.</span></div>
           <label for="ssGifMin">Minimum seconds per GIF</label>
           <div class="row tight"><input id="ssGifMin" type="number" min="0" max="600" style="width:90px"><span class="muted">Short GIFs repeat until this much time has passed.</span></div>
           <label for="ssTransition">Transition between pictures</label>
@@ -838,6 +844,20 @@
       </div>
       <div class="row"><button id="gwRefresh">Refresh</button></div>
       <div class="items" id="gwList"></div>
+  </section>
+
+  <!-- ===================== LEADERBOARD ===================== -->
+  <section class="tab card" id="tab-leaderboard" hidden>
+      <h2>Game of the day</h2>
+      <p class="muted">A different game each day. The Game of the day app shows it with its best score and a QR code to the phone controller.</p>
+      <div class="items" id="lbFeatured"></div>
+      <h2 class="spaced">Today</h2>
+      <div class="items" id="lbToday"></div>
+      <h2 class="spaced">Best scores</h2>
+      <div class="items" id="lbTables"></div>
+      <h2 class="spaced">Achievements <span class="muted" id="lbBadgeCount"></span></h2>
+      <div class="items" id="lbBadges"></div>
+      <div class="row"><button id="lbRefresh">Refresh</button></div>
   </section>
 
   <!-- ===================== FRIEND MESSAGES ===================== -->

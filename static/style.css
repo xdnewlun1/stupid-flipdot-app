@@ -698,3 +698,6 @@ body[data-tab=draw] .device { max-width: max(520px, calc((100vh - 480px) * 2)); 
 .plDlg .plFiles { display: flex; flex-direction: column; gap: var(--s2); margin-bottom: var(--s3); }
 .plDlg .plCode { max-height: 55vh; overflow: auto; white-space: pre; margin-top: var(--s2); }
 .plDlg .plTrust { display: flex; align-items: center; gap: var(--s2); margin-bottom: var(--s3); font-weight: 500; }
+
+.item.lbLocked { opacity: 0.6; }
+.item canvas.gwDoodle { width: 63px; height: 63px; flex: none; border-radius: 4px; image-rendering: pixelated; }

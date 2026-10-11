@@ -367,6 +367,31 @@ def _band(out, src, w=84, h=42):
     return (xs[0], xs[-1] + 1) if xs else None
 
 
+def test_new_effects_are_offered_and_ripple_rings_on_bass_hits():
+    for eff in ("pulse", "ripple", "shake", "echo", "strobe"):
+        rows = slidefx.clean_react_map([{"signal": "mid", "effect": eff, "amount": 100, "threshold": 0, "react": "level"}])
+        assert rows[2]["effect"] == eff, eff
+        assert eff in slidefx.EFFECTS and eff in slidefx.REACT_ORDER
+    assert slidefx.clean_react_map([{"signal": "high", "effect": "strobe"}])[3]["follow"] == "signal"
+    rows = slidefx.clean_react_map([{"signal": "bass", "effect": "ripple", "amount": 100, "threshold": 0, "react": "level"}])
+    r = slidefx.Reactive(random.Random(1))
+    c = Canvas(84, 42)
+    c.rect(0, 20, 84, 3, fill=True)
+    quiet = {"bass": 0.0, "lowmid": 0.0, "mid": 0.0, "high": 0.0, "level": 0.5, "pulse": 0.0, "hits": {"bass": 0.0},
+             "bpm": 0.0, "beat_phase": 0.0, "groove": 0.0}
+    loud = {**quiet, "bass": 0.9}
+    r.apply(c, 10.0, slidefx.react_plan(rows, quiet), quiet)
+    assert not r.fx["ripple"].state.get("rings")
+    out = r.apply(c, 10.05, slidefx.react_plan(rows, loud), loud)  # the bass jumps: a ring starts
+    assert len(r.fx["ripple"].state["rings"]) == 1
+    for i in range(6):
+        out = r.apply(c, 10.1 + i * 0.05, slidefx.react_plan(rows, loud), loud)
+    assert len(r.fx["ripple"].state["rings"]) == 1  # a steady loud bass is one hit, not one a frame
+    assert bytes(out.px) != bytes(c.px)
+    r.apply(c, 11.0, slidefx.react_plan(rows, quiet), quiet)
+    assert not r.fx["ripple"].state.get("rings")  # idle: forgotten
+
+
 def test_vortex_is_a_moving_effect_on_any_band():
     rows = slidefx.clean_react_map([{"signal": "bass", "effect": "vortex", "amount": 100, "threshold": 0, "react": "level"}])
     bass = rows[0]

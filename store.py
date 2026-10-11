@@ -214,7 +214,7 @@ class Store:
     # ---- slideshows (galleries of uploaded images/GIFs) ---------------------------
 
     GALLERY_DEFAULTS = {"mode": "crop", "dither": False, "threshold": 128, "invert": False, "image_seconds": 10,
-                        "gif_loops": 1, "gif_min_seconds": 0, "gif_speed": 1, "shuffle": False, "transition": "morph",
+                        "gif_loops": 1, "gif_min_seconds": 0, "gif_speed": 1, "gif_mode": "repeat", "shuffle": False, "transition": "morph",
                         "transition_duration": 1.0,
                         # random effects: chance per item (%), which ones, whole item or a burst
                         "fx_chance": 0, "fx_effects": ["invert", "flash", "glitch", "mirror", "kaleidoscope", "wave",

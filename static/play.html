@@ -63,6 +63,12 @@
     .extra { grid-template-columns: repeat(4, minmax(0, 1fr)); }
     .extra button { min-height: 40px; }
   }
+  /* Watch mode: the board as big as the phone allows over the pad, for playing from the couch without seeing the board */
+  body.watch .pick, body.watch #padHint, body.watch .head h1 { display: none; }
+  body.watch { max-width: none; }
+  body.watch .screen .wrap { padding: 2px; }
+  body.watch .screen canvas { width: 100%; height: auto; }
+  #watchBtn { min-height: 44px; }
   @media (max-width: 360px) { .dpad { grid-template-columns: repeat(3, 60px); grid-template-rows: repeat(3, 60px); } .ab button { width: 72px; height: 72px; } }
 </style>
 </head>
@@ -75,6 +81,7 @@
   </svg>
   <header class="head">
     <h1>Game controller</h1>
+    <button type="button" id="watchBtn" aria-pressed="false" title="Show the board as big as possible above the buttons">Watch</button>
     <a href="/" id="backLink">Back to the board</a>
   </header>
   <div class="pick">
@@ -262,6 +269,20 @@ document.querySelectorAll("[data-player]").forEach(b => b.onclick = () => {
   if (runner) showStatus();
 });
 try { const saved = document.querySelector(`[data-player="${localStorage.getItem("playPlayer")}"]`); if (saved) pickPlayer(saved); } catch {}
+
+// Watch mode (also /play?watch=1): full screen, the picker hidden, the board as big as it fits
+const watchBtn = document.getElementById("watchBtn");
+const setWatch = on => {
+  document.body.classList.toggle("watch", on);
+  watchBtn.setAttribute("aria-pressed", String(on));
+  watchBtn.textContent = on ? "Controls" : "Watch";
+  try {
+    if (on && !document.fullscreenElement) document.documentElement.requestFullscreen?.().catch(() => {});
+    if (!on && document.fullscreenElement) document.exitFullscreen?.().catch(() => {});
+  } catch {}
+};
+watchBtn.onclick = () => setWatch(!document.body.classList.contains("watch"));
+if (new URLSearchParams(location.search).has("watch")) setWatch(true);
 
 const KEYS = { ArrowUp: "up", ArrowDown: "down", ArrowLeft: "left", ArrowRight: "right", w: "up", s: "down", a: "left", d: "right", " ": "a", Enter: "b",
   q: "strafe_left", e: "strafe_right", r: "weapon", Shift: "run" };

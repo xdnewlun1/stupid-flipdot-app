@@ -1,0 +1,1451 @@
+{
+"source": "Short definitions and example sentences written for this app.",
+"words": [
+[
+"abstruse",
+"adjective",
+"Hard to understand; obscure.",
+"The lecture was so abstruse that even the professors looked lost."
+],
+[
+"acumen",
+"noun",
+"The ability to make good judgements quickly.",
+"Her business acumen turned the little shop into a chain."
+],
+[
+"adroit",
+"adjective",
+"Clever or skilful with hands or mind.",
+"An adroit reply defused the argument."
+],
+[
+"aegis",
+"noun",
+"Protection or support; sponsorship.",
+"The expedition sailed under the aegis of the Royal Society."
+],
+[
+"aplomb",
+"noun",
+"Self-confidence, especially in a tricky situation.",
+"He handled the heckler with aplomb."
+],
+[
+"arcane",
+"adjective",
+"Understood by few; mysterious.",
+"The rules of the game were arcane and rarely written down."
+],
+[
+"badinage",
+"noun",
+"Light, playful banter.",
+"The two old friends kept up a steady badinage over dinner."
+],
+[
+"bellwether",
+"noun",
+"Something that shows which way things are going.",
+"The town is a bellwether in national elections."
+],
+[
+"blithe",
+"adjective",
+"Carefree and light-hearted, sometimes thoughtlessly so.",
+"With blithe disregard for the rain, they set off."
+],
+[
+"bucolic",
+"adjective",
+"Of the pleasant aspects of the countryside.",
+"A bucolic scene of sheep and hedgerows."
+],
+[
+"cajole",
+"verb",
+"To persuade with flattery or gentle coaxing.",
+"She cajoled her brother into lending the car."
+],
+[
+"callow",
+"adjective",
+"Young and inexperienced.",
+"A callow youth with big ideas."
+],
+[
+"capricious",
+"adjective",
+"Given to sudden changes of mood or behaviour.",
+"The capricious weather ruined three picnics in a row."
+],
+[
+"chicanery",
+"noun",
+"Trickery used to achieve a goal.",
+"The contract was won by chicanery, not merit."
+],
+[
+"circumspect",
+"adjective",
+"Wary and unwilling to take risks.",
+"Be circumspect about what you post online."
+],
+[
+"clandestine",
+"adjective",
+"Kept secret, often because it is not quite proper.",
+"A clandestine meeting in the car park."
+],
+[
+"cloying",
+"adjective",
+"Sickly sweet; too much of a good thing.",
+"The cloying scent of lilies filled the hall."
+],
+[
+"conundrum",
+"noun",
+"A confusing and difficult problem.",
+"How to fit six people in a four-seat car was a conundrum."
+],
+[
+"copacetic",
+"adjective",
+"In excellent order; fine.",
+"Everything is copacetic, the pilot said."
+],
+[
+"coruscate",
+"verb",
+"To flash or sparkle.",
+"Frost coruscated on the fence posts."
+],
+[
+"curmudgeon",
+"noun",
+"A bad-tempered, grumpy person.",
+"The old curmudgeon next door waved his stick at the children."
+],
+[
+"dapper",
+"adjective",
+"Neat and trim in dress and appearance.",
+"A dapper man in a bow tie."
+],
+[
+"dearth",
+"noun",
+"A scarcity or lack of something.",
+"There was a dearth of good news that week."
+],
+[
+"demure",
+"adjective",
+"Reserved, modest and shy.",
+"A demure smile."
+],
+[
+"desultory",
+"adjective",
+"Lacking a plan or purpose; half-hearted.",
+"A desultory conversation about the weather."
+],
+[
+"dilettante",
+"noun",
+"A person who dabbles in a subject without serious commitment.",
+"A dilettante who painted on Sundays."
+],
+[
+"doughty",
+"adjective",
+"Brave and determined.",
+"A doughty defender of lost causes."
+],
+[
+"ebullience",
+"noun",
+"Bubbling enthusiasm.",
+"The puppy's ebullience was exhausting."
+],
+[
+"eclectic",
+"adjective",
+"Drawn from a wide range of sources.",
+"An eclectic record collection."
+],
+[
+"effulgent",
+"adjective",
+"Shining brightly; radiant.",
+"The effulgent moon lit the path."
+],
+[
+"egregious",
+"adjective",
+"Outstandingly bad; shocking.",
+"An egregious error in the first paragraph."
+],
+[
+"elegy",
+"noun",
+"A poem of serious reflection, often for the dead.",
+"He wrote an elegy for the old oak."
+],
+[
+"elucidate",
+"verb",
+"To make something clear; to explain.",
+"Could you elucidate the second rule?"
+],
+[
+"empirical",
+"adjective",
+"Based on observation or experience rather than theory.",
+"Empirical evidence that the bridge sways."
+],
+[
+"enigma",
+"noun",
+"A person or thing that is mysterious or hard to understand.",
+"The manuscript remains an enigma."
+],
+[
+"ennui",
+"noun",
+"Listless boredom from having nothing interesting to do.",
+"Sunday afternoon ennui."
+],
+[
+"epitome",
+"noun",
+"A perfect example of a quality or type.",
+"She is the epitome of patience."
+],
+[
+"erudite",
+"adjective",
+"Having or showing great learning.",
+"An erudite footnote on medieval coins."
+],
+[
+"esoteric",
+"adjective",
+"Meant for or understood by only a few.",
+"An esoteric branch of mathematics."
+],
+[
+"evanescent",
+"adjective",
+"Quickly fading from sight or memory.",
+"The evanescent glow of fireflies."
+],
+[
+"exacerbate",
+"verb",
+"To make a problem worse.",
+"Shouting only exacerbated the situation."
+],
+[
+"facetious",
+"adjective",
+"Treating serious matters with inappropriate humour.",
+"A facetious remark at the funeral."
+],
+[
+"fastidious",
+"adjective",
+"Very attentive to detail; hard to please.",
+"A fastidious editor who checks every comma."
+],
+[
+"fecund",
+"adjective",
+"Producing many offspring or ideas; fertile.",
+"A fecund imagination."
+],
+[
+"felicity",
+"noun",
+"Great happiness; also, a pleasing way of putting things.",
+"The felicity of her phrasing."
+],
+[
+"flabbergasted",
+"adjective",
+"Greatly surprised or astonished.",
+"I was flabbergasted by the bill."
+],
+[
+"foible",
+"noun",
+"A minor weakness or quirk in someone's character.",
+"Collecting teaspoons is one of his foibles."
+],
+[
+"fortuitous",
+"adjective",
+"Happening by chance, often a lucky chance.",
+"A fortuitous meeting on the platform."
+],
+[
+"furtive",
+"adjective",
+"Secretive, as if trying not to be noticed.",
+"A furtive glance at the clock."
+],
+[
+"gadfly",
+"noun",
+"A person who annoys others with persistent criticism.",
+"The councillor was a gadfly to the mayor."
+],
+[
+"gambol",
+"verb",
+"To run or jump about playfully.",
+"Lambs gambolled in the field."
+],
+[
+"gregarious",
+"adjective",
+"Fond of company; sociable.",
+"A gregarious host who knew everyone's name."
+],
+[
+"grandiloquent",
+"adjective",
+"Pompous or extravagant in language.",
+"A grandiloquent speech about very little."
+],
+[
+"guile",
+"noun",
+"Sly cleverness.",
+"He won the game by guile rather than skill."
+],
+[
+"hackneyed",
+"adjective",
+"Overused and so no longer interesting.",
+"A hackneyed plot about a lost ring."
+],
+[
+"harbinger",
+"noun",
+"A sign that something is about to happen.",
+"The first swallow is a harbinger of summer."
+],
+[
+"hubris",
+"noun",
+"Excessive pride that leads to a fall.",
+"The hubris of building on the flood plain."
+],
+[
+"iconoclast",
+"noun",
+"A person who attacks cherished beliefs or institutions.",
+"An iconoclast who questioned every tradition."
+],
+[
+"imbroglio",
+"noun",
+"A confused and complicated situation.",
+"The seating plan became an imbroglio."
+],
+[
+"impecunious",
+"adjective",
+"Having little or no money.",
+"An impecunious student living on toast."
+],
+[
+"inchoate",
+"adjective",
+"Just begun and not yet fully formed.",
+"An inchoate plan scribbled on a napkin."
+],
+[
+"indefatigable",
+"adjective",
+"Never tiring; persistent.",
+"An indefatigable campaigner for the library."
+],
+[
+"ineluctable",
+"adjective",
+"Impossible to avoid.",
+"The ineluctable passing of time."
+],
+[
+"insidious",
+"adjective",
+"Spreading harm gradually and unnoticed.",
+"The insidious creep of damp up the wall."
+],
+[
+"intrepid",
+"adjective",
+"Fearless and adventurous.",
+"An intrepid explorer of car boot sales."
+],
+[
+"inveterate",
+"adjective",
+"Long-established and unlikely to change.",
+"An inveterate tea drinker."
+],
+[
+"jejune",
+"adjective",
+"Naive, simplistic or dull.",
+"A jejune essay full of borrowed opinions."
+],
+[
+"jocular",
+"adjective",
+"Fond of joking; humorous.",
+"A jocular tone that put everyone at ease."
+],
+[
+"kismet",
+"noun",
+"Destiny; fate.",
+"Meeting on the same train twice felt like kismet."
+],
+[
+"knell",
+"noun",
+"The sound of a bell rung slowly, often for a death or an ending.",
+"The announcement sounded the knell of the old factory."
+],
+[
+"lackadaisical",
+"adjective",
+"Lacking enthusiasm or effort.",
+"A lackadaisical attempt at tidying."
+],
+[
+"languid",
+"adjective",
+"Pleasantly lazy and slow.",
+"A languid afternoon by the river."
+],
+[
+"largesse",
+"noun",
+"Generosity in giving money or gifts.",
+"The village hall was built with a landowner's largesse."
+],
+[
+"lassitude",
+"noun",
+"Weariness; a lack of energy.",
+"A summer lassitude settled over the office."
+],
+[
+"loquacious",
+"adjective",
+"Very talkative.",
+"A loquacious taxi driver."
+],
+[
+"luminary",
+"noun",
+"A person who inspires or influences others in their field.",
+"A luminary of the jazz world."
+],
+[
+"magnanimous",
+"adjective",
+"Generous and forgiving, especially to a rival.",
+"A magnanimous winner shook every hand."
+],
+[
+"maverick",
+"noun",
+"An independent-minded person who does not follow the crowd.",
+"A maverick engineer with odd ideas that worked."
+],
+[
+"mendacious",
+"adjective",
+"Untruthful; lying.",
+"A mendacious account of the accident."
+],
+[
+"mettle",
+"noun",
+"Courage and resilience.",
+"The storm tested the crew's mettle."
+],
+[
+"misnomer",
+"noun",
+"A wrong or inaccurate name.",
+"Calling it a greenhouse is a misnomer; it is painted blue."
+],
+[
+"mollycoddle",
+"verb",
+"To treat someone too protectively.",
+"Stop mollycoddling the cat."
+],
+[
+"moribund",
+"adjective",
+"At the point of death; in terminal decline.",
+"A moribund high street."
+],
+[
+"nascent",
+"adjective",
+"Just coming into existence.",
+"A nascent interest in birdwatching."
+],
+[
+"nefarious",
+"adjective",
+"Wicked or criminal.",
+"A nefarious scheme to swap the labels."
+],
+[
+"nonplussed",
+"adjective",
+"So surprised that you do not know how to react.",
+"The waiter was nonplussed by the request for ketchup on ice cream."
+],
+[
+"obdurate",
+"adjective",
+"Stubbornly refusing to change one's opinion.",
+"An obdurate refusal to apologise."
+],
+[
+"obsequious",
+"adjective",
+"Excessively eager to please or obey.",
+"An obsequious assistant who laughed at every joke."
+],
+[
+"officious",
+"adjective",
+"Asserting authority in an annoyingly domineering way.",
+"An officious guard checking tickets twice."
+],
+[
+"opulent",
+"adjective",
+"Richly luxurious.",
+"An opulent lobby with marble floors."
+],
+[
+"ostensible",
+"adjective",
+"Stated or appearing to be true, but not necessarily so.",
+"The ostensible reason for the visit was tea."
+],
+[
+"panache",
+"noun",
+"Flamboyant confidence of style.",
+"She wore the hat with panache."
+],
+[
+"paragon",
+"noun",
+"A model of excellence.",
+"A paragon of patience with the children."
+],
+[
+"parsimonious",
+"adjective",
+"Unwilling to spend money; stingy.",
+"A parsimonious landlord who counted the teabags."
+],
+[
+"peccadillo",
+"noun",
+"A small, relatively unimportant fault.",
+"Forgetting birthdays is his one peccadillo."
+],
+[
+"pellucid",
+"adjective",
+"Clear as crystal; easy to understand.",
+"Pellucid prose."
+],
+[
+"penchant",
+"noun",
+"A strong liking for something.",
+"A penchant for loud socks."
+],
+[
+"perfunctory",
+"adjective",
+"Done with little care or interest.",
+"A perfunctory wave from the window."
+],
+[
+"pernicious",
+"adjective",
+"Having a harmful effect, gradually and subtly.",
+"The pernicious habit of checking the phone at dinner."
+],
+[
+"petulant",
+"adjective",
+"Childishly sulky or bad-tempered.",
+"A petulant sigh when asked to help."
+],
+[
+"pithy",
+"adjective",
+"Brief, forceful and full of meaning.",
+"A pithy summary of the whole report."
+],
+[
+"platitude",
+"noun",
+"A remark that is used too often to be interesting.",
+"The speech was a string of platitudes."
+],
+[
+"precocious",
+"adjective",
+"Developed earlier than usual, especially a child.",
+"A precocious reader at three."
+],
+[
+"prevaricate",
+"verb",
+"To avoid giving a direct answer.",
+"He prevaricated when asked who broke the vase."
+],
+[
+"propitious",
+"adjective",
+"Favourable; likely to lead to success.",
+"A propitious start to the season."
+],
+[
+"prosaic",
+"adjective",
+"Ordinary and dull; lacking poetry.",
+"The prosaic reality of filling in forms."
+],
+[
+"puerile",
+"adjective",
+"Childishly silly.",
+"A puerile joke about the headmaster's name."
+],
+[
+"pugnacious",
+"adjective",
+"Eager to argue or fight.",
+"A pugnacious little terrier."
+],
+[
+"punctilious",
+"adjective",
+"Showing great attention to detail and correct behaviour.",
+"A punctilious host who refilled every glass."
+],
+[
+"quaff",
+"verb",
+"To drink heartily.",
+"They quaffed cider by the fire."
+],
+[
+"querulous",
+"adjective",
+"Complaining in a whining way.",
+"A querulous voice from the back seat."
+],
+[
+"quotidian",
+"adjective",
+"Ordinary; of every day.",
+"The quotidian round of shopping and washing up."
+],
+[
+"rapacious",
+"adjective",
+"Aggressively greedy.",
+"Rapacious gulls circled the chip shop."
+],
+[
+"recalcitrant",
+"adjective",
+"Stubbornly uncooperative.",
+"A recalcitrant mule."
+],
+[
+"recondite",
+"adjective",
+"Little known; obscure.",
+"A recondite point of grammar."
+],
+[
+"redoubtable",
+"adjective",
+"Formidable, deserving respect.",
+"A redoubtable opponent at chess."
+],
+[
+"replete",
+"adjective",
+"Filled or well supplied with something.",
+"A larder replete with jam."
+],
+[
+"reticent",
+"adjective",
+"Not revealing one's thoughts easily.",
+"Reticent about his past."
+],
+[
+"ribald",
+"adjective",
+"Referring to sex in a rude but humorous way.",
+"A ribald song from the back of the bus."
+],
+[
+"rigmarole",
+"noun",
+"A long, complicated and tedious procedure.",
+"The rigmarole of renewing a passport."
+],
+[
+"risible",
+"adjective",
+"Deserving laughter; ridiculous.",
+"A risible excuse about the dog."
+],
+[
+"sardonic",
+"adjective",
+"Grimly mocking or cynical.",
+"A sardonic smile."
+],
+[
+"scintillating",
+"adjective",
+"Brilliantly clever and lively.",
+"Scintillating conversation over dessert."
+],
+[
+"sedulous",
+"adjective",
+"Showing dedication and diligence.",
+"A sedulous gardener out at dawn."
+],
+[
+"serene",
+"adjective",
+"Calm, peaceful and untroubled.",
+"A serene lake at first light."
+],
+[
+"sinecure",
+"noun",
+"A job that pays but requires little work.",
+"The post of honorary secretary was a sinecure."
+],
+[
+"somnolent",
+"adjective",
+"Sleepy; causing sleep.",
+"The somnolent hum of the fridge."
+],
+[
+"spurious",
+"adjective",
+"False, though seeming to be genuine.",
+"A spurious claim of a free holiday."
+],
+[
+"staid",
+"adjective",
+"Respectable, settled and a bit dull.",
+"A staid provincial bank."
+],
+[
+"stalwart",
+"adjective",
+"Loyal, reliable and hard-working.",
+"A stalwart member of the choir."
+],
+[
+"stoic",
+"adjective",
+"Enduring hardship without complaint.",
+"A stoic shrug at the leaking roof."
+],
+[
+"sublime",
+"adjective",
+"Of such excellence or beauty as to inspire awe.",
+"A sublime view from the ridge."
+],
+[
+"supercilious",
+"adjective",
+"Behaving as though one is superior to others.",
+"A supercilious sniff at the house wine."
+],
+[
+"surreptitious",
+"adjective",
+"Done secretly; stealthy.",
+"A surreptitious biscuit before dinner."
+],
+[
+"sycophant",
+"noun",
+"A person who flatters the powerful for advantage.",
+"Surrounded by sycophants, the boss heard no bad news."
+],
+[
+"tenacious",
+"adjective",
+"Holding firmly; persistent.",
+"A tenacious weed between the paving stones."
+],
+[
+"timorous",
+"adjective",
+"Showing nervousness or a lack of confidence.",
+"A timorous knock at the door."
+],
+[
+"torpid",
+"adjective",
+"Sluggish and inactive.",
+"Torpid after the big lunch."
+],
+[
+"tranquil",
+"adjective",
+"Free from disturbance; calm.",
+"A tranquil garden behind the wall."
+],
+[
+"trenchant",
+"adjective",
+"Vigorous and sharply effective.",
+"A trenchant critique of the plan."
+],
+[
+"truculent",
+"adjective",
+"Quick to argue or fight; defiantly aggressive.",
+"A truculent customer at the returns desk."
+],
+[
+"turpitude",
+"noun",
+"Wickedness; depraved behaviour.",
+"Dismissed for moral turpitude."
+],
+[
+"ubiquitous",
+"adjective",
+"Found everywhere.",
+"The ubiquitous coffee cup."
+],
+[
+"umbrage",
+"noun",
+"Offence or annoyance.",
+"She took umbrage at being called \"young lady\"."
+],
+[
+"unctuous",
+"adjective",
+"Excessively flattering or ingratiating; oily.",
+"An unctuous salesman."
+],
+[
+"untenable",
+"adjective",
+"Not able to be defended or maintained.",
+"An untenable position on the cliff edge."
+],
+[
+"urbane",
+"adjective",
+"Courteous, refined and at ease in company.",
+"An urbane host with a story for every guest."
+],
+[
+"vacillate",
+"verb",
+"To waver between different opinions or actions.",
+"He vacillated between the red and the blue."
+],
+[
+"vapid",
+"adjective",
+"Offering nothing stimulating; dull.",
+"A vapid pop song."
+],
+[
+"venerable",
+"adjective",
+"Deserving respect because of age, wisdom or character.",
+"The venerable oak on the green."
+],
+[
+"verbose",
+"adjective",
+"Using more words than needed.",
+"A verbose warranty nobody read."
+],
+[
+"vex",
+"verb",
+"To annoy or worry.",
+"The missing sock vexed her all morning."
+],
+[
+"vociferous",
+"adjective",
+"Loud and forceful in expressing opinions.",
+"Vociferous support from the terraces."
+],
+[
+"voracious",
+"adjective",
+"Having a huge appetite, for food or for knowledge.",
+"A voracious reader of detective novels."
+],
+[
+"wheedle",
+"verb",
+"To persuade by flattery or coaxing.",
+"He wheedled an extra biscuit out of Grandma."
+],
+[
+"winsome",
+"adjective",
+"Attractive in a fresh, innocent way.",
+"A winsome grin."
+],
+[
+"wistful",
+"adjective",
+"Full of gentle longing or regret.",
+"A wistful look at the old photographs."
+],
+[
+"zealous",
+"adjective",
+"Showing great energy and enthusiasm for a cause.",
+"A zealous recycler who rinses every tin."
+],
+[
+"abeyance",
+"noun",
+"A state of temporary suspension.",
+"The plan was held in abeyance until spring."
+],
+[
+"accolade",
+"noun",
+"An award or an expression of praise.",
+"The highest accolade in the trade."
+],
+[
+"ambivalent",
+"adjective",
+"Having mixed feelings about something.",
+"Ambivalent about moving to the city."
+],
+[
+"anachronism",
+"noun",
+"Something out of its proper time.",
+"A wristwatch in a Roman film is an anachronism."
+],
+[
+"antithesis",
+"noun",
+"The direct opposite.",
+"Her calm was the antithesis of his panic."
+],
+[
+"apotheosis",
+"noun",
+"The highest point; the perfect example.",
+"The dish was the apotheosis of comfort food."
+],
+[
+"avuncular",
+"adjective",
+"Kind and friendly towards a younger person, like an uncle.",
+"An avuncular pat on the shoulder."
+],
+[
+"bedlam",
+"noun",
+"A scene of uproar and confusion.",
+"Bedlam broke out when the lights failed."
+],
+[
+"bombastic",
+"adjective",
+"High-sounding but with little meaning.",
+"A bombastic speech about greatness."
+],
+[
+"cacophonous",
+"adjective",
+"Harsh and discordant in sound.",
+"A cacophonous rehearsal of the school band."
+],
+[
+"candour",
+"noun",
+"Honest and open speech.",
+"She spoke with disarming candour."
+],
+[
+"catharsis",
+"noun",
+"Release of strong emotion, leaving a feeling of relief.",
+"A good cry can be a catharsis."
+],
+[
+"chagrin",
+"noun",
+"Annoyance or embarrassment at a failure.",
+"To his chagrin, the cake sank."
+],
+[
+"cogent",
+"adjective",
+"Clear, logical and convincing.",
+"A cogent argument for the bypass."
+],
+[
+"colloquial",
+"adjective",
+"Used in ordinary conversation; informal.",
+"A colloquial word for a sandwich."
+],
+[
+"conflagration",
+"noun",
+"A large and destructive fire.",
+"The barn was lost in the conflagration."
+],
+[
+"convivial",
+"adjective",
+"Friendly, lively and enjoyable.",
+"A convivial evening at the pub."
+],
+[
+"credulous",
+"adjective",
+"Too ready to believe things.",
+"A credulous audience bought every bottle of tonic."
+],
+[
+"debacle",
+"noun",
+"A sudden and embarrassing failure.",
+"The picnic was a debacle of wasps and rain."
+],
+[
+"deleterious",
+"adjective",
+"Causing harm or damage.",
+"The deleterious effect of salt on the car."
+],
+[
+"diatribe",
+"noun",
+"A forceful and bitter verbal attack.",
+"A diatribe against modern music."
+],
+[
+"didactic",
+"adjective",
+"Intended to teach, often in a patronising way.",
+"A didactic tale with an obvious moral."
+],
+[
+"disparate",
+"adjective",
+"Essentially different in kind.",
+"Disparate hobbies: welding and ballet."
+],
+[
+"dogmatic",
+"adjective",
+"Stating opinions as if they were facts.",
+"Dogmatic about the right way to make tea."
+],
+[
+"ephemera",
+"noun",
+"Things that exist or are used for only a short time.",
+"Tickets, programmes and other ephemera."
+],
+[
+"exigent",
+"adjective",
+"Pressing; demanding.",
+"The exigent needs of a newborn."
+],
+[
+"expedient",
+"adjective",
+"Convenient and practical, though perhaps not quite right.",
+"It was expedient to agree."
+],
+[
+"extol",
+"verb",
+"To praise enthusiastically.",
+"The guide extolled the virtues of the local cheese."
+],
+[
+"fallacious",
+"adjective",
+"Based on a mistaken belief.",
+"A fallacious argument that rain follows car washing."
+],
+[
+"fervent",
+"adjective",
+"Having intense feeling; passionate.",
+"A fervent hope that the bus would come."
+],
+[
+"flippant",
+"adjective",
+"Not showing a serious or respectful attitude.",
+"A flippant answer to a serious question."
+],
+[
+"frugal",
+"adjective",
+"Sparing with money or food.",
+"A frugal supper of bread and cheese."
+],
+[
+"gaudy",
+"adjective",
+"Extravagantly bright or showy, in poor taste.",
+"A gaudy jumper with flashing lights."
+],
+[
+"hapless",
+"adjective",
+"Unlucky.",
+"The hapless goalkeeper let in four."
+],
+[
+"histrionic",
+"adjective",
+"Overly theatrical or dramatic.",
+"A histrionic collapse onto the sofa."
+],
+[
+"imperturbable",
+"adjective",
+"Unable to be upset or excited; calm.",
+"An imperturbable bus driver."
+],
+[
+"implacable",
+"adjective",
+"Unable to be placated; relentless.",
+"An implacable enemy of litter."
+],
+[
+"impromptu",
+"adjective",
+"Done without being planned.",
+"An impromptu concert in the kitchen."
+],
+[
+"incorrigible",
+"adjective",
+"Not able to be corrected or reformed.",
+"An incorrigible punster."
+],
+[
+"indolent",
+"adjective",
+"Wanting to avoid activity or exertion; lazy.",
+"An indolent cat in a sunbeam."
+],
+[
+"innocuous",
+"adjective",
+"Not harmful or offensive.",
+"An innocuous question about the weather."
+],
+[
+"insipid",
+"adjective",
+"Lacking flavour or interest.",
+"An insipid soup."
+],
+[
+"irascible",
+"adjective",
+"Easily made angry.",
+"An irascible old colonel."
+],
+[
+"judicious",
+"adjective",
+"Having or showing good judgement.",
+"A judicious use of chilli."
+],
+[
+"lethargic",
+"adjective",
+"Sluggish and apathetic.",
+"Lethargic after the long flight."
+],
+[
+"licentious",
+"adjective",
+"Ignoring accepted rules, especially in sexual matters.",
+"A licentious court."
+],
+[
+"malaise",
+"noun",
+"A general feeling of discomfort or unease.",
+"A vague malaise after the holidays."
+],
+[
+"maudlin",
+"adjective",
+"Self-pityingly or tearfully sentimental.",
+"Maudlin songs at closing time."
+],
+[
+"meticulous",
+"adjective",
+"Very careful and precise.",
+"A meticulous record of every penny."
+],
+[
+"munificent",
+"adjective",
+"Very generous.",
+"A munificent gift to the hospital."
+],
+[
+"nebulous",
+"adjective",
+"Unclear, vague or ill-defined.",
+"A nebulous plan to \"do something\"."
+],
+[
+"obstreperous",
+"adjective",
+"Noisy and difficult to control.",
+"An obstreperous toddler at bedtime."
+],
+[
+"ostentatious",
+"adjective",
+"Designed to impress or attract notice.",
+"An ostentatious gold watch."
+],
+[
+"pedantic",
+"adjective",
+"Excessively concerned with minor details or rules.",
+"A pedantic insistence on the Oxford comma."
+],
+[
+"pensive",
+"adjective",
+"Engaged in deep, serious thought.",
+"A pensive mood on the long drive home."
+],
+[
+"perennial",
+"adjective",
+"Lasting a long time; recurring.",
+"A perennial favourite at the fete."
+],
+[
+"plaintive",
+"adjective",
+"Sounding sad and mournful.",
+"The plaintive cry of a gull."
+],
+[
+"poignant",
+"adjective",
+"Evoking a keen sense of sadness or regret.",
+"A poignant reminder of childhood."
+],
+[
+"pragmatic",
+"adjective",
+"Dealing with things sensibly and realistically.",
+"A pragmatic fix with duct tape."
+],
+[
+"prodigious",
+"adjective",
+"Remarkably great in extent or size.",
+"A prodigious appetite."
+],
+[
+"profligate",
+"adjective",
+"Recklessly extravagant or wasteful.",
+"A profligate use of glitter."
+],
+[
+"prolific",
+"adjective",
+"Producing a great deal.",
+"A prolific writer of letters to the editor."
+],
+[
+"pusillanimous",
+"adjective",
+"Showing a lack of courage; timid.",
+"A pusillanimous retreat from the argument."
+],
+[
+"quagmire",
+"noun",
+"A soft boggy area; a difficult situation.",
+"The paperwork became a quagmire."
+],
+[
+"rancorous",
+"adjective",
+"Characterised by bitterness or resentment.",
+"A rancorous dispute over the fence."
+],
+[
+"rhapsodic",
+"adjective",
+"Extravagantly enthusiastic.",
+"A rhapsodic review of the new bakery."
+],
+[
+"salient",
+"adjective",
+"Most noticeable or important.",
+"The salient point is that it works."
+],
+[
+"sanctimonious",
+"adjective",
+"Making a show of being morally superior.",
+"A sanctimonious lecture on recycling."
+],
+[
+"scrupulous",
+"adjective",
+"Diligent, thorough and extremely attentive to detail.",
+"Scrupulous about returning library books."
+],
+[
+"sonorous",
+"adjective",
+"Deep, full and reverberating in sound.",
+"A sonorous voice reading the news."
+],
+[
+"spartan",
+"adjective",
+"Showing indifference to comfort or luxury.",
+"A spartan room with a bed and a chair."
+],
+[
+"squalid",
+"adjective",
+"Extremely dirty and unpleasant.",
+"A squalid bedsit."
+],
+[
+"stentorian",
+"adjective",
+"Loud and powerful in voice.",
+"A stentorian call for order."
+],
+[
+"superfluous",
+"adjective",
+"Unnecessary; more than enough.",
+"A superfluous third umbrella."
+],
+[
+"tacit",
+"adjective",
+"Understood without being stated.",
+"A tacit agreement not to mention the hat."
+],
+[
+"tangential",
+"adjective",
+"Only slightly connected to the subject.",
+"A tangential remark about trains."
+],
+[
+"tempestuous",
+"adjective",
+"Characterised by strong emotions or storms.",
+"A tempestuous friendship."
+],
+[
+"transient",
+"adjective",
+"Lasting only a short time.",
+"A transient glimpse of the sea."
+],
+[
+"vehement",
+"adjective",
+"Showing strong feeling; forceful.",
+"A vehement denial."
+],
+[
+"vindicate",
+"verb",
+"To clear of blame; to prove right.",
+"The results vindicated her hunch."
+],
+[
+"vivacious",
+"adjective",
+"Attractively lively and animated.",
+"A vivacious host."
+],
+[
+"whimsical",
+"adjective",
+"Playfully quaint or fanciful.",
+"A whimsical teapot shaped like a hen."
+],
+[
+"zeitgeist",
+"noun",
+"The spirit or mood of a particular period.",
+"The song captured the zeitgeist of the summer."
+]
+]
+}

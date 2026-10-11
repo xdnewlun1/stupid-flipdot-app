@@ -34,6 +34,11 @@ body[data-party-view="drawer"] #padHint, body[data-party-view="drum"] #padHint, 
                 border: 1px solid var(--line-strong); border-radius: var(--r2); cursor: crosshair; }
 .party .phint { font: 600 var(--fs-xl)/1.2 var(--mono); letter-spacing: 0.1em; text-align: center; }
 .party .pguess input { flex: 1; min-width: 0; min-height: 44px; font-size: 16px; }
+.party .pwidget { display: flex; flex-direction: column; gap: var(--s2); }
+.party .pwidget:empty { display: none; }
+.party .pdraw.psmall { aspect-ratio: 40 / 28; max-width: 360px; }
+.party .pdie { font-size: 40px; line-height: 1; }
+.party .pwidget input[type=number] { width: 4.5em; min-height: 44px; font-size: 16px; }
 .party .pfeed { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; font-size: var(--fs-sm); max-height: 7.5em; overflow: auto; }
 .party .pfeed li.right { color: var(--ok); font-weight: 600; }
 

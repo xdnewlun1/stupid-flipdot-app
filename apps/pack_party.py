@@ -426,6 +426,14 @@ class Mini:
     def held(self, seat, key):
         return (seat, key) in self.g.held
 
+    def phone_state(self, seat):
+        """Extra for this seat's /play page while the round plays (a widget: draw, vote, bid...), or {}."""
+        return {}
+
+    def phone(self, action, data, seat, t):
+        """An action from the /play page. None: not one of this round's (the game's own are tried next)."""
+        return None
+
     def label(self, c, seat, x, y):
         box_text(c, x, y, self.g.name(seat))
 
@@ -1075,6 +1083,9 @@ MINIGAMES = [MashRace, Reaction, Memory, Dodge, TugOfWar, StopCounter, HotPotato
 from . import party_minis  # noqa: E402  (its games build on Mini above)
 
 MINIGAMES += party_minis.MINIGAMES
+from . import party_more  # noqa: E402  (phone rounds and team rounds)
+
+MINIGAMES += party_more.MINIGAMES
 ROUND_CHOICES = [3, 5, 6, 8, 10, 12, 15, 20]
 RAMP_ROUNDS = 6  # the difficulty reaches its top by this round (or the last one, in a shorter match)
 GAME_SETS = [["all", "Every game"], ["brain", "Brain games: memory, counting, sums, spotting"],
@@ -1245,4 +1256,15 @@ class FlipdotParty(PartyGame):
         if self.state == "playing" and getattr(self, "mini_cls", None):
             out.update(round=self.round, game=self.mini_cls.title, hint=self.mini.hint, phase=self.phase,
                        kind=self.mini_cls.kind)
+            if self.phase == "play" and not self.celebration and self.standings_at is None:
+                out.update(self.mini.phone_state(seat))
         return out
+
+    def phone(self, action, data, seat):
+        if self.state == "playing" and getattr(self, "mini", None) is not None and self.phase == "play" \
+                and seat in self.seats and not self.is_cpu(seat):
+            out = self.mini.phone(action, data or {}, seat, self.clock())
+            if out is not None:
+                self.rev += 1
+                return out
+        return super().phone(action, data, seat)

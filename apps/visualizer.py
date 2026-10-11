@@ -18,6 +18,7 @@ import zlib
 import audio_signal
 import fastpath
 from canvas import Canvas
+from fonts import SMALL
 from transitions import Transition, _distance_field, smoothstep
 
 from .base import App, P, register
@@ -78,6 +79,8 @@ STYLES = [
     ["moire", "Moire (two sets of rings crossing)"],
     ["lissajous", "Lissajous (a turning figure, bass sizes it)"],
     ["plasma", "Plasma (flowing stripes, bass ripples from the middle)"],
+    ["scope", "Oscilloscope XY (bass against highs on a scope screen)"],
+    ["vu", "VU meter (a swinging needle with a peak-hold tick)"],
 ]
 STYLE_IDS = [s for s, _ in STYLES]
 IDLE = 0.18        # the idle ripple's height (0..1): what moves in silence
@@ -202,6 +205,8 @@ class Style:
         self.z = 0.0      # tunnel depth / vortex and moire phase
         self.eased = {}
         self.ratio = None  # lissajous frequencies
+        self.needle = {}   # vu: needle positions, peaks and when they were set
+        self.trace = []    # scope: the last few points, for the screen's afterglow
 
     def draw(self, c, sp, b, dt, now, flow=None):
         """flow: a clock that runs slowly in silence and faster with the music (the app's, shared by both
@@ -485,6 +490,81 @@ class Style:
             x, y = rng.choice(pts)
             c.set(round(x + rng.uniform(-3, 3)), round(y + rng.uniform(-2, 2)))
 
+    def _scope(self, c, sp, b, dt, now):
+        """An XY oscilloscope: the bass drives the X deflection, the highs the Y, with the mids slipping the
+        frequency ratio so the figure rolls; a dotted graticule and a short afterglow behind the beam."""
+        w, h = c.w, c.h
+        cx, cy = (w - 1) / 2, (h - 1) / 2
+        for x in range(0, w, 4):  # the graticule: a dotted crosshair and frame
+            c.set(x, int(cy))
+        for y in range(0, h, 3):
+            c.set(int(cx), y)
+        for x in range(0, w, 2):
+            c.set(x, 0)
+            c.set(x, h - 1)
+        ax = (w / 2 - 3) * (0.15 + 0.85 * self._ease("bass", b["bass"], dt, 0.1))
+        ay = (h / 2 - 2) * (0.15 + 0.85 * self._ease("high", b["high"], dt, 0.1))
+        slip = 0.6 * self._ease("mid", b["mid"], dt, 0.5)
+        f = self.flow
+        n = 90
+        sin = math.sin
+        pts = [(cx + ax * sin(3 * u + f * 0.9), cy + ay * sin((2 + slip) * u + f * 0.3))
+               for u in (i * 2 * math.pi / n for i in range(n + 1))]
+        self.trace = (self.trace + [pts])[-3:]
+        rng = self.rng
+        for age, trail in enumerate(reversed(self.trace)):  # the afterglow: older traces as sparser dots
+            if age == 0:
+                for (xa, ya), (xb, yb) in zip(trail, trail[1:]):
+                    c.line(round(xa), round(ya), round(xb), round(yb))
+            else:
+                for k, (x, y) in enumerate(trail):
+                    if k % (2 * age + 1) == 0:
+                        c.set(round(x), round(y))
+        for _ in range(int(b["level"] ** 2 * 6)):  # a little beam noise when it's loud
+            x, y = rng.choice(pts)
+            c.set(round(x + rng.uniform(-2, 2)), round(y + rng.uniform(-1, 1)))
+
+    def _vu(self, c, sp, b, dt, now):
+        """A VU meter: a needle swinging over a scale arc from a pivot below the bottom edge, with meter
+        ballistics (about 300 ms up, slower back) and a peak-hold tick that drops after a second. Layout
+        "mirror": two meters, bass on the left and highs on the right; otherwise one, the loudness."""
+        w, h = c.w, c.h
+        meters = [("bass", 0, w // 2), ("high", w // 2, w)] if self.p.get("layout") == "mirror" else [("level", 0, w)]
+        for name, x0, x1 in meters:
+            self._needle(c, name, b[name], x0, x1, dt, now)
+
+    def _needle(self, c, name, level, x0, x1, dt, now):
+        w, h = c.w, c.h
+        st = self.needle.setdefault(name, {"v": 0.0, "peak": 0.0, "peak_at": 0.0})
+        tau = 0.12 if level > st["v"] else 0.4  # up in about 300 ms, back more slowly
+        st["v"] += (level - st["v"]) * (1 - math.exp(-dt / tau))
+        v = st["v"]
+        if v >= st["peak"]:
+            st["peak"], st["peak_at"] = v, now
+        elif now - st["peak_at"] > 1.0:
+            st["peak"] = max(v, st["peak"] - dt * 0.6)
+        v += 0.03 * math.sin(self.flow * 3.0 + len(name))  # drawn with a tremor: a needle never quite sits still
+        span = x1 - x0
+        px_, py = x0 + span / 2, h + span * (0.3 if span >= w else 0.15)  # the pivot, below the bottom edge
+        a0, a1 = math.radians(-35), math.radians(35)
+        R = min((span / 2 - 2) / math.sin(a1), py - 4)  # the scale arc fits the meter's width and the top
+        # the scale: an arc of dots with ticks, the red zone (the top 25 %) as a solid arc
+        for k in range(0, 41):
+            a = a0 + (a1 - a0) * k / 40
+            x, y = px_ + R * math.sin(a), py - R * math.cos(a)
+            if k % 10 == 0:
+                c.line(round(x), round(y), round(px_ + (R - 3) * math.sin(a)), round(py - (R - 3) * math.cos(a)))
+            elif k >= 30 or k % 2 == 0:
+                c.set(round(x), round(y))
+        # the needle and its peak tick
+        a = a0 + (a1 - a0) * max(0.0, min(1.0, v))
+        c.line(round(px_ + 2 * math.sin(a)), round(py - 2 * math.cos(a)) if py - 2 < h else h - 1,
+               round(px_ + (R - 1) * math.sin(a)), round(py - (R - 1) * math.cos(a)))
+        ap = a0 + (a1 - a0) * max(0.0, min(1.0, st["peak"]))
+        for rr in (R - 5, R - 4):
+            c.set(round(px_ + rr * math.sin(ap)), round(py - rr * math.cos(ap)))
+        c.text(x0 + 2, h - 6, "VU" if name == "level" else name.upper(), SMALL)  # in the corner, clear of the needle
+
     def _plasma(self, c, sp, b, dt, now):
         """Plasma: flowing contour stripes from overlapping waves. The bass sends ripples out of the middle,
         the mids stretch the diagonal waves, the highs add more, finer stripes."""
@@ -563,7 +643,8 @@ MIX_TRANSITIONS = FLOWING + ["morph","dissolve", "fade", "wipe-right", "wipe-lef
                    "flip", "melt", "pixelate"]
 VARIANTS = {"bars": {"layout": ["bottom", "center", "mirror"], "bar_count": ["16", "21", "42"]},
             "mountain": {"layout": ["bottom", "center", "mirror"]},
-            "wave": {"wave_look": ["filled", "line", "mirror"]}}
+            "wave": {"wave_look": ["filled", "line", "mirror"]},
+            "vu": {"layout": ["bottom", "mirror"]}}
 
 
 class MixScheduler:

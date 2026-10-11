@@ -55,7 +55,7 @@ async function refresh() {
     if (r.ok) { const body = await r.json(); if (my === gen && body.party) show(body.party); }
   } catch {}
   busy = false;
-  if (my === gen && mode) timer = setTimeout(refresh, POLL[mode]);
+  if (my === gen && mode) timer = setTimeout(refresh, st?.widget && st.widget !== "wait" ? 600 : POLL[mode]);
 }
 
 async function act(action, data = {}, viaWs = false) {
@@ -152,11 +152,124 @@ function renderEnd(s) {
 // ---- pad games (Flipdot Party, Rhythm): the pad stays, a line of status above it ---------------
 
 function renderPad(s) {
-  frame("pad", () => [h("p", { class: "pmuted pline", id: "pPad" })]);
+  frame("pad", () => [h("p", { class: "pmuted pline", id: "pPad" }), h("div", { class: "pwidget", id: "pWidget" })]);
   let line = "";
   if (s.app === "party") line = s.game ? `Round ${s.round}/${s.rounds}: ${s.game.toLowerCase()}. ${s.hint ? s.hint.charAt(0) + s.hint.slice(1).toLowerCase() : ""}` : "";
   if (s.app === "rhythm") line = s.score != null ? `Score ${s.score} · combo ${s.combo} (best ${s.best})${s.live ? " · live music" : " · practice beat"}` : "Press A when a note reaches the line.";
   panel.querySelector("#pPad").textContent = [line, scoresLine(s)].filter(Boolean).join(" — ");
+  renderWidget(s, panel.querySelector("#pWidget"));
+}
+
+// ---- the party rounds' phone widgets (apps/party_more.py): a drawing pad, a vote, a bid, your dice ----------
+
+function renderWidget(s, box) {
+  const kind = s.phase === "play" && s.widget ? s.widget : "";
+  if (box.dataset.kind !== kind) {
+    box.dataset.kind = kind;
+    box.replaceChildren(...buildWidget(kind));
+    if (kind === "draw") drawer.reset();
+  }
+  if (!kind) return;
+  const q = sel => box.querySelector(sel);
+  if (kind === "draw") {
+    if (drawer.turn !== `${s.round}:${s.turn}:${s.word}`) { drawer.turn = `${s.round}:${s.turn}:${s.word}`; drawer.load(s.pic); }
+    q("#wWord").textContent = s.word ? `Draw: ${s.word}` : "";
+    q("#wLeft").textContent = s.left != null ? `${Math.ceil(s.left)} s left · no letters` : "";
+  } else if (kind === "vote") {
+    const row = q("#wVote");
+    const names = (s.choices || []).map(c => `${c.seat}:${c.name}`).join(",");
+    if (row.dataset.names !== names) {
+      row.dataset.names = names;
+      row.replaceChildren(...(s.choices || []).map((c, i) => h("button", { class: i ? "" : "primary", onclick: () => act("vote", { seat: c.seat }) },
+        `${i ? "Right" : "Left"}: ${c.name}`)));
+    }
+    row.querySelectorAll("button").forEach((b, i) => { b.disabled = s.voted != null; b.setAttribute("aria-pressed", String(s.voted === s.choices?.[i]?.seat)); });
+    q("#wNote").textContent = s.voted != null ? "Voted. The board shows the result." : "Which drawing is better?";
+  } else if (kind === "choices") {
+    pic.show(q("canvas"), s.pic, s.w, s.h);
+    box.querySelectorAll(".panswers button").forEach((b, i) => {
+      b.querySelector("span").textContent = s.options?.[i] || "";
+      b.disabled = s.chosen != null;
+      b.setAttribute("aria-pressed", String(s.chosen != null && s.chosen === s.options?.[i]));
+    });
+    q("#wNote").textContent = s.chosen != null ? "Sent." : "What is this a drawing of?";
+  } else if (kind === "bid") {
+    const inp = q("#wBid");
+    if (document.activeElement !== inp && !inp.dataset.touched) inp.value = s.bid;
+    inp.min = s.min; inp.max = s.max;
+    inp.disabled = q("#wLock").disabled = !!s.locked;
+    q("#wNote").textContent = s.locked ? "Locked in." : `${s.left != null ? Math.ceil(s.left) + " s. " : ""}Closest without going over wins.`;
+  } else if (kind === "dice") {
+    q("#wDice").replaceChildren(...(s.dice || []).map(d => h("span", { class: "pdie", "aria-label": `die ${d}` }, "⚀⚁⚂⚃⚄⚅"[d - 1] || d)));
+    const bid = s.bid ? `${s.bidder} bid ${s.bid[0]} × ${s.bid[1]}s` : "No bid yet";
+    q("#wBidLine").textContent = s.phase === "reveal" ? `${s.actual} × ${s.bid?.[1]}s on the table: ${s.loser} loses, ${s.winner} wins` : `${bid}. ${s.turn ? "Your turn." : `${s.who}'s turn.`}`;
+    const cnt = q("#wCount"), face = q("#wFace");
+    if (!cnt.dataset.touched) { cnt.value = s.min?.[0] ?? 1; face.value = s.min?.[1] ?? 2; }
+    cnt.max = s.max;
+    box.querySelectorAll("#wRaise, #wLiar, #wCount, #wFace").forEach(b => { b.disabled = !s.turn; });
+    q("#wLiar").disabled = !s.turn || !s.bid;
+  }
+}
+
+const pic = {
+  show(canvas, bits, w, h) {
+    if (!canvas || !bits) return;
+    if (canvas.dataset.bits === bits) return;
+    canvas.dataset.bits = bits;
+    canvas.width = w; canvas.height = h;
+    const ctx = canvas.getContext("2d");
+    ctx.fillStyle = "#000"; ctx.fillRect(0, 0, w, h);
+    ctx.fillStyle = "#f4f4f0";
+    for (let i = 0; i < w * h; i++) if (bits.charCodeAt(i) === 49) ctx.fillRect(i % w, (i / w) | 0, 1, 1);
+  },
+};
+
+function buildWidget(kind) {
+  if (kind === "draw") {
+    const cv = h("canvas", { class: "pdraw psmall", "aria-label": "Draw here; the board shows it as you draw" });
+    drawer.attach(cv, st?.w || 40, st?.h || 28);
+    drawer.pen = 1; drawer.size = 1;
+    const tool = (label, fn, pressed) => h("button", { "aria-pressed": String(!!pressed), onclick: e => { fn(); syncTools(e.currentTarget.parentElement); } }, label);
+    return [
+      h("p", { class: "ptitle", id: "wWord" }), h("p", { class: "pmuted", id: "wLeft" }), cv,
+      h("div", { class: "prow ptools" },
+        tool("Pen", () => { drawer.pen = 1; }, true), tool("Eraser", () => { drawer.pen = 0; }),
+        tool("Thick", () => { drawer.size = drawer.size === 2 ? 1 : 2; }),
+        h("button", { onclick: () => { drawer.pic.fill(0); drawer.paint(); act("clear"); } }, "Clear")),
+    ];
+  }
+  if (kind === "vote") return [h("p", { class: "pmuted", id: "wNote" }), h("div", { class: "prow", id: "wVote" })];
+  if (kind === "choices") return [
+    h("canvas", { class: "pdraw psmall", "aria-label": "The drawing to guess" }),
+    h("p", { class: "pmuted", id: "wNote" }),
+    h("div", { class: "panswers", role: "group", "aria-label": "Guesses" },
+      [0, 1, 2, 3].map(i => h("button", { onclick: () => act("choose", { i }) }, h("b", {}, LETTERS[i]), h("span", {})))),
+  ];
+  if (kind === "bid") {
+    const inp = h("input", { id: "wBid", type: "number", inputmode: "numeric", min: 1, max: 120, step: 1, "aria-label": "Your bid",
+      oninput: e => { e.target.dataset.touched = "1"; } });
+    const nudge = d => () => { inp.dataset.touched = "1"; inp.value = Math.max(+inp.min || 1, Math.min(+inp.max || 120, (+inp.value || 0) + d)); act("bid", { bid: +inp.value }); };
+    return [
+      h("p", { class: "pmuted", id: "wNote" }),
+      h("div", { class: "prow" },
+        h("button", { "aria-label": "Five fewer", onclick: nudge(-5) }, "−5"), h("button", { "aria-label": "One fewer", onclick: nudge(-1) }, "−1"),
+        inp,
+        h("button", { "aria-label": "One more", onclick: nudge(1) }, "+1"), h("button", { "aria-label": "Five more", onclick: nudge(5) }, "+5"),
+        h("button", { class: "primary", id: "wLock", onclick: () => act("lock", { bid: +inp.value }) }, "Lock in")),
+    ];
+  }
+  if (kind === "dice") {
+    const cnt = h("input", { id: "wCount", type: "number", inputmode: "numeric", min: 1, max: 12, step: 1, "aria-label": "How many", oninput: e => { e.target.dataset.touched = "1"; } });
+    const face = h("input", { id: "wFace", type: "number", inputmode: "numeric", min: 1, max: 6, step: 1, "aria-label": "Which face", oninput: e => { e.target.dataset.touched = "1"; } });
+    return [
+      h("div", { class: "prow", id: "wDice", "aria-label": "Your dice" }),
+      h("p", { class: "pmuted", id: "wBidLine" }),
+      h("div", { class: "prow" }, cnt, h("span", { class: "pmuted" }, "×"), face,
+        h("button", { class: "primary", id: "wRaise", onclick: () => { act("dicebid", { count: +cnt.value, face: +face.value }); delete cnt.dataset.touched; delete face.dataset.touched; } }, "Bid"),
+        h("button", { id: "wLiar", onclick: () => act("challenge") }, "Liar!")),
+    ];
+  }
+  return [];
 }
 
 // ---- quiz ------------------------------------------------------------------------------------

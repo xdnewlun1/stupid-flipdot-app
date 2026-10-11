@@ -33,3 +33,45 @@ def test_item_speed_overrides_slideshow_and_is_clamped():
     assert gif_speed({"speed": 99}, {}) == 4
     assert gif_speed({"speed": 0.01}, {}) == 0.25
     assert gif_speed({"speed": "fast"}, {}) == 1
+
+
+# ---- play modes: repeat, boomerang, random ------------------------------------------------------------------
+
+from apps.slideshow import gif_mode, sequence  # noqa: E402
+
+FIVE = [(c, 0.1) for c in "abcde"]
+
+
+def _played(p, n, step=0.1):
+    return [p.frame(i * step + 0.05) for i in range(n)]
+
+
+def test_repeat_is_unchanged():
+    assert _played(Player({}, FIVE, 0), 10) == list("abcdeabcde")
+    assert _played(Player({}, FIVE, 0, mode="repeat"), 10) == list("abcdeabcde")
+
+
+def test_boomerang_plays_forward_then_back_without_doubling_the_ends():
+    p = Player({}, FIVE, 0, mode="boomerang")
+    assert _played(p, 12) == list("abcdedcbabcd")
+    settings = {"gif_loops": 1, "gif_min_seconds": 0, "image_seconds": 10}
+    assert abs(p.end_time(settings) - 0.8) < 1e-9  # one play = there and back
+
+
+def test_random_plays_every_frame_each_pass_and_lasts_one_play():
+    p = Player({"file": "x.gif"}, FIVE, 0, mode="random")
+    seq = _played(p, 20)
+    for k in range(0, 20, 5):
+        assert sorted(seq[k:k + 5]) == list("abcde")
+    assert all(a != b for a, b in zip(seq, seq[1:]))
+    assert seq != list("abcde") * 4
+    settings = {"gif_loops": 2, "gif_min_seconds": 0, "image_seconds": 10}
+    assert abs(p.end_time(settings) - 1.0) < 1e-9  # two plays of five frames, not two whole shuffled sequences
+
+
+def test_mode_choice():
+    assert gif_mode({}, {}) == "repeat"
+    assert gif_mode({}, {"gif_mode": "boomerang"}) == "boomerang"
+    assert gif_mode({"play": "random"}, {"gif_mode": "boomerang"}) == "random"
+    assert gif_mode({"play": "sideways"}, {}) == "repeat"
+    assert sequence([("a", 0.1)], "boomerang") == ([("a", 0.1)], 1)  # one frame: nothing to do

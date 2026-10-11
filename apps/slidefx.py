@@ -6,7 +6,7 @@ import random
 
 import fastpath
 from canvas import Canvas, _BITS, _FLIP
-from transitions import pixelate, vortex
+from transitions import _polar, pixelate, vortex
 
 _FF = bytes([0] + [255] * 255)  # dot -> 0x00/0xFF, for masks used as big integers
 _EDGES = {}  # (w, h) -> masks of the dots that have a neighbour on each side
@@ -38,14 +38,37 @@ EFFECTS = {
     "kaleidoscope": "Kaleidoscope",
     "wave": "Wave",
     "vortex": "Vortex",
+    "pulse": "Pulse zoom",
+    "ripple": "Ripple",
+    "shake": "Shake",
+    "echo": "Echo trail",
     "scanlines": "Scanlines",
+    "strobe": "Strobe scanlines",
     "pixelate": "Pixelate",
     "outline": "Outline",
     "static": "Static",
     "life": "Game of Life",
     "melt": "Melt",
 }
-ANIMATED = {"flash", "sweep", "glitch", "wave", "vortex", "scanlines", "static", "life", "melt"}
+ANIMATED = {"flash", "sweep", "glitch", "wave", "vortex", "pulse", "ripple", "shake", "echo", "scanlines", "strobe",
+            "static", "life", "melt"}
+TRANSIENT = ("life", "echo", "rings", "shake", "kick")  # per-run state, dropped when the effect goes idle
+
+
+_bayer_masks = {}
+
+
+def _BAYER_MASKS(w, h):
+    """Per (w, h): big-integer masks keeping the dots whose Bayer rank is below k, for k in 0..16 (a dither)."""
+    m = _bayer_masks.get((w, h))
+    if m is None:
+        from transitions import BAYER4
+        m = []
+        for k in range(17):
+            px = bytes(255 if BAYER4[y % 4][x % 4] < k else 0 for y in range(h) for x in range(w))
+            m.append(int.from_bytes(px, "big"))
+        _bayer_masks[(w, h)] = m
+    return m
 
 
 def roll(settings, rng, now, item_seconds, hold=0.0, cross=0.25):
@@ -75,6 +98,8 @@ class Effect:
         self.state = {}
         self.cycles = None  # reacting to music: the effect's own motion clock in cycles (see Reactive), else wall time
         self.sway = 1.0     # reacting to music: the wave sways further in groovy (syncopated, off-beat) music
+        self.reacting = False  # driven by a music signal (the strength changes every frame) rather than a timer
+        self.prev_strength = 0.0  # last frame's strength: a jump past half is a hit (ripple, shake)
 
     def active(self, now):
         return now >= self.start and (self.end is None or now < self.end)
@@ -86,11 +111,28 @@ class Effect:
     def apply(self, frame, now):
         """Return a processed copy of `frame` (a Canvas)."""
         if not self.active(now):
-            self.state.pop("life", None)
+            self.idle()
             return frame
         c = frame.copy()
         getattr(self, "_" + self.kind)(c, now - self.start)
         return c
+
+    def idle(self):
+        """Not running right now: forget what builds up over a run (Life's cells, the echo's trail, the rings)."""
+        for k in TRANSIENT:
+            self.state.pop(k, None)
+        self.prev_strength = 0.0
+
+    def hit(self, t, every=0.7):
+        """Reacting: True on the frame the strength jumps past half (a note or a beat). On a timer: every `every` s."""
+        if self.reacting:
+            was, self.prev_strength = self.prev_strength, self.strength
+            return self.strength >= 0.5 and was < 0.35
+        last = self.state.get("kick")
+        if last is None or t - last >= every:
+            self.state["kick"] = t
+            return True
+        return False
 
     # ---- effects (operate in place on c) --------------------------------------------
 
@@ -184,6 +226,106 @@ class Effect:
         twist = self.VORTEX_TURN * self.strength * math.sin(2 * math.pi * t * MOTION["vortex"])
         c.px[:] = vortex(c.px, c.w, c.h, twist)
 
+    def _pulse(self, c, t):
+        """The picture breathes: zoomed in from the middle as far as the strength says (reacting: the band's level;
+        on a timer: a slow breath)."""
+        amount = self.strength if self.reacting else self.strength * (0.5 + 0.5 * math.sin(2 * math.pi * t * 0.5))
+        if amount < 0.02:
+            return
+        c.px[:] = vortex(c.px, c.w, c.h, 0.0, zoom=1 - 0.4 * amount)
+
+    def _ripple(self, c, t):
+        """Rings spread from the middle on each hit (a note, a beat; every 0.7 s on a timer), bending the picture
+        into a wave as they pass, bigger with the strength."""
+        w, h = c.w, c.h
+        rings = self.state.setdefault("rings", [])
+        if self.hit(t) and len(rings) < 4:
+            rings.append((t, 2.0 + 4.0 * self.strength))
+        cx, cy, rs, ths, ws = _polar(w, h)
+        far = math.hypot(cx, cy)
+        rings[:] = [(t0, amp) for t0, amp in rings if (t - t0) * 70 < far + 12]
+        if not rings:
+            return
+        src = bytes(c.px)
+        px = c.px
+        band = 8.0
+        cos, sin = math.cos, math.sin
+        for i in range(w * h):
+            r = rs[i]
+            shift = 0.0
+            for t0, amp in rings:
+                d = (r - (t - t0) * 70) / band
+                if -1 < d < 1:
+                    shift += amp * sin(d * math.pi) * (1 - d * d)
+            if shift:
+                a = ths[i]
+                rr = r + shift
+                sx, sy = int(cx + rr * cos(a) + 0.5), int(cy + rr * sin(a) + 0.5)
+                px[i] = src[sy * w + sx] if 0 <= sx < w and 0 <= sy < h else 0
+
+    def _shake(self, c, t):
+        """The whole picture jolts on each hit, in a random direction, and settles back in a few swings."""
+        w, h = c.w, c.h
+        st = self.state.get("shake")
+        if self.hit(t):
+            a = self.rng.uniform(0, 2 * math.pi)
+            amp = 2 + 7 * self.strength
+            st = self.state["shake"] = (t, amp * math.cos(a), amp * math.sin(a) * 0.6)
+        if st is None:
+            return
+        t0, ax, ay = st
+        age = t - t0
+        if age > 0.6:
+            self.state.pop("shake", None)
+            return
+        k = math.cos(age * 2 * math.pi * 5) * math.exp(-age * 6)
+        dx, dy = int(round(ax * k)), int(round(ay * k))
+        if not dx and not dy:
+            return
+        src = bytes(c.px)
+        out = bytearray(w * h)
+        for y in range(h):
+            sy = y - dy
+            if not 0 <= sy < h:
+                continue
+            row = src[sy * w:(sy + 1) * w]
+            if dx > 0:
+                out[y * w + dx:(y + 1) * w] = row[:w - dx]
+            elif dx < 0:
+                out[y * w:(y + 1) * w + dx] = row[-dx:]
+            else:
+                out[y * w:(y + 1) * w] = row
+        c.px[:] = out
+
+    def _echo(self, c, t):
+        """A trail: the last few pictures stay on, fading out (fewer dots of each the older it is), so motion
+        leaves a wake. More strength, longer trail."""
+        if self.strength < 0.08:
+            return
+        w, h = c.w, c.h
+        n = 1 + int(round(5 * self.strength))
+        trail = self.state.setdefault("echo", [])
+        cur = bytes(c.px)
+        acc = int.from_bytes(cur, "big")
+        for age, past in enumerate(trail[-n:][::-1], 1):
+            keep = max(1, int(16 * (1 - age / (n + 1))))  # the older, the sparser
+            acc |= int.from_bytes(past, "big") & _BAYER_MASKS(w, h)[keep]
+        trail.append(cur)
+        del trail[:-6]
+        c.px[:] = acc.to_bytes(w * h, "big")
+
+    def _strobe(self, c, t):
+        """Scanlines that flash between the odd and even rows every step of the clock (every hit's worth of
+        speed when it follows the signal): the picture stutters rather than scrolls."""
+        if self.strength < 0.08:
+            return
+        w = c.w
+        gap = 2 if self.strength > 0.6 else 3
+        step = int(t * MOTION["strobe"])
+        for y in range(c.h):
+            if (y + step) % gap == 0:
+                c.px[y * w:(y + 1) * w] = bytes(w)
+
     def _scanlines(self, c, t):
         w = c.w
         gap = 2 if self.strength > 0.6 else 3
@@ -250,7 +392,8 @@ class Effect:
 # every frame breaks them.
 
 SIGNALS = ["bass", "lowmid", "mid", "high", "beat", "level"]
-REACT_ORDER = ["pixelate", "mirror", "kaleidoscope", "wave", "vortex", "glitch", "outline", "scanlines", "static", "flash", "sweep", "invert"]
+REACT_ORDER = ["pixelate", "mirror", "kaleidoscope", "pulse", "wave", "vortex", "ripple", "shake", "glitch", "outline", "echo",
+               "scanlines", "strobe", "static", "flash", "sweep", "invert"]
 SWITCHED = {"invert", "mirror", "kaleidoscope", "outline"}  # no strength: on while the strength is past half
 TRIGGERED = {"sweep"}  # starts as its signal rises past half and runs to the end (the amount sets the band's width)
 BAND_SIGNALS = ("bass", "lowmid", "mid", "high")
@@ -267,13 +410,15 @@ REACT_DEFAULTS = [
 # Effects with motion: cycles per second at 1x. A cycle is what "lock to beat" fits to one beat: one wave
 # (a crest back where it was), the scanlines moving 6 rows, one flash, one new glitch/static pattern.
 # 1x matches how they moved before they had their own clocks.
-MOTION = {"wave": 6 / (2 * math.pi), "vortex": 0.5, "scanlines": 2.0, "flash": 2.5, "glitch": 10.0, "static": 10.0}
+MOTION = {"wave": 6 / (2 * math.pi), "vortex": 0.5, "scanlines": 2.0, "strobe": 8.0, "flash": 2.5, "glitch": 10.0,
+          "static": 10.0}
 FOLLOW = ["fixed", "signal", "tempo", "both"]
 LOCKS = [0, 1, 2, 4]  # beats per cycle when following the tempo; 0 = not locked (just faster/slower)
 MOTION_DEFAULTS = {   # also used for rows saved before speed settings existed
     "wave": {"follow": "tempo", "speed": 1.0, "lock": 2},  # 1 per beat is frantic at 160 BPM; this is the old speed at 120
     "vortex": {"follow": "tempo", "speed": 1.0, "lock": 2},  # in on one beat, out on the next
     "scanlines": {"follow": "tempo", "speed": 1.0, "lock": 1},
+    "strobe": {"follow": "signal", "speed": 1.0, "lock": 0},
     "flash": {"follow": "tempo", "speed": 1.0, "lock": 1},
     "glitch": {"follow": "signal", "speed": 1.0, "lock": 0},
     "static": {"follow": "signal", "speed": 1.0, "lock": 0},
@@ -396,6 +541,8 @@ class Reactive:
         self.hold = hold
         self.cross = cross
         self.fx = {k: Effect(k, 0.0, None, 0.5, self.rng) for k in REACT_ORDER}
+        for e in self.fx.values():
+            e.reacting = True
         self.level = dict.fromkeys(MOTION, 0.0)
         self.last = None
         self.on = {k: False for k in SWITCHED | TRIGGERED}  # triggered: whether its signal was past half last frame
@@ -408,6 +555,8 @@ class Reactive:
         self.on = {k: False for k in SWITCHED | TRIGGERED}
         self.running = {k: False for k in TRIGGERED}
         self.held = None
+        for e in self.fx.values():
+            e.idle()
 
     def advance(self, now, plan, reading):
         """Move each moving effect's clock on to `now` at its current rate."""
@@ -456,6 +605,7 @@ class Reactive:
                 if not on:
                     continue
             elif s < 0.08:
+                self.fx[kind].idle()
                 continue
             e = self.fx[kind]
             e.strength = min(1.0, s)

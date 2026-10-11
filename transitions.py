@@ -79,6 +79,14 @@ def _drip(w, h, rnd):
     return _norm([delays[x] + (y / h) * 0.4 for y in range(h) for x in range(w)])
 
 
+def _typewriter(w, h, rnd, cw=6, ch=8):
+    """Character cells (6 x 8) in reading order, each popping in whole; the reveal's bright edge lights the next
+    cell, which reads as the cursor."""
+    cols = -(-w // cw)
+    rows = -(-h // ch)
+    return _norm([(y // ch) * cols + (x // cw) + 0.001 * (x % cw) for y in range(h) for x in range(w)])
+
+
 def _noise_wipe(w, h, rnd):
     jitter = [rnd.uniform(-0.12, 0.12) for _ in range(h)]
     return _norm([x / w + jitter[y] for y in range(h) for x in range(w)])
@@ -106,6 +114,7 @@ REVEALS = {
     "tiles": (_tiles, False),
     "drip": (_drip, False),
     "spiral": (_spiral, False),
+    "typewriter": (_typewriter, True),
 }
 
 
@@ -473,6 +482,143 @@ def _vortex(t, old, new, p):
     return out
 
 
+def _page_curl(t, old, new, p):
+    """The old picture peels away from the bottom-right corner: a fold runs up to the top-left, and behind it the
+    back of the page shows (the old picture mirrored across the fold, as a pale strip with a dark crease)."""
+    if p >= 1:
+        return new.copy()
+    w, h = old.w, old.h
+    n = w * h
+    cx, cy, rs, ths, ws = _polar(w, h)
+    k = t.state.get("curl")
+    if k is None:  # each dot's distance along the diagonal (0 top-left .. 1 bottom-right) and its mirror partner
+        far = w + 2 * h
+        pos = [(x + 2 * y) / far for y in range(h) for x in range(w)]
+        t.state["curl"] = k = (far, pos)
+    far, pos = k
+    strip = 0.12
+    front = 1 + strip - p * (1 + 2 * strip)  # the fold moves from past the corner to past the top-left
+    op, np_ = old.px, new.px
+    out = bytearray(np_)
+    i = 0
+    for y in range(h):
+        for x in range(w):
+            d = pos[i]
+            if d < front - strip:
+                out[i] = op[i]
+            elif d < front:  # the back of the page: mirrored across the fold, pale with the old picture dark on it
+                off = (front - d) * far  # distance from the fold, in dots along the diagonal
+                mx, my = x + int(off * 0.2 * 2 + 0.5), y + int(off * 0.4 * 2 + 0.5)  # across to the other side
+                v = op[my * w + mx] if 0 <= mx < w and 0 <= my < h else 0
+                out[i] = 0 if (front - d) * far < 1.5 else 1 - v
+            i += 1
+    c = Canvas(w, h)
+    c.px = out
+    return c
+
+
+def _shatter(t, old, new, p):
+    """The old picture breaks into 7 x 7 tiles that drop away one after another, spinning as they fall, and the
+    new picture is there behind them."""
+    if p >= 1:
+        return new.copy()
+    w, h = old.w, old.h
+    size = 7
+    cols, rows = -(-w // size), -(-h // size)
+    tiles = t.state.get("tiles")
+    if tiles is None:  # (start, drift, spin) per tile: the top ones let go first, with some scatter
+        tiles = t.state["tiles"] = [(0.55 * ty / max(1, rows - 1) * t.rnd.uniform(0.6, 1.0) + t.rnd.random() * 0.25,
+                                     t.rnd.uniform(-8, 8), t.rnd.uniform(-2.5, 2.5) * (1 if t.rnd.random() < 0.5 else -1))
+                                    for ty in range(rows) for tx in range(cols)]
+    out = Canvas(w, h)
+    out.px = bytearray(new.px)
+    op, px = old.px, out.px
+    for ti, (start, drift, spin) in enumerate(tiles):
+        tx, ty = (ti % cols) * size, (ti // cols) * size
+        q = p - start
+        if q <= 0:  # still in place
+            for y in range(ty, min(h, ty + size)):
+                px[y * w + tx:y * w + min(w, tx + size)] = op[y * w + tx:y * w + min(w, tx + size)]
+            continue
+        fall = 160 * q * q
+        oy = ty + fall
+        if oy >= h:
+            continue
+        ox = tx + drift * q
+        a = spin * q
+        ca, sa = math.cos(a), math.sin(a)
+        mid = (size - 1) / 2
+        for yy in range(size):  # the tile, turned about its middle, pasted opaque (black dots and all)
+            for xx in range(size):
+                dx, dy = xx - mid, yy - mid
+                sx, sy = int(mid + dx * ca + dy * sa + 0.5), int(mid - dx * sa + dy * ca + 0.5)
+                if not (0 <= sx < size and 0 <= sy < size) or tx + sx >= w or ty + sy >= h:
+                    continue
+                x, y = int(ox + xx + 0.5), int(oy + yy + 0.5)
+                if 0 <= x < w and 0 <= y < h:
+                    px[y * w + x] = op[(ty + sy) * w + tx + sx]
+    return out
+
+
+def _ripple_out(t, old, new, p):
+    """A ring spreads from the middle: the old picture is bent into a wave along it, like water, and inside the
+    ring the new picture is what the water settles to."""
+    if p >= 1:
+        return new.copy()
+    if p <= 0:
+        return old.copy()
+    w, h = old.w, old.h
+    cx, cy, rs, ths, ws = _polar(w, h)
+    far = math.hypot(cx, cy)
+    band = 9.0
+    R = p * (far + 2 * band) - band  # the wave starts off the middle and runs past the corners
+    amp = 3.0 * (1 - p * 0.5)
+    op, px = old.px, bytearray(new.px)
+    n = w * h
+    cos, sin = math.cos, math.sin
+    for i in range(n):
+        r = rs[i]
+        if r < R - band * 0.4:
+            continue  # the new picture, inside the ring
+        if r > R + band:
+            px[i] = op[i]
+            continue
+        d = (r - R) / band  # -0.4 .. 1 across the wave
+        rr = r + amp * sin(d * math.pi * 2) * (1 - max(0.0, d) ** 2)
+        a = ths[i]
+        sx, sy = int(cx + rr * cos(a) + 0.5), int(cy + rr * sin(a) + 0.5)
+        src = op if d > 0.25 else new.px  # the inner slope already shows the new picture, bent too
+        px[i] = src[sy * w + sx] if 0 <= sx < w and 0 <= sy < h else 0
+    c = Canvas(w, h)
+    c.px = px
+    return c
+
+
+def _wave_morph(t, old, new, p):
+    """The shape tween of morph, but swept across from the left like a wave: each column morphs in turn, so the
+    change travels over the picture instead of happening everywhere at once."""
+    if p >= 1:
+        return new.copy()
+    w, h = old.w, old.h
+    a, b = _cached_df(old), _cached_df(new)
+    band = 0.45
+    out = Canvas(w, h)
+    px = out.px
+    op, np_ = old.px, new.px
+    for x in range(w):
+        q = (p * (1 + band) - x / w) / band
+        if q <= 0:
+            px[x::w] = op[x::w]
+        elif q >= 1:
+            px[x::w] = np_[x::w]
+        else:
+            q = smoothstep(q)
+            for y in range(h):
+                i = y * w + x
+                px[i] = 1 if (1 - q) * a[i] + q * b[i] > 0 else 0
+    return out
+
+
 def _split_flap(t, old, new, p, cw=6, ch=8):
     """A wall of split-flap tiles (6 x 8 dots, a character cell of the 5 x 7 font): along each row the tiles turn
     one after another, each showing a stray flap first, then the top half of its new picture, then all of it.
@@ -513,18 +659,27 @@ MOVES = {
     "push-up": _slide("up", True), "push-down": _slide("down", True),
     "zoom-in": _zoom(True), "zoom-out": _zoom(False), "flip": _flip, "melt": _melt,
     "pixelate": _pixelate, "flash": _flash, "glitch": _glitch, "ghost": _ghost,
-    "swirl": _flow(1.0), "zoom-through": _flow(0.0), "vortex": _vortex, "morph": _morph, "migrate": _migrate(False), "scatter": _migrate(True), "life": _life,
+    "swirl": _flow(1.0), "zoom-through": _flow(0.0), "vortex": _vortex, "morph": _morph, "wave-morph": _wave_morph,
+    "page-curl": _page_curl, "shatter": _shatter, "ripple-out": _ripple_out, "migrate": _migrate(False), "scatter": _migrate(True), "life": _life,
 }
 
 ALIASES = {"wipe": "wipe-right", "slide": "push-up"}
-NAMES = ["none"] + list(REVEALS) + list(MOVES) + ["random"]
+MOODS = {  # a mood picks one of its transitions each time, wherever a transition is chosen
+    "calm": ["dissolve", "fade", "wipe-right", "wipe-left", "wipe-down", "wipe-up", "iris-open", "iris-close",
+             "blinds", "blinds-vertical", "split-horizontal", "split-vertical"],
+    "lively": ["vortex", "scatter", "glitch", "shatter", "swirl", "zoom-through", "ripple-out", "page-curl",
+               "flash", "melt"],
+}
+NAMES = ["none"] + list(REVEALS) + list(MOVES) + list(MOODS) + ["random"]
 
 
 class Transition:
     def __init__(self, kind, old, w, h, duration=1.0):
         kind = ALIASES.get(kind, kind)
         if kind == "random":
-            kind = random.choice([n for n in NAMES if n not in ("none", "random")])
+            kind = random.choice([n for n in NAMES if n not in ("none", "random") and n not in MOODS])
+        if kind in MOODS:
+            kind = random.choice(MOODS[kind])
         if kind not in REVEALS and kind not in MOVES:
             raise ValueError(f"unknown transition {kind!r}")
         self.kind, self.old, self.w, self.h = kind, old, w, h

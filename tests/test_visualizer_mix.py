@@ -195,6 +195,28 @@ def test_every_style_moves_in_silence():
         audio_signal.inject(None)
 
 
+def test_scope_and_vu_render_with_the_needle_swinging():
+    audio_signal.inject(_music, clock=lambda: 0)
+    try:
+        assert "scope" in STYLE_IDS and "vu" in STYLE_IDS
+        for params in ({"style": "scope"}, {"style": "vu"}, {"style": "vu", "layout": "mirror"}):
+            app = create(_Ctx(), {"app": "visualizer", "params": params})
+            pics = set()
+            for i in range(3 * FPS):
+                c = Canvas(84, 42)
+                app.render(c, 1000 + i / FPS)
+                pics.add(bytes(c.px))
+                assert 30 < sum(c.px) < 84 * 42 // 2, params
+            assert len(pics) > 20, params
+        app = create(_Ctx(), {"app": "visualizer", "params": {"style": "vu", "layout": "mirror"}})
+        app.render(Canvas(84, 42), 1000)
+        assert set(app.style.needle) == {"bass", "high"}
+        st = app.style.needle["bass"]
+        assert st["peak"] >= st["v"] >= 0
+    finally:
+        audio_signal.inject(None)
+
+
 def test_bass_disc_inverts_what_is_under_it():
     from apps.visualizer import Style
     c = Canvas(84, 42)

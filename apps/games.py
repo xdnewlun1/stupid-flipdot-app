@@ -15,16 +15,18 @@ import functools
 import random
 import time
 
+from canvas import Canvas
 from fonts import NORMAL, SMALL
 
 from . import scores
-from .base import App, P, register
+from .base import REGISTRY, App, P, register
 
 DEMO_AFTER = 8     # idle seconds on a title screen before the classic games play a demo
 DEMO_LENGTH = 60   # a demo goes back to the title after this long at most
 DEMO = P("demo", "checkbox", True, "Play a demo when nobody is playing")
 ENTRY_TIMEOUT = 40  # seconds without a button before initials entry gives up (the score stays, unnamed)
 TABLE_S = 8         # seconds the top 5 shows after initials
+BADGE_S = 3.0       # seconds each achievement card shows after a game
 
 
 def tag(c, x, y, s):
@@ -42,6 +44,8 @@ def _render_hook(fn):
     def render(self, c, now):
         if self.scoreboard is not None:
             return self.scoreboard.render(c, now)
+        if self.badges:
+            return self.draw_badges(c, now)
         out = fn(self, c, now)
         if self._ended:
             self._ended = False
@@ -57,6 +61,10 @@ def _input_hook(fn):
         if self.scoreboard is not None:
             if action == "down":
                 self.scoreboard.press(key)
+            return None
+        if self.badges:
+            if action == "down":
+                self.badges = []  # any button skips the cards
             return None
         return fn(self, key, action, player)
     input._score_hook = True
@@ -100,6 +108,8 @@ class Game(App):
         self._eids = {}  # score key -> this game's entry in the table
         self._last = None  # (key, value, lower) filed during this game
         self._hi = {}
+        self.badges = []  # [(id, title)] achievement cards still to show, with when the first went up
+        self._badge_at = None
 
     @property
     def state(self):
@@ -151,11 +161,45 @@ class Game(App):
 
     def game_ended(self, now):
         entry = self.score_entry()
+        had = bool(scores.table(self.ctx.store, entry[0])) if entry else False
         rank = self.file_score(*entry) if entry else None
         eid = self._eids.get(entry[0]) if entry else None
         self._eids, self._last = {}, None
+        if entry:
+            try:
+                self.badges += scores.award(self.ctx.store, entry[0], rank, had, now)
+            except Exception:
+                pass
         if rank is not None and eid:
             self.scoreboard = Scoreboard(self, entry[0], eid, entry[1], rank, now)
+
+    def draw_badges(self, c, now):
+        """The achievement cards, one after another; any button skips them."""
+        if self._badge_at is None:
+            self._badge_at = now
+        i = int((now - self._badge_at) / BADGE_S)
+        if i >= len(self.badges):
+            self.badges, self._badge_at = [], None
+            return self.render(c, now)
+        aid, title = self.badges[i]
+        on = int((now - self._badge_at) / BADGE_S * 8) % 8 < 7  # a quick blink as each card lands
+        c.rect(1, 1, c.w - 2, c.h - 2)
+        c.rect(3, 3, c.w - 6, c.h - 6)
+        if on:
+            c.text_center(7, "ACHIEVEMENT", SMALL)
+            c.text_center(16, title, NORMAL)
+            how = next((h for a, _, h in scores.ACHIEVEMENTS if a == aid), "")
+            words, line, lines = how.split(), "", []
+            for w in words:
+                if SMALL.width((line + " " + w).strip()) > c.w - 10:
+                    lines.append(line)
+                    line = w
+                else:
+                    line = (line + " " + w).strip()
+            lines.append(line)
+            for k, ln in enumerate(lines[:2]):
+                c.text_center(27 + k * 7, ln, SMALL)
+
 
     def scoreboard_done(self, now):
         """Back to the title once the top 5 has shown."""
@@ -265,6 +309,11 @@ class Scoreboard:
     def save(self):
         scores.name(self.game.ctx.store, self.key, self.eid, "".join(self.letters))
         self.game._hi.pop(self.key, None)
+        if "".join(self.letters).strip():
+            try:
+                self.game.badges += scores.award_named(self.game.ctx.store, self.key)
+            except Exception:
+                pass
         self.show_table()
 
     def show_table(self):
@@ -747,3 +796,93 @@ class Pong(Attract, Game):
                 self.state = "title"
             return
         super().render(c, now)
+
+
+# ---- Game of the day ----------------------------------------------------------------------------------------
+
+FEATURED_POOL = [g for ids in scores.GROUPS.values() for g in ids]  # the scored single-player games
+
+
+def featured_game(day=None):
+    """Today's featured game id: the same all day, a different one tomorrow."""
+    import datetime as dt
+    day = day or dt.date.today()
+    pool = [g for g in FEATURED_POOL if g in REGISTRY]
+    return random.Random(day.toordinal() * 7919).choice(pool) if pool else None
+
+
+@register
+class GameOfTheDay(App):
+    id = "gameoftheday"
+    title = "Game of the day"
+    category = "Games"
+    interactive = True
+    interval = 0.05
+    description = ("A different game is featured each day: its name, the best score and a QR code to the phone "
+                   "controller, then the game itself with its demo until someone plays.")
+    params = [
+        P("card_seconds", "number", 10, "Show the card for (s)", min=3, max=120),
+        P("every", "number", 90, "Show the card again every (s)", min=20, max=3600),
+        P("url", "text", "", "Link in the QR code (empty = this board's /play page)"),
+    ]
+
+    def __init__(self, ctx, **params):
+        super().__init__(ctx, **params)
+        self.gid = featured_game()
+        self.game = REGISTRY[self.gid](ctx) if self.gid else None
+        self.card_until = None
+        self.card_at = None
+        self.qr = None
+
+    def _card(self):
+        if self.qr is not None:
+            return self.qr
+        import guestwall
+        import qr
+        from .wifiqr import fit_qr
+        c = Canvas(self.w, self.h)
+        url = str(self.p["url"] or "").strip() or guestwall.default_url().replace("/guest", "/play")
+        try:
+            code, quiet, inverted = fit_qr(url, self.h - 2)
+            side = code.size + 2 * quiet
+            qr.draw(c, code, self.w - side - 1, (self.h - side) // 2, quiet=quiet, invert=inverted)
+            right = self.w - side - 3
+        except ValueError:
+            right = self.w
+        c.text(1, 1, "GAME OF THE DAY", SMALL)
+        name = (self.game.title if self.game else "").upper()
+        c.text(1, 9, name if NORMAL.width(name) <= right - 2 else name[:12], NORMAL)
+        hi = scores.best(self.ctx.store, self.gid) if self.gid else None
+        c.text(1, 20, (f"HI {scores.short(hi['score'])} {hi['name'].strip()}".strip() if hi else "NO SCORE YET"), SMALL)
+        c.text(1, 28, "SCAN TO PLAY", SMALL)
+        self.qr = c
+        return c
+
+    def input(self, key, action="down", player=1):
+        if self.game is None:
+            return
+        self.card_until = 0  # a button goes straight to the game
+        self.game.input(key, action, player)
+
+    def render(self, c, now):
+        if self.game is None:
+            c.text_center(17, "NO GAMES", NORMAL)
+            return
+        if self.card_until is None or (now >= self.card_at + float(self.p["every"]) and self.game.state == "title"
+                                       and not getattr(self.game, "demo", False)):
+            self.card_at = now
+            self.card_until = now + float(self.p["card_seconds"])
+            self.qr = None
+        if now < self.card_until:
+            c.px[:] = self._card().px
+            self.interval = 0.5
+            return
+        self.interval = self.game.interval
+        return self.game.render(c, now)
+
+    def stop(self):
+        if self.game is not None:
+            self.game.stop()
+
+    def describe(self):
+        return f"Game of the day: {self.game.describe() if self.game else 'none'}"

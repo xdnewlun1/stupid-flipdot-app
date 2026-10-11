@@ -11,10 +11,12 @@ sparkle on the highs.
 
 import math
 import random
+import threading
+import time
 
 from canvas import Canvas
 
-from .base import App, P, register
+from .base import App, NeedsSetup, P, register
 from .react import quiet_now, reactive
 
 SPECIES = ["toadstool", "morel", "chanterelle", "inkcap", "enoki", "puffball", "bracket", "coral", "lionsmane",
@@ -550,8 +552,12 @@ class Mushrooms(App):
         P("ground", "select", "mycelium", "Ground", options=[["mycelium", "Grass and mycelium underneath"],
                                                               ["grass", "Grass"], ["none", "None"]]),
         P("spores", "checkbox", True, "Spores drift"),
+        P("weather", "select", "always", "Grow", options=[["always", "Always (the crowd above)"],
+                                                          ["rain", "With the rain outside: sparse when dry, a flush when it rains"]]),
+        P("location", "text", "", "Location (blank = Settings default)", show_if={"weather": "rain"}),
     ]
     interval = 0.1
+    WEATHER_REFRESH = 600
 
     def __init__(self, ctx, **params):
         super().__init__(ctx, **params)
@@ -567,11 +573,60 @@ class Mushrooms(App):
         self.soil = set()
         self.last_t = None
         self.pace = max(5.0, float(self.p["pace"] or 30))
+        self.wx = None  # with the rain outside: {"mm", "code"} from Open-Meteo, or None until fetched
+        self.wx_error = None
+        self._wx_at = 0.0
+        self._wx_busy = False
         t = 0.0
         for _ in range(int(self.p["crowd"])):  # a garden already in progress
             self.spawn(t)
             s = self.shrooms[-1]
             s.born = -self.rng.uniform(0, s.grow_s + s.hold_s)
+
+    # ---- the weather outside ------------------------------------------------------------------------------------
+
+    @classmethod
+    def needs_setup(cls, store, params):
+        if params.get("weather") == "rain" and not (params.get("location")
+                                                    or (store.settings.get("weather") or {}).get("lat") is not None):
+            return "a weather location (Settings, Location)"
+        return None
+
+    def fetch_weather(self):
+        from .widgets import fetch_weather
+        d = fetch_weather(self.ctx.store, self.p.get("location") or "")
+        cur = d.get("current") or {}
+        return {"mm": max(0.0, float(cur.get("precipitation") or 0)), "code": cur.get("weather_code")}
+
+    def _fetch_weather(self):
+        try:
+            self.wx, self.wx_error = self.fetch_weather(), None
+        except NeedsSetup as e:
+            self.wx_error = str(e)
+        except Exception as e:  # network errors, bad config: keep what we had
+            self.wx_error = str(e)
+        finally:
+            self._wx_busy = False
+
+    def poll_weather(self):
+        if self._wx_busy or time.time() - self._wx_at < self.WEATHER_REFRESH:
+            return
+        self._wx_busy, self._wx_at = True, time.time()
+        threading.Thread(target=self._fetch_weather, daemon=True).start()
+
+    def rain(self):
+        """0..1: how hard it's raining outside (0 when dry, or before the weather is known)."""
+        if self.wx is None:
+            return 0.0
+        from .pack_ambient import rain_rate
+        return rain_rate(self.wx["mm"], self.wx["code"], 1.0)
+
+    def crowd(self):
+        """Mushrooms at a time: the setting, or with the rain outside 40% of it when dry up to 150% in a downpour."""
+        n = int(self.p["crowd"])
+        if self.p.get("weather") != "rain":
+            return n
+        return max(1, int(round(n * (0.4 + 1.1 * self.rain()))))
 
     # ---- the garden ---------------------------------------------------------------------------------------------
 
@@ -727,7 +782,9 @@ class Mushrooms(App):
                 alive.append(sh)
                 self.emit(sh, t, m)
         self.shrooms = alive
-        crowd = int(self.p["crowd"])
+        if self.p.get("weather") == "rain":
+            self.poll_weather()
+        crowd = self.crowd()
         if len(self.shrooms) < crowd and t >= self.next_spawn:
             self.spawn(t)
             self.next_spawn = t + self.rng.uniform(0.2, 0.3) * self.pace / max(1, crowd) * (0.5 if m.on else 1.0)

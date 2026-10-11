@@ -57,6 +57,7 @@ function render() {
   $("ssGifLoops").value = st.gif_loops;
   $("ssGifMin").value = st.gif_min_seconds;
   $("ssGifSpeed").value = String(st.gif_speed || 1);
+  $("ssGifMode").value = st.gif_mode || "repeat";
   $("ssTransition").value = st.transition;
   $("ssTransDur").value = st.transition_duration;
   $("ssShuffle").checked = !!st.shuffle;
@@ -105,6 +106,15 @@ function itemCard(item, i) {
     speed.value = item.speed ? String(item.speed) : "";
     speed.onchange = () => { item.speed = speed.value === "" ? null : Number(speed.value); saveItems(); };
   }
+  // GIFs: their own play mode, blank = the slideshow's
+  const MODES = { repeat: "Repeat", boomerang: "Boomerang", random: "Random" };
+  const mode = isGif ? el("select", { title: "How this GIF plays", "aria-label": `Play mode for ${item.name}` },
+    el("option", { value: "" }, `${MODES[gallery.settings.gif_mode] || "Repeat"} (default)`),
+    ...Object.entries(MODES).map(([v, l]) => el("option", { value: v }, l))) : null;
+  if (mode) {
+    mode.value = item.play || "";
+    mode.onchange = () => { item.play = mode.value || null; saveItems(); };
+  }
   const move = d => () => {
     const j = i + d;
     if (j < 0 || j >= gallery.items.length) return;
@@ -116,7 +126,7 @@ function itemCard(item, i) {
     c,
     el("div", { class: "name", title: item.name }, (isGif ? `GIF · ${item.frames} frames · ` : "") + item.name),
     el("div", { class: "ctl" },
-      input, el("span", { class: "muted" }, isGif ? "plays" : "s"), speed,
+      input, el("span", { class: "muted" }, isGif ? "plays" : "s"), speed, mode,
       el("button", { title: "Show this picture now", "aria-label": `Show ${item.name} now`, class: "playNow", onclick: safe(async () => {
         await api(`/api/galleries/${current}/play`, { file: item.file });
         toast(`Showing ${item.name}`);
@@ -320,6 +330,7 @@ $("ssImageSecs").onchange = safe(() => saveSettings({ image_seconds: Math.max(1,
 $("ssGifLoops").onchange = safe(() => saveSettings({ gif_loops: Math.max(1, num("ssGifLoops") || 1) }));
 $("ssGifMin").onchange = safe(() => saveSettings({ gif_min_seconds: Math.max(0, num("ssGifMin") || 0) }));
 $("ssGifSpeed").onchange = safe(() => saveSettings({ gif_speed: Number($("ssGifSpeed").value) || 1 }));
+$("ssGifMode").onchange = safe(() => saveSettings({ gif_mode: $("ssGifMode").value }));
 $("ssTransition").onchange = safe(() => saveSettings({ transition: $("ssTransition").value }));
 $("ssTransDur").onchange = safe(() => saveSettings({ transition_duration: Math.max(0.1, num("ssTransDur") || 1) }));
 $("ssShuffle").onchange = safe(() => saveSettings({ shuffle: $("ssShuffle").checked }));
@@ -331,7 +342,8 @@ $("ssInvert").onchange = safe(() => saveSettings({ invert: $("ssInvert").checked
 
 // ---- random effects ----
 const FX = [["invert", "Invert"], ["sweep", "Invert sweep"], ["flash", "Flash"], ["glitch", "Glitch"], ["mirror", "Mirror"],
-  ["kaleidoscope", "Kaleidoscope"], ["wave", "Wave"], ["vortex", "Vortex"], ["scanlines", "Scanlines"], ["pixelate", "Pixelate"], ["outline", "Outline"],
+  ["kaleidoscope", "Kaleidoscope"], ["wave", "Wave"], ["vortex", "Vortex"], ["pulse", "Pulse zoom"], ["ripple", "Ripple"],
+  ["shake", "Shake"], ["echo", "Echo trail"], ["scanlines", "Scanlines"], ["strobe", "Strobe scanlines"], ["pixelate", "Pixelate"], ["outline", "Outline"],
   ["static", "Static"], ["life", "Game of Life"], ["melt", "Melt"]];
 const pct = v => (+v ? `${v}%` : "Off");
 

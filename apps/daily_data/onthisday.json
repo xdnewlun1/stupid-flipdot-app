@@ -1,0 +1,2321 @@
+{
+"source": "Short notes on well-known dates, written for this app.",
+"events": [
+[
+1,
+1,
+1983,
+"ARPANET switches to TCP/IP, the protocols the internet still runs on."
+],
+[
+1,
+2,
+1959,
+"Luna 1 is launched, the first spacecraft to reach the Moon's neighbourhood."
+],
+[
+1,
+3,
+1977,
+"Apple Computer is incorporated."
+],
+[
+1,
+4,
+1958,
+"Sputnik 1 falls back to Earth and burns up after three months in orbit."
+],
+[
+1,
+5,
+1914,
+"Henry Ford announces the five-dollar, eight-hour working day."
+],
+[
+1,
+6,
+1912,
+"New Mexico becomes the 47th state of the United States."
+],
+[
+1,
+7,
+1610,
+"Galileo observes the four largest moons of Jupiter."
+],
+[
+1,
+8,
+1935,
+"Elvis Presley is born in Tupelo, Mississippi."
+],
+[
+1,
+9,
+2007,
+"Steve Jobs unveils the first iPhone."
+],
+[
+1,
+10,
+1863,
+"The London Underground, the world's first underground railway, opens."
+],
+[
+1,
+11,
+1922,
+"Insulin is used to treat diabetes in a person for the first time, in Toronto."
+],
+[
+1,
+12,
+1908,
+"A long-distance radio message is sent from the Eiffel Tower for the first time."
+],
+[
+1,
+13,
+1968,
+"Johnny Cash records his live album at Folsom Prison."
+],
+[
+1,
+14,
+2005,
+"The Huygens probe lands on Titan, Saturn's largest moon."
+],
+[
+1,
+15,
+2001,
+"Wikipedia goes online."
+],
+[
+1,
+16,
+1920,
+"Prohibition begins in the United States."
+],
+[
+1,
+17,
+1706,
+"Benjamin Franklin is born in Boston."
+],
+[
+1,
+18,
+1911,
+"Eugene Ely lands an aeroplane on a ship's deck for the first time."
+],
+[
+1,
+19,
+1915,
+"Georges Claude patents the neon lighting tube."
+],
+[
+1,
+20,
+1961,
+"John F. Kennedy is inaugurated: \"Ask not what your country can do for you.\""
+],
+[
+1,
+21,
+1954,
+"USS Nautilus, the first nuclear submarine, is launched."
+],
+[
+1,
+22,
+1984,
+"Apple's \"1984\" commercial airs during the Super Bowl."
+],
+[
+1,
+23,
+1960,
+"The bathyscaphe Trieste reaches the bottom of the Mariana Trench."
+],
+[
+1,
+24,
+1848,
+"Gold is found at Sutter's Mill, starting the California Gold Rush."
+],
+[
+1,
+25,
+1924,
+"The first Winter Olympic Games open in Chamonix."
+],
+[
+1,
+26,
+1788,
+"The First Fleet lands at Sydney Cove."
+],
+[
+1,
+27,
+1967,
+"The Outer Space Treaty is signed in Washington, London and Moscow."
+],
+[
+1,
+28,
+1986,
+"The Space Shuttle Challenger breaks apart 73 seconds after launch."
+],
+[
+1,
+29,
+1886,
+"Karl Benz patents the first petrol-powered automobile."
+],
+[
+1,
+30,
+1969,
+"The Beatles play their last concert, on the roof of Apple Corps in London."
+],
+[
+1,
+31,
+1958,
+"Explorer 1, the first American satellite, is launched."
+],
+[
+2,
+1,
+1884,
+"The first volume of the Oxford English Dictionary is published."
+],
+[
+2,
+2,
+1887,
+"The first Groundhog Day is observed in Punxsutawney, Pennsylvania."
+],
+[
+2,
+3,
+1966,
+"Luna 9 makes the first soft landing on the Moon."
+],
+[
+2,
+4,
+2004,
+"Facebook is launched from a Harvard dorm room."
+],
+[
+2,
+5,
+1971,
+"Apollo 14 lands on the Moon."
+],
+[
+2,
+6,
+1952,
+"Elizabeth II becomes queen on the death of George VI."
+],
+[
+2,
+7,
+1964,
+"The Beatles arrive in the United States for the first time."
+],
+[
+2,
+8,
+1828,
+"Jules Verne is born in Nantes."
+],
+[
+2,
+9,
+1895,
+"William G. Morgan invents volleyball in Holyoke, Massachusetts."
+],
+[
+2,
+10,
+1996,
+"Deep Blue beats Garry Kasparov in a game of chess for the first time."
+],
+[
+2,
+11,
+1990,
+"Nelson Mandela is released after 27 years in prison."
+],
+[
+2,
+12,
+1809,
+"Charles Darwin and Abraham Lincoln are born on the same day."
+],
+[
+2,
+13,
+1633,
+"Galileo arrives in Rome for his trial before the Inquisition."
+],
+[
+2,
+14,
+1876,
+"Alexander Graham Bell applies for a patent on the telephone."
+],
+[
+2,
+15,
+1564,
+"Galileo Galilei is born in Pisa."
+],
+[
+2,
+16,
+1923,
+"Howard Carter opens the burial chamber of Tutankhamun."
+],
+[
+2,
+17,
+1959,
+"Vanguard 2, the first weather satellite, is launched."
+],
+[
+2,
+18,
+1930,
+"Clyde Tombaugh discovers Pluto."
+],
+[
+2,
+19,
+1473,
+"Nicolaus Copernicus is born in Torun."
+],
+[
+2,
+20,
+1962,
+"John Glenn becomes the first American to orbit the Earth."
+],
+[
+2,
+21,
+1947,
+"Edwin Land demonstrates the Polaroid instant camera."
+],
+[
+2,
+22,
+1732,
+"George Washington is born in Virginia."
+],
+[
+2,
+23,
+1455,
+"The Gutenberg Bible is published, by tradition."
+],
+[
+2,
+24,
+1582,
+"Pope Gregory XIII announces the Gregorian calendar."
+],
+[
+2,
+25,
+1836,
+"Samuel Colt patents the revolver."
+],
+[
+2,
+26,
+1935,
+"Robert Watson-Watt demonstrates that radio waves can detect an aircraft."
+],
+[
+2,
+27,
+1932,
+"James Chadwick announces the discovery of the neutron."
+],
+[
+2,
+28,
+1953,
+"Watson and Crick announce they have worked out the structure of DNA."
+],
+[
+2,
+29,
+1940,
+"Hattie McDaniel becomes the first African American to win an Oscar."
+],
+[
+3,
+1,
+1872,
+"Yellowstone becomes the world's first national park."
+],
+[
+3,
+2,
+1969,
+"Concorde makes its first flight, from Toulouse."
+],
+[
+3,
+3,
+1847,
+"Alexander Graham Bell is born in Edinburgh."
+],
+[
+3,
+4,
+1789,
+"The United States Constitution comes into effect."
+],
+[
+3,
+5,
+1946,
+"Churchill gives his \"Iron Curtain\" speech in Fulton, Missouri."
+],
+[
+3,
+6,
+1475,
+"Michelangelo is born in Caprese."
+],
+[
+3,
+7,
+1876,
+"Alexander Graham Bell is granted the patent for the telephone."
+],
+[
+3,
+8,
+1817,
+"The New York Stock Exchange is founded."
+],
+[
+3,
+9,
+1959,
+"The Barbie doll makes its debut at the American International Toy Fair."
+],
+[
+3,
+10,
+1876,
+"Bell makes the first telephone call: \"Mr Watson, come here, I want to see you.\""
+],
+[
+3,
+11,
+1985,
+"Mikhail Gorbachev becomes leader of the Soviet Union."
+],
+[
+3,
+12,
+1989,
+"Tim Berners-Lee submits his proposal for what becomes the World Wide Web."
+],
+[
+3,
+13,
+1781,
+"William Herschel discovers Uranus."
+],
+[
+3,
+14,
+1879,
+"Albert Einstein is born in Ulm. It is also Pi Day."
+],
+[
+3,
+15,
+"44 BC",
+"Julius Caesar is assassinated on the Ides of March."
+],
+[
+3,
+16,
+1926,
+"Robert Goddard launches the first liquid-fuelled rocket."
+],
+[
+3,
+17,
+461,
+"Saint Patrick dies, by tradition; the day became his feast."
+],
+[
+3,
+18,
+1965,
+"Alexei Leonov makes the first spacewalk."
+],
+[
+3,
+19,
+1931,
+"Nevada legalises gambling."
+],
+[
+3,
+20,
+1916,
+"Einstein's general theory of relativity is published."
+],
+[
+3,
+21,
+2006,
+"The first tweet is posted: \"just setting up my twttr\"."
+],
+[
+3,
+22,
+1895,
+"The Lumiere brothers show a motion picture to an audience for the first time."
+],
+[
+3,
+23,
+2001,
+"The Mir space station re-enters and breaks up over the Pacific."
+],
+[
+3,
+24,
+1882,
+"Robert Koch announces the discovery of the bacterium that causes tuberculosis."
+],
+[
+3,
+25,
+1655,
+"Christiaan Huygens discovers Titan."
+],
+[
+3,
+26,
+1953,
+"Jonas Salk announces his polio vaccine."
+],
+[
+3,
+27,
+1899,
+"Marconi sends the first radio message across the English Channel."
+],
+[
+3,
+28,
+1930,
+"Constantinople and Angora are renamed Istanbul and Ankara."
+],
+[
+3,
+29,
+1974,
+"Mariner 10 becomes the first spacecraft to fly past Mercury."
+],
+[
+3,
+30,
+1858,
+"Hymen Lipman patents the pencil with an eraser on the end."
+],
+[
+3,
+31,
+1889,
+"The Eiffel Tower is inaugurated."
+],
+[
+4,
+1,
+1976,
+"Apple Computer is founded by Steve Jobs, Steve Wozniak and Ronald Wayne."
+],
+[
+4,
+2,
+1800,
+"Beethoven's First Symphony is premiered in Vienna."
+],
+[
+4,
+3,
+1973,
+"Martin Cooper makes the first call from a handheld mobile phone."
+],
+[
+4,
+4,
+1975,
+"Microsoft is founded by Bill Gates and Paul Allen."
+],
+[
+4,
+5,
+1722,
+"Jacob Roggeveen sights Easter Island, on Easter Sunday."
+],
+[
+4,
+6,
+1896,
+"The first modern Olympic Games open in Athens."
+],
+[
+4,
+7,
+1948,
+"The World Health Organization is founded."
+],
+[
+4,
+8,
+1820,
+"The Venus de Milo is discovered on the island of Milos."
+],
+[
+4,
+9,
+1860,
+"The earliest known recording of a human voice is made, in Paris."
+],
+[
+4,
+10,
+1912,
+"The Titanic sets sail from Southampton."
+],
+[
+4,
+11,
+1970,
+"Apollo 13 is launched."
+],
+[
+4,
+12,
+1961,
+"Yuri Gagarin becomes the first human in space."
+],
+[
+4,
+13,
+1970,
+"An oxygen tank explodes aboard Apollo 13: \"Houston, we've had a problem.\""
+],
+[
+4,
+14,
+2003,
+"The Human Genome Project is declared complete."
+],
+[
+4,
+15,
+1452,
+"Leonardo da Vinci is born in Vinci."
+],
+[
+4,
+16,
+1867,
+"Wilbur Wright is born in Indiana."
+],
+[
+4,
+17,
+1970,
+"Apollo 13 returns safely to Earth."
+],
+[
+4,
+18,
+1924,
+"The first crossword puzzle book is published by Simon and Schuster."
+],
+[
+4,
+19,
+1971,
+"Salyut 1, the first space station, is launched."
+],
+[
+4,
+20,
+1902,
+"Marie and Pierre Curie isolate radium chloride."
+],
+[
+4,
+21,
+"753 BC",
+"Rome is founded, by tradition."
+],
+[
+4,
+22,
+1970,
+"The first Earth Day is held."
+],
+[
+4,
+23,
+1616,
+"William Shakespeare dies; the 23rd is also his traditional birthday."
+],
+[
+4,
+24,
+1990,
+"The Hubble Space Telescope is launched."
+],
+[
+4,
+25,
+1953,
+"Watson and Crick's paper on the structure of DNA is published in Nature."
+],
+[
+4,
+26,
+1954,
+"Field trials of the Salk polio vaccine begin."
+],
+[
+4,
+27,
+"4977 BC",
+"The universe is created, according to a calculation by Johannes Kepler."
+],
+[
+4,
+28,
+1947,
+"Thor Heyerdahl sets sail across the Pacific on the raft Kon-Tiki."
+],
+[
+4,
+29,
+1852,
+"The first edition of Roget's Thesaurus is published."
+],
+[
+4,
+30,
+1993,
+"CERN puts the World Wide Web software into the public domain."
+],
+[
+5,
+1,
+1931,
+"The Empire State Building opens."
+],
+[
+5,
+2,
+1952,
+"The first commercial jet airliner service begins, with the de Havilland Comet."
+],
+[
+5,
+3,
+1978,
+"The first spam email is sent, to ARPANET users."
+],
+[
+5,
+4,
+1979,
+"Margaret Thatcher becomes prime minister. May the Fourth is also Star Wars Day."
+],
+[
+5,
+5,
+1961,
+"Alan Shepard becomes the first American in space."
+],
+[
+5,
+6,
+1954,
+"Roger Bannister runs the first sub-four-minute mile."
+],
+[
+5,
+7,
+1824,
+"Beethoven's Ninth Symphony is premiered in Vienna."
+],
+[
+5,
+8,
+1886,
+"Coca-Cola is sold for the first time, at a pharmacy in Atlanta."
+],
+[
+5,
+9,
+1960,
+"The first birth-control pill is approved in the United States."
+],
+[
+5,
+10,
+1869,
+"The first transcontinental railroad is completed at Promontory Summit, Utah."
+],
+[
+5,
+11,
+1997,
+"Deep Blue beats Garry Kasparov in a full chess match."
+],
+[
+5,
+12,
+1820,
+"Florence Nightingale is born in Florence."
+],
+[
+5,
+13,
+1940,
+"Churchill tells Parliament he has nothing to offer but blood, toil, tears and sweat."
+],
+[
+5,
+14,
+1796,
+"Edward Jenner gives the first smallpox vaccination."
+],
+[
+5,
+15,
+1940,
+"The first McDonald's opens in San Bernardino, California."
+],
+[
+5,
+16,
+1929,
+"The first Academy Awards are presented."
+],
+[
+5,
+17,
+1902,
+"The Antikythera mechanism is noticed among finds from an ancient shipwreck."
+],
+[
+5,
+18,
+1980,
+"Mount St. Helens erupts."
+],
+[
+5,
+19,
+1910,
+"Earth passes through the tail of Halley's Comet."
+],
+[
+5,
+20,
+1927,
+"Charles Lindbergh takes off on the first solo flight across the Atlantic."
+],
+[
+5,
+21,
+1932,
+"Amelia Earhart completes the first solo transatlantic flight by a woman."
+],
+[
+5,
+22,
+1980,
+"Pac-Man is released in Japan."
+],
+[
+5,
+23,
+1785,
+"Benjamin Franklin describes his bifocal spectacles in a letter."
+],
+[
+5,
+24,
+1844,
+"Samuel Morse sends \"What hath God wrought\" over the first telegraph line."
+],
+[
+5,
+25,
+1977,
+"Star Wars is released."
+],
+[
+5,
+26,
+1897,
+"Bram Stoker's Dracula is published."
+],
+[
+5,
+27,
+1937,
+"The Golden Gate Bridge opens."
+],
+[
+5,
+28,
+1936,
+"Alan Turing submits \"On Computable Numbers\", the basis of modern computing."
+],
+[
+5,
+29,
+1953,
+"Edmund Hillary and Tenzing Norgay reach the summit of Everest."
+],
+[
+5,
+30,
+1911,
+"The first Indianapolis 500 is run."
+],
+[
+5,
+31,
+1859,
+"The clock of Big Ben starts keeping time."
+],
+[
+6,
+1,
+1980,
+"CNN, the first 24-hour news channel, begins broadcasting."
+],
+[
+6,
+2,
+1953,
+"Elizabeth II is crowned in Westminster Abbey."
+],
+[
+6,
+3,
+1965,
+"Ed White makes the first American spacewalk."
+],
+[
+6,
+4,
+1896,
+"Henry Ford test-drives his first car, the Quadricycle."
+],
+[
+6,
+5,
+1977,
+"The Apple II goes on sale."
+],
+[
+6,
+6,
+1944,
+"D-Day: Allied forces land on the beaches of Normandy."
+],
+[
+6,
+7,
+1975,
+"Sony introduces the Betamax video recorder."
+],
+[
+6,
+8,
+1949,
+"George Orwell's Nineteen Eighty-Four is published."
+],
+[
+6,
+9,
+1934,
+"Donald Duck makes his first appearance."
+],
+[
+6,
+10,
+1829,
+"The first Oxford and Cambridge Boat Race is rowed."
+],
+[
+6,
+11,
+1910,
+"Jacques Cousteau is born."
+],
+[
+6,
+12,
+1817,
+"Karl Drais rides the first bicycle, in Mannheim."
+],
+[
+6,
+13,
+1983,
+"Pioneer 10 becomes the first spacecraft to pass the orbit of Neptune."
+],
+[
+6,
+14,
+1777,
+"The Stars and Stripes is adopted as the flag of the United States."
+],
+[
+6,
+15,
+1215,
+"Magna Carta is sealed at Runnymede."
+],
+[
+6,
+16,
+1963,
+"Valentina Tereshkova becomes the first woman in space."
+],
+[
+6,
+17,
+1885,
+"The Statue of Liberty arrives in New York Harbor, in crates."
+],
+[
+6,
+18,
+1983,
+"Sally Ride becomes the first American woman in space."
+],
+[
+6,
+19,
+1865,
+"Juneteenth: enslaved people in Texas are told they are free."
+],
+[
+6,
+20,
+1840,
+"Samuel Morse is granted a patent for the telegraph."
+],
+[
+6,
+21,
+2004,
+"SpaceShipOne makes the first privately funded crewed spaceflight."
+],
+[
+6,
+22,
+1633,
+"Galileo is forced to recant his view that the Earth moves round the Sun."
+],
+[
+6,
+23,
+1912,
+"Alan Turing is born in London."
+],
+[
+6,
+24,
+1947,
+"Kenneth Arnold's sighting over Washington state gives us the phrase \"flying saucer\"."
+],
+[
+6,
+25,
+1978,
+"The rainbow flag is flown for the first time, at San Francisco Pride."
+],
+[
+6,
+26,
+1974,
+"A pack of chewing gum becomes the first product scanned with a barcode."
+],
+[
+6,
+27,
+1954,
+"The world's first nuclear power station begins generating, at Obninsk."
+],
+[
+6,
+28,
+1846,
+"Adolphe Sax patents the saxophone."
+],
+[
+6,
+29,
+2007,
+"The first iPhone goes on sale."
+],
+[
+6,
+30,
+1908,
+"The Tunguska event flattens 2,000 square kilometres of Siberian forest."
+],
+[
+7,
+1,
+1979,
+"Sony releases the Walkman."
+],
+[
+7,
+2,
+1937,
+"Amelia Earhart disappears over the Pacific."
+],
+[
+7,
+3,
+1886,
+"Karl Benz drives the first automobile in public, in Mannheim."
+],
+[
+7,
+4,
+1776,
+"The Declaration of Independence is adopted."
+],
+[
+7,
+5,
+1996,
+"Dolly the sheep, the first mammal cloned from an adult cell, is born."
+],
+[
+7,
+6,
+1885,
+"Louis Pasteur gives the first rabies vaccination."
+],
+[
+7,
+7,
+1928,
+"Sliced bread is sold for the first time, in Chillicothe, Missouri."
+],
+[
+7,
+8,
+1947,
+"Roswell Army Air Field announces it has recovered a \"flying disc\"."
+],
+[
+7,
+9,
+1877,
+"The first Wimbledon championship begins."
+],
+[
+7,
+10,
+1856,
+"Nikola Tesla is born."
+],
+[
+7,
+11,
+1979,
+"Skylab falls back to Earth over the Indian Ocean and Australia."
+],
+[
+7,
+12,
+1962,
+"The Rolling Stones play their first gig, at the Marquee Club in London."
+],
+[
+7,
+13,
+1985,
+"Live Aid concerts are held in London and Philadelphia."
+],
+[
+7,
+14,
+1789,
+"The Bastille is stormed in Paris."
+],
+[
+7,
+15,
+1799,
+"The Rosetta Stone is found in Egypt."
+],
+[
+7,
+16,
+1969,
+"Apollo 11 lifts off for the Moon."
+],
+[
+7,
+17,
+1955,
+"Disneyland opens in Anaheim."
+],
+[
+7,
+18,
+1968,
+"Intel is founded."
+],
+[
+7,
+19,
+1900,
+"The Paris Metro opens."
+],
+[
+7,
+20,
+1969,
+"Neil Armstrong and Buzz Aldrin walk on the Moon."
+],
+[
+7,
+21,
+1983,
+"The lowest temperature ever recorded on Earth, -89.2 C, at Vostok Station, Antarctica."
+],
+[
+7,
+22,
+1933,
+"Wiley Post completes the first solo flight around the world."
+],
+[
+7,
+23,
+1829,
+"William Burt patents the typographer, an early typewriter."
+],
+[
+7,
+24,
+1911,
+"Hiram Bingham reaches Machu Picchu."
+],
+[
+7,
+25,
+1978,
+"Louise Brown, the first baby conceived by IVF, is born."
+],
+[
+7,
+26,
+1908,
+"The agency that becomes the FBI is founded."
+],
+[
+7,
+27,
+1940,
+"Bugs Bunny makes his debut in \"A Wild Hare\"."
+],
+[
+7,
+28,
+1866,
+"The metric system is made legal for use in the United States."
+],
+[
+7,
+29,
+1958,
+"NASA is created."
+],
+[
+7,
+30,
+1930,
+"Uruguay wins the first FIFA World Cup."
+],
+[
+7,
+31,
+1790,
+"The first United States patent is granted, for a way of making potash."
+],
+[
+8,
+1,
+1981,
+"MTV begins broadcasting with \"Video Killed the Radio Star\"."
+],
+[
+8,
+2,
+1870,
+"The Tower Subway, the world's first tube railway, opens in London."
+],
+[
+8,
+3,
+1492,
+"Columbus sets sail from Palos de la Frontera."
+],
+[
+8,
+4,
+1693,
+"Dom Perignon invents champagne, by legend."
+],
+[
+8,
+5,
+1858,
+"The first transatlantic telegraph cable is completed."
+],
+[
+8,
+6,
+1991,
+"Tim Berners-Lee posts the first public description of the World Wide Web."
+],
+[
+8,
+7,
+1909,
+"Alice Ramsey completes the first drive across the United States by a woman."
+],
+[
+8,
+8,
+1876,
+"Thomas Edison patents the mimeograph."
+],
+[
+8,
+9,
+1930,
+"Betty Boop makes her first appearance."
+],
+[
+8,
+10,
+1990,
+"The Magellan spacecraft arrives at Venus."
+],
+[
+8,
+11,
+1942,
+"Hedy Lamarr and George Antheil are granted a patent for frequency hopping."
+],
+[
+8,
+12,
+1981,
+"IBM releases its Personal Computer."
+],
+[
+8,
+13,
+1913,
+"Harry Brearley casts the first stainless steel, in Sheffield."
+],
+[
+8,
+14,
+1893,
+"France issues the world's first driving licences."
+],
+[
+8,
+15,
+1969,
+"The Woodstock festival begins."
+],
+[
+8,
+16,
+1960,
+"Joseph Kittinger parachutes from a balloon 31 kilometres up."
+],
+[
+8,
+17,
+1978,
+"Double Eagle II completes the first transatlantic balloon crossing."
+],
+[
+8,
+18,
+1868,
+"Pierre Janssen discovers helium in the spectrum of the Sun."
+],
+[
+8,
+19,
+1839,
+"The daguerreotype process is announced to the public in Paris."
+],
+[
+8,
+20,
+1977,
+"Voyager 2 is launched."
+],
+[
+8,
+21,
+1911,
+"The Mona Lisa is stolen from the Louvre."
+],
+[
+8,
+22,
+1864,
+"The first Geneva Convention is signed."
+],
+[
+8,
+23,
+1991,
+"The World Wide Web is opened to new users."
+],
+[
+8,
+24,
+79,
+"Mount Vesuvius erupts and buries Pompeii, by the traditional date."
+],
+[
+8,
+25,
+1609,
+"Galileo demonstrates his telescope to the lawmakers of Venice."
+],
+[
+8,
+26,
+1883,
+"Krakatoa erupts."
+],
+[
+8,
+27,
+1783,
+"The first hydrogen balloon is launched, in Paris."
+],
+[
+8,
+28,
+1963,
+"Martin Luther King Jr. delivers his \"I Have a Dream\" speech."
+],
+[
+8,
+29,
+1831,
+"Michael Faraday discovers electromagnetic induction."
+],
+[
+8,
+30,
+1979,
+"A comet is seen colliding with the Sun for the first time."
+],
+[
+8,
+31,
+1897,
+"Thomas Edison patents the Kinetoscope, an early movie viewer."
+],
+[
+9,
+1,
+1902,
+"A Trip to the Moon, by Georges Melies, is released."
+],
+[
+9,
+2,
+1666,
+"The Great Fire of London begins in a bakery on Pudding Lane."
+],
+[
+9,
+3,
+1976,
+"Viking 2 lands on Mars."
+],
+[
+9,
+4,
+1998,
+"Google is founded."
+],
+[
+9,
+5,
+1977,
+"Voyager 1 is launched."
+],
+[
+9,
+6,
+1522,
+"Elcano's ship Victoria completes the first voyage around the world."
+],
+[
+9,
+7,
+1927,
+"Philo Farnsworth transmits the first electronic television image."
+],
+[
+9,
+8,
+1966,
+"Star Trek premieres on NBC."
+],
+[
+9,
+9,
+1947,
+"A moth is found in a relay of the Harvard Mark II: the first computer \"bug\"."
+],
+[
+9,
+10,
+2008,
+"The Large Hadron Collider is switched on."
+],
+[
+9,
+11,
+1997,
+"Mars Global Surveyor enters orbit around Mars."
+],
+[
+9,
+12,
+1940,
+"The Lascaux cave paintings are discovered by four teenagers."
+],
+[
+9,
+13,
+1985,
+"Super Mario Bros. is released in Japan."
+],
+[
+9,
+14,
+1752,
+"Britain adopts the Gregorian calendar, skipping eleven days."
+],
+[
+9,
+15,
+1835,
+"HMS Beagle reaches the Galapagos Islands with Darwin aboard."
+],
+[
+9,
+16,
+1620,
+"The Mayflower sets sail from Plymouth."
+],
+[
+9,
+17,
+1787,
+"The United States Constitution is signed."
+],
+[
+9,
+18,
+1851,
+"The New York Times publishes its first issue."
+],
+[
+9,
+19,
+1982,
+"Scott Fahlman proposes :-) as the first emoticon."
+],
+[
+9,
+20,
+1519,
+"Magellan's fleet sets sail from Spain."
+],
+[
+9,
+21,
+1937,
+"The Hobbit is published."
+],
+[
+9,
+22,
+1792,
+"The French Republic is proclaimed."
+],
+[
+9,
+23,
+1846,
+"Neptune is discovered, right where Le Verrier predicted it."
+],
+[
+9,
+24,
+1960,
+"USS Enterprise, the first nuclear-powered aircraft carrier, is launched."
+],
+[
+9,
+25,
+1956,
+"The first transatlantic telephone cable goes into service."
+],
+[
+9,
+26,
+1983,
+"Stanislav Petrov judges a missile warning to be a false alarm, and is right."
+],
+[
+9,
+27,
+1825,
+"The Stockton and Darlington Railway opens."
+],
+[
+9,
+28,
+1928,
+"Alexander Fleming discovers penicillin."
+],
+[
+9,
+29,
+1954,
+"CERN is founded."
+],
+[
+9,
+30,
+1882,
+"The first hydroelectric power plant begins operating, in Appleton, Wisconsin."
+],
+[
+10,
+1,
+1908,
+"The Ford Model T goes on sale."
+],
+[
+10,
+2,
+1925,
+"John Logie Baird transmits the first television picture with shades of grey."
+],
+[
+10,
+3,
+1990,
+"Germany is reunified."
+],
+[
+10,
+4,
+1957,
+"Sputnik 1 is launched."
+],
+[
+10,
+5,
+1962,
+"The Beatles release their first single, \"Love Me Do\"."
+],
+[
+10,
+6,
+1927,
+"The Jazz Singer, the first feature film with synchronised dialogue, premieres."
+],
+[
+10,
+7,
+1959,
+"Luna 3 photographs the far side of the Moon."
+],
+[
+10,
+8,
+1945,
+"Percy Spencer files the patent for the microwave oven."
+],
+[
+10,
+9,
+1604,
+"Kepler's Supernova is first observed."
+],
+[
+10,
+10,
+1846,
+"William Lassell discovers Triton, Neptune's largest moon."
+],
+[
+10,
+11,
+1968,
+"Apollo 7, the first crewed Apollo mission, is launched."
+],
+[
+10,
+12,
+1492,
+"Columbus reaches the Americas."
+],
+[
+10,
+13,
+1884,
+"Greenwich is adopted as the prime meridian."
+],
+[
+10,
+14,
+1947,
+"Chuck Yeager breaks the sound barrier."
+],
+[
+10,
+15,
+1997,
+"Cassini-Huygens is launched towards Saturn."
+],
+[
+10,
+16,
+1846,
+"Ether is publicly demonstrated as an anaesthetic in Boston."
+],
+[
+10,
+17,
+1956,
+"Calder Hall, the first commercial-scale nuclear power station, opens."
+],
+[
+10,
+18,
+1867,
+"The United States takes possession of Alaska."
+],
+[
+10,
+19,
+1943,
+"Streptomycin, the first antibiotic to cure tuberculosis, is isolated."
+],
+[
+10,
+20,
+1973,
+"The Sydney Opera House opens."
+],
+[
+10,
+21,
+1879,
+"Edison tests his first successful incandescent lamp."
+],
+[
+10,
+22,
+1797,
+"Andre-Jacques Garnerin makes the first parachute jump, from a balloon over Paris."
+],
+[
+10,
+23,
+2001,
+"Apple introduces the iPod."
+],
+[
+10,
+24,
+1861,
+"The first transcontinental telegraph line is completed."
+],
+[
+10,
+25,
+1881,
+"Pablo Picasso is born in Malaga."
+],
+[
+10,
+26,
+1863,
+"The Football Association is founded in London."
+],
+[
+10,
+27,
+1904,
+"The New York City Subway opens."
+],
+[
+10,
+28,
+1886,
+"The Statue of Liberty is dedicated."
+],
+[
+10,
+29,
+1969,
+"The first message is sent over ARPANET: \"LO\", before the system crashed."
+],
+[
+10,
+30,
+1938,
+"Orson Welles broadcasts The War of the Worlds."
+],
+[
+10,
+31,
+1517,
+"Martin Luther posts his Ninety-five Theses, by tradition."
+],
+[
+11,
+1,
+1512,
+"The ceiling of the Sistine Chapel is shown to the public."
+],
+[
+11,
+2,
+1936,
+"The BBC begins the world's first regular television service."
+],
+[
+11,
+3,
+1957,
+"Laika becomes the first animal to orbit the Earth."
+],
+[
+11,
+4,
+1922,
+"Howard Carter finds the steps leading to Tutankhamun's tomb."
+],
+[
+11,
+5,
+1605,
+"The Gunpowder Plot is foiled."
+],
+[
+11,
+6,
+1935,
+"Edwin Armstrong presents FM radio to the Institute of Radio Engineers."
+],
+[
+11,
+7,
+1867,
+"Marie Curie is born in Warsaw."
+],
+[
+11,
+8,
+1895,
+"Wilhelm Rontgen discovers X-rays."
+],
+[
+11,
+9,
+1989,
+"The Berlin Wall falls."
+],
+[
+11,
+10,
+1969,
+"Sesame Street premieres."
+],
+[
+11,
+11,
+1918,
+"The Armistice ends the fighting of the First World War."
+],
+[
+11,
+12,
+1980,
+"Voyager 1 flies past Saturn."
+],
+[
+11,
+13,
+1971,
+"Mariner 9 becomes the first spacecraft to orbit another planet."
+],
+[
+11,
+14,
+1969,
+"Apollo 12 is launched, and is struck by lightning on the way up."
+],
+[
+11,
+15,
+1971,
+"Intel releases the 4004, the first commercial microprocessor."
+],
+[
+11,
+16,
+1945,
+"UNESCO is founded."
+],
+[
+11,
+17,
+1869,
+"The Suez Canal opens."
+],
+[
+11,
+18,
+1928,
+"Mickey Mouse makes his debut in Steamboat Willie."
+],
+[
+11,
+19,
+1863,
+"Lincoln delivers the Gettysburg Address."
+],
+[
+11,
+20,
+1998,
+"Zarya, the first module of the International Space Station, is launched."
+],
+[
+11,
+21,
+1783,
+"The first untethered human flight, in a Montgolfier balloon over Paris."
+],
+[
+11,
+22,
+1995,
+"Toy Story, the first fully computer-animated feature film, is released."
+],
+[
+11,
+23,
+1963,
+"Doctor Who is first broadcast."
+],
+[
+11,
+24,
+1859,
+"On the Origin of Species is published."
+],
+[
+11,
+25,
+1915,
+"Einstein presents the field equations of general relativity."
+],
+[
+11,
+26,
+1922,
+"Howard Carter first looks into Tutankhamun's tomb and sees \"wonderful things\"."
+],
+[
+11,
+27,
+1895,
+"Alfred Nobel signs the will that creates the Nobel Prizes."
+],
+[
+11,
+28,
+1520,
+"Magellan reaches the Pacific Ocean."
+],
+[
+11,
+29,
+1972,
+"Atari releases Pong."
+],
+[
+11,
+30,
+1835,
+"Mark Twain is born in Missouri."
+],
+[
+12,
+1,
+1990,
+"The two halves of the Channel Tunnel meet under the sea."
+],
+[
+12,
+2,
+1942,
+"The first self-sustaining nuclear chain reaction, under a Chicago football stand."
+],
+[
+12,
+3,
+1967,
+"Christiaan Barnard performs the first human heart transplant."
+],
+[
+12,
+4,
+1872,
+"The Mary Celeste is found adrift and deserted."
+],
+[
+12,
+5,
+1901,
+"Walt Disney is born in Chicago."
+],
+[
+12,
+6,
+1877,
+"Edison records \"Mary had a little lamb\" on his phonograph."
+],
+[
+12,
+7,
+1972,
+"Apollo 17 is launched; its crew takes the \"Blue Marble\" photograph of Earth."
+],
+[
+12,
+8,
+1660,
+"Margaret Hughes becomes the first woman to act professionally on the English stage."
+],
+[
+12,
+9,
+1968,
+"Douglas Engelbart gives \"the mother of all demos\": the mouse, windows and hypertext."
+],
+[
+12,
+10,
+1901,
+"The first Nobel Prizes are awarded."
+],
+[
+12,
+11,
+1946,
+"UNICEF is founded."
+],
+[
+12,
+12,
+1901,
+"Marconi receives the first transatlantic radio signal."
+],
+[
+12,
+13,
+1642,
+"Abel Tasman sights New Zealand."
+],
+[
+12,
+14,
+1911,
+"Roald Amundsen reaches the South Pole."
+],
+[
+12,
+15,
+1791,
+"The United States Bill of Rights is ratified."
+],
+[
+12,
+16,
+1773,
+"The Boston Tea Party."
+],
+[
+12,
+17,
+1903,
+"The Wright brothers make the first powered flight, at Kitty Hawk."
+],
+[
+12,
+18,
+1958,
+"SCORE, the first communications satellite, is launched."
+],
+[
+12,
+19,
+1972,
+"Apollo 17 splashes down: the last people to walk on the Moon come home."
+],
+[
+12,
+20,
+1951,
+"Electricity is generated from nuclear power for the first time, in Idaho."
+],
+[
+12,
+21,
+1913,
+"The first crossword puzzle is published, in the New York World."
+],
+[
+12,
+22,
+1882,
+"Edward Johnson lights the first electric Christmas tree."
+],
+[
+12,
+23,
+1947,
+"The transistor is demonstrated at Bell Labs."
+],
+[
+12,
+24,
+1968,
+"Apollo 8 orbits the Moon and takes the Earthrise photograph."
+],
+[
+12,
+25,
+1642,
+"Isaac Newton is born, by the calendar of the day."
+],
+[
+12,
+26,
+1898,
+"Marie and Pierre Curie announce the discovery of radium."
+],
+[
+12,
+27,
+1831,
+"Darwin sets sail on HMS Beagle."
+],
+[
+12,
+28,
+1895,
+"The Lumiere brothers hold the first public film screening, in Paris."
+],
+[
+12,
+29,
+1845,
+"Texas becomes the 28th state of the United States."
+],
+[
+12,
+30,
+1924,
+"Edwin Hubble announces that there are galaxies beyond the Milky Way."
+],
+[
+12,
+31,
+1879,
+"Edison gives the first public demonstration of his incandescent lamp."
+],
+[
+1,
+3,
+1496,
+"Leonardo da Vinci tests a flying machine, without success."
+],
+[
+1,
+27,
+1926,
+"John Logie Baird gives the first public demonstration of television."
+],
+[
+2,
+4,
+1789,
+"George Washington is elected the first President of the United States."
+],
+[
+2,
+12,
+1924,
+"Rhapsody in Blue is premiered in New York."
+],
+[
+3,
+2,
+1933,
+"King Kong premieres in New York."
+],
+[
+3,
+16,
+1521,
+"Magellan reaches the Philippines."
+],
+[
+4,
+3,
+1948,
+"The Marshall Plan is signed."
+],
+[
+4,
+12,
+1981,
+"The first Space Shuttle, Columbia, is launched."
+],
+[
+5,
+20,
+1873,
+"Levi Strauss and Jacob Davis patent riveted blue jeans."
+],
+[
+6,
+26,
+1963,
+"Kennedy declares \"Ich bin ein Berliner\"."
+],
+[
+7,
+1,
+1858,
+"Darwin and Wallace's papers on natural selection are read to the Linnean Society."
+],
+[
+7,
+15,
+2006,
+"Twitter launches to the public."
+],
+[
+8,
+4,
+1914,
+"Britain declares war on Germany."
+],
+[
+8,
+12,
+1960,
+"Echo 1, the first communications satellite balloon, is launched."
+],
+[
+9,
+4,
+1888,
+"George Eastman patents the Kodak roll-film camera."
+],
+[
+10,
+1,
+1971,
+"Walt Disney World opens in Florida."
+],
+[
+10,
+4,
+1883,
+"The Orient Express makes its first journey."
+],
+[
+11,
+9,
+1967,
+"The first issue of Rolling Stone is published."
+],
+[
+11,
+19,
+1969,
+"Apollo 12 lands on the Moon."
+],
+[
+12,
+17,
+1989,
+"The Simpsons airs its first full episode."
+]
+]
+}

@@ -45,6 +45,12 @@
   .status { min-height: 24px; margin: var(--s3) 0 0; font-size: 15px; }
   .status.ok { color: var(--ok); }
   .status.error { color: var(--danger); }
+  .doodle { display: flex; gap: var(--s3); align-items: flex-start; margin: 0 0 var(--s4); }
+  #pad { width: 168px; height: 168px; flex: none; background: #050506; border: 1px solid var(--field-line); border-radius: var(--r2);
+         touch-action: none; cursor: crosshair; }
+  .doodle .side { display: flex; flex-direction: column; gap: var(--s2); font-size: 13px; color: var(--text-3); }
+  .doodle .side button { width: auto; min-height: 40px; padding: 0 var(--s3); background: var(--surface-2); color: var(--text);
+                         border: 1px solid var(--field-line); font-weight: 500; }
   .hp { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
 </style>
 </head>
@@ -56,8 +62,17 @@
     <label for="name">Your name (optional)</label>
     <input id="name" name="name" type="text" maxlength="24" autocomplete="given-name">
     <label for="message">Message</label>
-    <textarea id="message" name="message" maxlength="140" required></textarea>
+    <textarea id="message" name="message" maxlength="140"></textarea>
     <div class="count" id="count">0 / 140</div>
+    <label for="pad">Doodle (optional)</label>
+    <div class="doodle">
+      <canvas id="pad" width="168" height="168" aria-label="Doodle: draw with your finger, 21 by 21 dots"></canvas>
+      <div class="side">
+        <span>Draw with your finger. It shows next to your name on the board.</span>
+        <button type="button" id="erase" aria-pressed="false">Eraser</button>
+        <button type="button" id="clear">Clear</button>
+      </div>
+    </div>
     <div class="hp" aria-hidden="true"><label for="website">Leave this empty</label><input id="website" name="website" tabindex="-1" autocomplete="off"></div>
     <button id="send" type="submit">Send</button>
     <div class="status" id="status" role="status" aria-live="polite"></div>
@@ -69,21 +84,44 @@
   const show = (text, ok) => { status.textContent = text; status.className = "status " + (ok ? "ok" : "error"); };
   const count = () => { $("count").textContent = `${msg.value.length} / 140`; };
   msg.addEventListener("input", count);
+  // the doodle: 21 x 21 dots, drawn like the board shows them
+  const N = 21, pad = $("pad"), pctx = pad.getContext("2d"), dots = new Uint8Array(N * N);
+  let erase = false, drawing = false;
+  const paint = () => {
+    const c = pad.width / N;
+    pctx.fillStyle = "#050506"; pctx.fillRect(0, 0, pad.width, pad.height);
+    for (let i = 0; i < N * N; i++) {
+      pctx.fillStyle = dots[i] ? "#f4f4f0" : "#1c1d20";
+      pctx.beginPath(); pctx.arc((i % N + 0.5) * c, (Math.floor(i / N) + 0.5) * c, c * 0.42, 0, 2 * Math.PI); pctx.fill();
+    }
+  };
+  const at = e => {
+    const r = pad.getBoundingClientRect();
+    const x = Math.floor((e.clientX - r.left) / r.width * N), y = Math.floor((e.clientY - r.top) / r.height * N);
+    if (x >= 0 && y >= 0 && x < N && y < N) { dots[y * N + x] = erase ? 0 : 1; paint(); }
+  };
+  pad.addEventListener("pointerdown", e => { drawing = true; try { pad.setPointerCapture(e.pointerId); } catch {} at(e); });
+  pad.addEventListener("pointermove", e => { if (drawing) at(e); });
+  pad.addEventListener("pointerup", () => { drawing = false; });
+  $("erase").onclick = () => { erase = !erase; $("erase").setAttribute("aria-pressed", String(erase)); $("erase").textContent = erase ? "Pen" : "Eraser"; };
+  $("clear").onclick = () => { dots.fill(0); paint(); };
+  paint();
+  const doodle = () => dots.some(Boolean) ? Array.from({ length: N }, (_, y) => Array.from(dots.slice(y * N, y * N + N)).join("")) : null;
   const q = new URLSearchParams(location.search);
   if (q.has("sent")) show("Thanks! Your message is on its way to the board.", true);
   else if (q.get("error")) show(q.get("error"), false);
   $("f").addEventListener("submit", async e => {
     e.preventDefault();
-    if (!msg.value.trim()) return show("Write a message first.", false);
+    if (!msg.value.trim() && !doodle()) return show("Write a message or draw something first.", false);
     $("send").disabled = true;
     try {
       const r = await fetch("/api/guest/submit", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: $("name").value, message: msg.value, website: $("website").value }),
+        body: JSON.stringify({ name: $("name").value, message: msg.value, doodle: doodle(), website: $("website").value }),
       });
       const j = await r.json().catch(() => ({ error: `Something went wrong (${r.status}).` }));
       if (!r.ok) throw new Error(j.error || `Something went wrong (${r.status}).`);
-      msg.value = ""; count();
+      msg.value = ""; count(); dots.fill(0); paint();
       show(j.status === "approved" ? "Thanks! Your message will show on the board shortly." : "Thanks! Your message will show once it's approved.", true);
     } catch (err) {
       show(err.message === "Failed to fetch" ? "Couldn't reach the board. Check you're on the same Wi-Fi." : err.message, false);

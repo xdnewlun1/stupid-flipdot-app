@@ -1,0 +1,22 @@
+{
+  "animals": ["elephant", "giraffe", "penguin", "dolphin", "kangaroo", "octopus", "cheetah", "hamster", "leopard",
+              "squirrel", "tortoise", "hedgehog", "flamingo", "gorilla", "walrus", "ostrich", "raccoon", "panther",
+              "buffalo", "lobster", "peacock", "jaguar", "donkey", "rabbit", "monkey", "turtle", "parrot", "beaver",
+              "badger", "salmon", "spider", "falcon", "weasel", "iguana", "alpaca", "gazelle", "panda", "koala",
+              "zebra", "moose", "otter", "camel", "whale", "shark", "tiger", "eagle", "goose", "mouse", "snake"],
+  "food": ["spaghetti", "pancake", "sandwich", "pretzel", "lasagna", "burrito", "avocado", "broccoli", "mushroom",
+           "cucumber", "pineapple", "popcorn", "waffle", "noodle", "muffin", "pickle", "yogurt", "omelet", "pudding",
+           "sausage", "biscuit", "cabbage", "coconut", "custard", "lettuce", "oatmeal", "pumpkin", "chowder", "sorbet",
+           "cheese", "banana", "cookie", "carrot", "potato", "tomato", "butter", "cherry", "garlic", "pepper", "walnut",
+           "salmon", "turkey", "honey", "bread", "pizza", "lemon", "mango", "peach", "onion", "toast"],
+  "places": ["library", "airport", "stadium", "harbor", "volcano", "glacier", "canyon", "island", "castle", "museum",
+             "jungle", "desert", "meadow", "forest", "garden", "bakery", "office", "school", "temple", "prison",
+             "cinema", "hospital", "kitchen", "balcony", "station", "pharmacy", "orchard", "lagoon", "swamp", "bridge",
+             "tunnel", "market", "valley", "beach", "river", "hotel", "cabin", "attic", "farm", "tower"],
+  "things": ["umbrella", "backpack", "lantern", "compass", "scissors", "trumpet", "blanket", "necklace", "ladder",
+             "hammer", "pillow", "mirror", "candle", "bucket", "helmet", "kettle", "magnet", "pencil", "rocket",
+             "wallet", "window", "zipper", "camera", "guitar", "button", "basket", "bottle", "jacket", "anchor",
+             "sponge", "puzzle", "violin", "whistle", "telescope", "skateboard", "toothbrush", "keyboard",
+             "envelope", "stapler", "sandal", "crayon", "ribbon", "napkin", "carpet", "cannon", "teapot", "clock",
+             "spoon", "broom", "piano", "radio", "robot", "chain", "shovel"]
+}

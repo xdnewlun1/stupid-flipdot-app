@@ -114,6 +114,11 @@ class InitialsEntry(unittest.TestCase):
         self.assertIn("1", "".join(c.rows()))
         c, now = run(g, now + games.TABLE_S + 1, 2)
         self.assertIsNone(g.scoreboard)
+        # then the achievements this game earned, one card each; a button skips them (and starts nothing)
+        self.assertEqual([a for a, _ in g.badges], ["first", "named"])
+        g.input("a")
+        g.input("a", "up")
+        self.assertEqual(g.badges, [])
         self.assertEqual(g.state, "title")
         self.assertEqual(g.hi_text(), "HI 12 B9A")
         # the title alternates PRESS ANY BUTTON and the best score
@@ -422,3 +427,71 @@ class SlowPaint(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class Achievements(unittest.TestCase):
+    def test_awarded_once_and_listed(self):
+        st = Store()
+        eid, rank = scores.submit(st, "snake", 5)
+        self.assertEqual(scores.award(st, "snake", rank, False), [("first", "FIRST SCORE")])
+        self.assertEqual(scores.award(st, "snake", rank, False), [])  # never twice
+        eid, rank = scores.submit(st, "snake", 9)
+        self.assertEqual([a for a, _ in scores.award(st, "snake", rank, True)], ["best"])
+        got = {a["id"]: a for a in scores.achievements(st)}
+        self.assertEqual(got["first"]["key"], "snake")
+        self.assertIsNone(got["ten"]["at"])
+        for i in range(8):
+            scores.submit(st, "dino", i + 1)
+        self.assertIn("ten", [a for a, _ in scores.award(st, "dino", None, True)])
+        self.assertEqual(scores.played(st), {"snake": 2, "dino": 8})
+        self.assertEqual(len(scores.recent(st)), 10)
+        self.assertEqual(scores.recent(st)[0]["key"], "dino")
+
+    def test_group_badge_and_night_owl(self):
+        st = Store()
+        for g in scores.GROUPS["arcade"]:
+            scores.submit(st, g, 3)
+        night = dt.datetime(2026, 10, 11, 2, 30).timestamp()
+        got = [a for a, _ in scores.award(st, "lunar_lander", 0, False, now=night)]
+        self.assertIn("arcade", got)
+        self.assertIn("owl", got)
+        self.assertIn("bird", got)
+        self.assertNotIn("classics", got)
+
+    def test_a_game_shows_its_cards_then_carries_on(self):
+        st = Store()
+        g = make("snake", {}, st)
+        g.state, g.score = "playing", 3
+        g.state = "over"
+        c = Canvas(84, 42)
+        g.render(c, 100.0)
+        self.assertIsNotNone(g.scoreboard)
+        g.scoreboard_done(100.0)
+        self.assertEqual([a for a, _ in g.badges], ["first"])
+        c = Canvas(84, 42)
+        g.render(c, 100.0)
+        self.assertGreater(sum(c.px), 50)  # the card
+        g.render(Canvas(84, 42), 100.0 + games.BADGE_S + 0.1)
+        self.assertEqual(g.badges, [])
+
+
+class GameOfTheDay(unittest.TestCase):
+    def test_same_all_day_changes_over_days(self):
+        d = dt.date(2026, 10, 11)
+        self.assertEqual(games.featured_game(d), games.featured_game(d))
+        week = {games.featured_game(d + dt.timedelta(days=k)) for k in range(14)}
+        self.assertGreater(len(week), 4)
+        self.assertTrue(all(g in apps.REGISTRY for g in week))
+
+    def test_card_then_the_game(self):
+        st = Store()
+        st.settings = {}
+        a = make("gameoftheday", {"card_seconds": 5}, st)
+        c = Canvas(84, 42)
+        a.render(c, 100.0)
+        self.assertIn("GAME OF THE DAY", a.describe().upper())
+        self.assertGreater(sum(c.px), 200)  # the card with its QR code
+        a.render(Canvas(84, 42), 106.0)
+        self.assertEqual(a.game.id, games.featured_game())
+        a.input("a")  # a button starts the featured game
+        self.assertEqual(a.game.state, "playing")
