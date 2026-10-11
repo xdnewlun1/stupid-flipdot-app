@@ -2,3 +2,16 @@ __pycache__/
 *.pyc
 native/*/build/
 data/doom/*.wad
+
+# NES ROMs (bring your own; never committed)
+*.nes
+
+# this board's own settings (panel mapping, password): see README, config.local.yaml
+config.local.yaml
+*.local.yaml.before-restore
+*.local.yaml.tmp
+
+# your own plugins (see plugins/README.md); only the README and the example are committed
+plugins/*
+!plugins/README.md
+!plugins/example_hello.py

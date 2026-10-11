@@ -8,6 +8,7 @@
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22%3E%3Crect width=%2224%22 height=%2224%22 rx=%225%22 fill=%22%23111%22/%3E%3Cg fill=%22%23e9b949%22%3E%3Ccircle cx=%227.5%22 cy=%227.5%22 r=%222%22/%3E%3Ccircle cx=%2216.5%22 cy=%227.5%22 r=%222%22/%3E%3Ccircle cx=%2212%22 cy=%2212%22 r=%222%22/%3E%3Ccircle cx=%227.5%22 cy=%2216.5%22 r=%222%22/%3E%3C/g%3E%3C/svg%3E">
 <link rel="stylesheet" href="/static/style.css">
 <link rel="stylesheet" href="/static/videos.css">
+<link rel="stylesheet" href="/static/programme.css">
 </head>
 <body>
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
@@ -50,6 +51,7 @@
   <symbol id="i-zoomout" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.2-4.2M8 11h6"/></symbol>
   <symbol id="i-hand" viewBox="0 0 24 24"><path d="M12 3v18M3 12h18"/><path d="m9 6 3-3 3 3M9 18l3 3 3-3M6 9l-3 3 3 3M18 9l3 3-3 3"/></symbol>
   <symbol id="i-expand" viewBox="0 0 24 24"><path d="M14 4h6v6M10 20H4v-6M20 4l-7 7M4 20l7-7"/></symbol>
+  <symbol id="i-mirror" viewBox="0 0 24 24"><circle cx="12" cy="7" r="3"/><path d="M6 21v-3a6 6 0 0 1 12 0v3"/></symbol>
   <symbol id="i-phone" viewBox="0 0 24 24"><rect x="7" y="2.5" width="10" height="19" rx="2"/><path d="M11 18.5h2"/></symbol>
 </svg>
 <a class="skip" href="#content">Skip to content</a>
@@ -61,6 +63,7 @@
       <p class="navGroup">Create</p>
       <button data-tab="draw"><svg class="i" aria-hidden="true"><use href="#i-draw"/></svg>Draw</button>
       <button data-tab="import"><svg class="i" aria-hidden="true"><use href="#i-upload"/></svg>Import</button>
+      <button data-tab="mirror"><svg class="i" aria-hidden="true"><use href="#i-mirror"/></svg>Mirror</button>
       <p class="navGroup">Library</p>
       <button data-tab="pictures"><svg class="i" aria-hidden="true"><use href="#i-scenes"/></svg>Pictures</button>
       <button data-tab="apps"><svg class="i" aria-hidden="true"><use href="#i-apps"/></svg>Apps</button>
@@ -73,6 +76,7 @@
       <button data-tab="automations"><svg class="i" aria-hidden="true"><use href="#i-auto"/></svg>Automations</button>
       <span class="navRule" role="presentation"></span>
       <button data-tab="guests"><svg class="i" aria-hidden="true"><use href="#i-chat"/></svg>Guest wall <span class="count gwCount" hidden></span></button>
+      <button data-tab="friends"><svg class="i" aria-hidden="true"><use href="#i-chat"/></svg>Friend messages <span class="count fmCount" hidden></span></button>
       <button data-tab="settings"><svg class="i" aria-hidden="true"><use href="#i-settings"/></svg>Settings</button>
     </nav>
   </aside>
@@ -83,6 +87,7 @@
     <div class="stripText">
       <span class="statusWhat"></span>
       <span class="statusWhy"></span>
+      <span class="stripLink" hidden></span>
     </div>
     <div class="playback" data-controls="strip" role="group" aria-label="Playback"></div>
   </div>
@@ -91,6 +96,7 @@
     <h1 id="pageTitle">Now playing</h1>
     <p id="pageLede" class="lede"></p>
   </header>
+  <div id="linkWarn" class="statusWarn linkWarn" role="alert" hidden></div>
   <div id="statusWarn" class="statusWarn" role="status" hidden></div>
   <p id="statusLive" class="sr" role="status" aria-live="polite"></p>
 
@@ -138,6 +144,7 @@
         </div>
       </div>
     </div>
+    <div id="notifPanel" class="card notifPanel"></div>
     <div id="welcome" class="card welcome" hidden></div>
   </section>
 
@@ -343,6 +350,85 @@
     </div>
   </section>
 
+  <!-- ===================== MIRROR (static/js/mirror.js) ===================== -->
+  <section class="tab card" id="tab-mirror" hidden>
+    <p class="muted mrPrivacy">Camera pictures stay in this house: they go from the camera to the board's memory, are shrunk to 84 × 42 gray dots, and are never saved or sent anywhere else.</p>
+    <div class="importGrid">
+      <div class="imResult">
+        <div class="wrap"><canvas id="mrPreview" aria-label="What the mirror shows"></canvas></div>
+        <p class="muted" id="mrStatus" role="status">No camera yet.</p>
+        <div class="row">
+          <button class="primary" id="mrCam">Start camera</button>
+          <label class="muted" id="mrFacingRow">using <select id="mrFacing" aria-label="Which camera">
+            <option value="user">the front camera</option>
+            <option value="environment">the rear camera</option>
+          </select></label>
+        </div>
+        <div class="row">
+          <button id="mrShow"><svg class="i" aria-hidden="true"><use href="#i-play"/></svg>Show on board</button>
+          <button id="mrBg" title="Step out of view first">Capture empty room</button>
+        </div>
+      </div>
+      <div class="imSettings">
+        <h3>Camera <span class="savedNote" id="mrSaved" role="status"></span></h3>
+        <div class="form">
+          <label for="mrSource">Source</label>
+          <select id="mrSource">
+            <option value="browser">This page (phone or laptop)</option>
+            <option value="device">USB webcam on the board</option>
+            <option value="rpicam">Raspberry Pi camera module</option>
+            <option value="file">Video file (for testing)</option>
+            <option value="off">Off</option>
+          </select>
+          <label for="mrDevice" data-show="device">Device</label>
+          <select id="mrDevice" data-show="device"></select>
+          <label for="mrFile" data-show="file">File path</label>
+          <input type="text" id="mrFile" data-show="file" placeholder="/home/pi/walk.mp4">
+          <span></span><small class="muted" id="mrDetected"></small>
+          <label for="mrMethod">Finding you</label>
+          <select id="mrMethod">
+            <option value="background">Difference from the empty room</option>
+            <option value="adaptive">Darker than the surroundings</option>
+            <option value="edges">Edges</option>
+          </select>
+          <label for="mrSens">Sensitivity <span id="mrSensVal"></span></label>
+          <input type="range" id="mrSens" min="0" max="100" value="50">
+        </div>
+        <h3>Picture</h3>
+        <div class="form">
+          <label for="mrMode">Mode</label>
+          <select id="mrMode">
+            <option value="solid">Solid silhouette</option>
+            <option value="outline">Outline</option>
+            <option value="trails">Fading trails</option>
+            <option value="life">Game of Life from your shape</option>
+            <option value="pixel">Pixel mirror (dithered)</option>
+          </select>
+          <label for="mrTrail" data-show-mode="trails">Trail length (s)</label>
+          <input type="number" id="mrTrail" data-show-mode="trails" min="0.5" max="10" step="0.5">
+          <label for="mrSelfie">Mirrored</label>
+          <div class="row tight"><input type="checkbox" id="mrSelfie"><span class="muted">Left and right swapped, like a mirror.</span></div>
+          <label for="mrInvert">Negative</label>
+          <div class="row tight"><input type="checkbox" id="mrInvert"><span class="muted">Dark silhouette on lit dots.</span></div>
+        </div>
+        <h3>Take over when someone walks up</h3>
+        <div class="form">
+          <label for="mrTakeover">Take over</label>
+          <div class="row tight"><input type="checkbox" id="mrTakeover"><span class="muted">Show the mirror while someone is in front of the camera, then go back to what was on.</span></div>
+          <label for="mrArm">After (s)</label>
+          <input type="number" id="mrArm" min="0.2" max="30" step="0.5">
+          <label for="mrRelease">Back after nobody for (s)</label>
+          <input type="number" id="mrRelease" min="3" max="3600" step="1">
+          <label for="mrPresence">Counts as someone (% of picture)</label>
+          <input type="number" id="mrPresence" min="0.5" max="50" step="0.5">
+          <label for="mrNight">During quiet hours</label>
+          <div class="row tight"><input type="checkbox" id="mrNight"><span class="muted">Also take over at night.</span></div>
+          <span></span><small class="muted" id="mrTakeoverNote">Needs a camera that stays on: the board's own camera, or a phone left on this page. "Someone walks up" also works as an automation trigger.</small>
+        </div>
+      </div>
+    </div>
+  </section>
+
   <!-- ===================== PICTURES ===================== -->
   <section class="tab card" id="tab-pictures" hidden>
     <div class="bar">
@@ -502,7 +588,7 @@
         <p class="reactStatus" id="ssReactStatus" role="status"></p>
         <div id="ssReactBody">
           <div class="reactRows" id="ssReactRows" role="group" aria-label="What each part of the music does"></div>
-          <p class="help">Amount is how strong the effect gets at full signal. Sensitivity sets how loud that part has to be before anything happens. Levels adjust to each song, so quiet and loud songs both work.</p>
+          <p class="help"><b>Amount</b> is how much the effect does at full signal: how far the wave bends, how many dots of static. <b>Speed</b> is how fast it moves, separately: how often it waves. Speed can stay fixed, follow its own part of the music (busy highs make it faster), follow the song's tempo (a slow song moves slowly; locked to the beat, wave crests land on the beat), or both. <b>Follows</b> (bass, low-mid, mid, high): the level is how loud that part is; notes and hits are each new bass note, snare, clap or hi-hat, so a steady loud bassline or off-beat hats still move things; level and hits mixes both. Sensitivity sets how loud that part has to be before anything happens. Levels adjust to each song and to big changes like a drop, so quiet and loud songs both work; a quiet breakdown still reads quieter for a while.</p>
           <div class="form">
             <label for="ssReactSpeed">GIF speed</label>
             <div class="row tight"><input id="ssReactSpeed" type="checkbox"><span class="muted">Loudness drives GIF speed: quiet parts play at 0.75×, loud parts up to 2×, on top of the GIF speed above.</span></div>
@@ -511,7 +597,7 @@
             <label for="ssReactFallback">Without live music</label>
             <div>
               <select id="ssReactFallback"><option value="none">Do nothing</option><option value="beat">Use a generated beat (120 BPM)</option></select>
-              <p class="help">When there's no live audio, the slideshow plays normally, or reacts to a steady made-up beat.</p>
+              <p class="help">When there's no live audio, the slideshow plays normally, or reacts to a steady made-up beat (tempo-following effects then move at 120 BPM).</p>
             </div>
           </div>
         </div>
@@ -666,6 +752,7 @@
       <button id="plPlay" class="primary"><svg class="i" aria-hidden="true"><use href="#i-play"/></svg>Show on board</button>
       <label class="muted">Transition <select id="plTransition"></select></label>
       <label class="muted"><input type="number" id="plTransDur" min="0.1" max="10" step="0.1" value="1" inputmode="decimal" style="width:64px" aria-label="Transition seconds"> s</label>
+      <label><input type="checkbox" id="plShuffle"> Shuffle</label>
       <span class="savedNote" id="plSaved" role="status"></span>
       <span class="spacer"></span>
       <button id="plDelete" class="danger">Delete</button>
@@ -678,6 +765,12 @@
     </div>
     <div id="plEditor"></div>
 
+    <!-- random effects and React to music on top of every item (static/js/playlists.js) -->
+    <details class="disclosure" id="plFxDetails">
+      <summary>Random effects and React to music</summary>
+      <div id="plFx"></div>
+    </details>
+
     <details class="disclosure" id="trDetails">
       <summary>Transitions: preview them on the board</summary>
       <p class="lede">Each one switches between a few demo apps and <b>replaces what's showing</b>. Playlists, apps and slideshows can use any of them.</p>
@@ -686,18 +779,26 @@
     </details>
   </section>
 
-  <!-- ===================== SCHEDULE ===================== -->
+  <!-- ===================== SCHEDULE (static/js/schedule.js) ===================== -->
   <section class="tab card" id="tab-schedule" hidden>
     <h2>Rules</h2>
-    <p class="lede">The first matching rule wins; otherwise the default playlist plays. A rule can run past midnight (for example 22:00 to 07:00).
+    <p class="lede">A rule shows a playlist, a layer set, a slideshow, a video, a picture or an app at set times: every week, between dates each year,
+      or on one day. Times can follow sunrise and sunset. When rules overlap, the higher one in the list wins; when none matches, the default playlist plays.
       Showing anything yourself pauses the schedule until you press <b>Resume schedule</b>.</p>
     <div class="bar">
       <label><input type="checkbox" id="schEnabled"> Follow the schedule</label>
       <label class="muted">Default playlist <select id="schDefault"></select></label>
       <span class="savedNote" id="schSaved" role="status"></span>
     </div>
+    <div id="schNow" class="schNow" role="status" aria-live="polite"></div>
     <div id="schRules"></div>
-    <div class="row"><button id="schAdd">Add rule</button></div>
+    <div class="row"><button id="schAdd"><svg class="i" aria-hidden="true"><use href="#i-plus"/></svg>Add rule</button><button id="schAddEvent">Add one-off event</button></div>
+    <h2 class="spaced">What plays when</h2>
+    <div class="bar">
+      <div class="group" id="schRange" role="group" aria-label="How far ahead"><button data-hours="24">Today</button><button data-hours="168">Next 7 days</button></div>
+      <span class="muted" id="schSunNote"></span>
+    </div>
+    <div id="schTimeline" class="schTimeline"></div>
       <h2 class="spaced">Quiet hours <span class="savedNote" id="qhSaved" role="status"></span></h2>
       <p class="lede">Flipdots clatter. During quiet hours the board flips at most this many dots per second: bigger changes are
         spread out and always end on the latest picture. Transitions also run slower.</p>
@@ -739,6 +840,24 @@
       <div class="items" id="gwList"></div>
   </section>
 
+  <!-- ===================== FRIEND MESSAGES ===================== -->
+  <section class="tab card" id="tab-friends" hidden>
+      <p class="lede">People with a friend link (Settings, People &amp; access) send messages from their phones, now or for a time they pick.
+        Messages from friends marked "No approval needed" show on their own; the others wait here. Each one shows with the sender's
+        name, and the Message wall app rotates the recent ones.</p>
+      <h2>Waiting for approval</h2>
+      <div class="items" id="fmInbox"></div>
+      <h2 class="spaced">History</h2>
+      <div class="items" id="fmHistory"></div>
+      <h2 class="spaced">Limits <span class="savedNote" id="fmSaved" role="status"></span></h2>
+      <div class="form">
+        <label for="fmLength">Longest message</label><div class="row tight"><input id="fmLength" type="number" min="10" max="280" step="1"><span class="muted">characters</span></div>
+        <label for="fmSeconds">Show each message for</label><div class="row tight"><input id="fmSeconds" type="number" min="3" max="600" step="1"><span class="muted">seconds</span></div>
+        <label for="fmRateCount">Each friend can send</label><div class="row tight"><input id="fmRateCount" type="number" min="1" max="100" step="1" aria-label="Messages"><span class="muted">messages every</span><input id="fmRateMin" type="number" min="1" max="1440" step="1" aria-label="Minutes"><span class="muted">minutes</span></div>
+        <label for="fmProfanity">Hold rude words for approval</label><input id="fmProfanity" type="checkbox">
+      </div>
+  </section>
+
   <!-- ===================== SETTINGS ===================== -->
   <section class="tab card" id="tab-settings" hidden>
     <nav class="subnav" id="setNav" aria-label="Settings sections">
@@ -747,7 +866,10 @@
       <button data-set="ai" aria-pressed="false">AI drawing</button>
       <button data-set="music" aria-pressed="false">Music</button>
       <button data-set="home" aria-pressed="false">Smart home &amp; API</button>
+      <button data-set="notifications" aria-pressed="false">Notifications</button>
       <button data-set="controllers" aria-pressed="false">Controllers</button>
+      <button data-set="people" aria-pressed="false">People &amp; access</button>
+      <button data-set="plugins" aria-pressed="false">Plugins</button>
       <button data-set="hardware" aria-pressed="false">Board hardware</button>
       <button data-set="maintenance" aria-pressed="false">Maintenance</button>
       <button data-set="backup" aria-pressed="false">Backup</button>
@@ -786,6 +908,7 @@
         <div class="row tight"><input id="trFps" type="number" min="5" max="30" step="1" style="width:80px"><span class="muted">frames per second. 15 matches most flipdot GIFs.</span></div>
       </div>
     </div>
+    <div class="setGroup" data-set="notifications" hidden><div id="notifSettings"></div></div>
     <div class="setGroup" data-set="fonts" hidden>
       <h2>Fonts</h2>
       <p class="lede">Pixel fonts are built in, and fonts installed on the server are listed too. You can upload <code>.ttf</code> or <code>.otf</code>
@@ -937,11 +1060,29 @@
       <div class="tableWrap"><table class="panelTable"><thead><tr><th>Code</th><th>Does</th></tr></thead><tbody id="gpMap"></tbody></table></div>
       <div class="row"><button id="gpAddCode"><svg class="i" aria-hidden="true"><use href="#i-plus"/></svg>Add code</button><button id="gpMapReset">Reset to defaults</button></div>
     </div>
+    <div class="setGroup" data-set="people" hidden>
+      <h2>People &amp; access</h2>
+      <p class="lede">Links that open one part of the board without the password: a friend link opens a page for sending messages,
+        a player link opens the game controller, a viewer link shows what's on the board. Nothing else is reachable with them.
+        Only a fingerprint of each link is saved, so a link is shown once, when you make it.</p>
+      <p class="lede warnText" id="paWarn" hidden>There's no password (config.yaml), so anyone on your network can open everything anyway.
+        Set one to make these links the only way in for other people.</p>
+      <div class="form">
+        <label for="paName">Who it's for</label><input id="paName" type="text" maxlength="40" placeholder="Mia" autocomplete="off">
+        <label for="paRole">They can</label><select id="paRole"><option value="friend">Send messages</option><option value="player">Play games</option><option value="viewer">Watch the board</option></select>
+        <label for="paTrusted" id="paTrustedLabel">No approval needed</label><input id="paTrusted" type="checkbox">
+        <label for="paExpires">Link works for</label><select id="paExpires"><option value="0">Until revoked</option><option value="1">1 day</option><option value="7">A week</option><option value="30">30 days</option><option value="365">A year</option></select>
+      </div>
+      <div class="row"><button class="primary" id="paCreate">Make a link</button></div>
+      <div id="paNew"></div>
+      <h2 class="spaced">Links</h2>
+      <div class="items" id="paList"></div>
+    </div>
     <div class="setGroup" data-set="hardware" hidden>
       <h2>Panel setup</h2>
       <p class="lede">Check which config entry drives each physical panel. Step through the panels: the board outlines the selected
         panel and shows its column, row, port and address on it, and everything else goes black. Upside-down text means that panel
-        needs rotate 180°. Saving writes <code>config.yaml</code> and applies the mapping right away.</p>
+        needs rotate 180°. Saving writes <code>config.local.yaml</code> (this board's own settings, kept out of git) and applies the mapping right away.</p>
       <div class="row">
         <div class="group">
           <button id="psPrev"><svg class="i" aria-hidden="true"><use href="#i-left"/></svg>Previous</button><button id="psNext">Next<svg class="i" aria-hidden="true"><use href="#i-right"/></svg></button>
@@ -950,7 +1091,7 @@
         <span id="psStep" class="muted"></span>
       </div>
       <div class="tableWrap"><table class="panelTable"><thead><tr><th>#</th><th>Column</th><th>Row</th><th>IP</th><th>Port</th><th>Address</th><th>Rotate</th><th><span class="sr">Actions</span></th></tr></thead><tbody id="psRows"></tbody></table></div>
-      <div class="row"><button id="psAdd"><svg class="i" aria-hidden="true"><use href="#i-plus"/></svg>Add panel</button><button id="psSave" class="primary">Save to config.yaml</button><span id="psMsg" class="muted"></span></div>
+      <div class="row"><button id="psAdd"><svg class="i" aria-hidden="true"><use href="#i-plus"/></svg>Add panel</button><button id="psSave" class="primary">Save mapping</button><span id="psMsg" class="muted"></span></div>
     </div>
     <div class="setGroup" data-set="maintenance" hidden>
       <h2>Board health</h2>
@@ -965,6 +1106,62 @@
         <div class="row tight"><input id="wearAuto" type="checkbox"><input id="wearTime" type="time" aria-label="Exercise time"><span class="muted">Skipped during quiet hours.</span></div>
       </div>
       <p class="muted spacedP">Quiet hours (fewer flips at night) are on the <a href="#schedule">Schedule</a> page.</p>
+      <h2 class="spaced">Version and restart</h2>
+      <div class="form">
+        <label>Version</label><div id="opVersion" class="muted breakAll">Loading…</div>
+        <label>Running for</label><div id="opUptime" class="muted"></div>
+      </div>
+      <div class="row"><button id="opRestart">Restart the server</button><span id="opRestartMsg" class="muted" role="status"></span></div>
+      <h2 class="spaced">Updates</h2>
+      <p class="lede">Updates come from the app's git repository. Saved data is backed up first, and if the new version
+        fails its start-up check, the app goes back to the version it was on and says why.</p>
+      <div class="row"><button id="upCheck">Check for updates</button><button id="upRun" class="primary" hidden>Update and restart</button><button id="upResetCfg" hidden>Put config.yaml back to the repo version</button></div>
+      <div id="upResult" class="muted capped" role="status"></div>
+      <div id="upCommits" class="items capped"></div>
+      <details class="disclosure capped" id="upSource">
+        <summary>Update source</summary>
+        <div class="form">
+          <label for="upRemote">Remote <span class="savedNote" id="upSaved" role="status"></span></label><input id="upRemote" type="text" placeholder="origin" spellcheck="false">
+          <label for="upBranch">Branch</label><input id="upBranch" type="text" placeholder="main" spellcheck="false">
+        </div>
+        <p class="muted">Leave them empty to use the branch this checkout tracks. A remote can be a name, a URL or a folder.</p>
+      </details>
+    </div>
+    <div class="setGroup" data-set="plugins" hidden>
+      <h2>Plugins</h2>
+      <p class="lede">Plugins add apps written in Python; they appear in Apps under Plugins. A plugin runs with full access to
+        this board's computer, its settings and your network, so only install code you trust.
+        Files you copy into the <code id="plFolder">plugins</code> folder load too.</p>
+      <div class="row wrapRow">
+        <button id="plReload">Reload plugins</button>
+        <span class="muted" id="plSummary" role="status"></span>
+      </div>
+      <div id="plProblems"></div>
+      <div class="items" id="plList"></div>
+
+      <h2 class="spaced">Install a plugin</h2>
+      <p class="lede">A .py file, a .zip with a plugin folder in it, or a web address: a raw .py file, a GitHub file, a repository or a
+        folder in one. You see the code before anything runs.</p>
+      <div class="form">
+        <label for="plFile">File</label>
+        <div class="row tight wrapRow"><input id="plFile" type="file" accept=".py,.zip"><button id="plUpload">Install file</button></div>
+        <label for="plUrl">Web address</label>
+        <div class="row tight wrapRow"><input id="plUrl" type="url" class="grow" placeholder="https://github.com/you/flipdot-plugin" autocomplete="off"><button id="plFetch">Install from URL</button></div>
+      </div>
+
+      <h2 class="spaced">Pixlet apps</h2>
+      <p class="lede">Apps from the Tidbyt/Tronbyt community catalogue (github.com/tronbyt/apps, Apache-2.0 licence, each by its author).
+        Their 64×32 colour pictures become dots; each app's settings choose the size and how colours turn into dots.
+        Many fetch data from the web while they run.</p>
+      <p class="lede warnText" id="pxMissing" hidden></p>
+      <div class="items" id="pxInstalled"></div>
+      <div class="row tight wrapRow spaced">
+        <input id="pxSearch" type="search" class="grow" placeholder="Search the catalogue: clock, quote, moon…" aria-label="Search the Pixlet catalogue">
+        <select id="pxCategory" aria-label="Category"><option value="">All categories</option></select>
+        <button id="pxRefresh">Update catalogue</button>
+      </div>
+      <p class="muted" id="pxCount" role="status"></p>
+      <div class="items" id="pxResults"></div>
     </div>
     <div class="setGroup" data-set="backup" hidden>
       <h2>Storage</h2>
@@ -982,6 +1179,21 @@
         <input type="file" id="stRestoreFile" accept=".db,.sqlite,.sqlite3" hidden>
         <button id="stRefresh">Refresh</button>
       </div>
+      <h2 class="spaced">Automatic backups <span class="savedNote" id="bkSaved" role="status"></span></h2>
+      <p class="lede">Copies of the database, including this board's <code>config.local.yaml</code>, written to a folder
+        on this machine. Point it at a USB stick or a network share to keep them off the SD card. Only the newest ones are kept.</p>
+      <div class="form">
+        <label for="bkSchedule">Back up</label>
+        <select id="bkSchedule"><option value="off">Off</option><option value="daily">Every day</option><option value="weekly">Every week</option></select>
+        <label for="bkTime">At</label>
+        <div class="row tight"><select id="bkWeekday" aria-label="Day of the week"><option value="0">Monday</option><option value="1">Tuesday</option><option value="2">Wednesday</option><option value="3">Thursday</option><option value="4">Friday</option><option value="5">Saturday</option><option value="6">Sunday</option></select><input id="bkTime" type="time"></div>
+        <label for="bkFolder">Folder</label><input id="bkFolder" type="text" spellcheck="false">
+        <label for="bkKeep">Keep the newest</label><div class="row tight"><input id="bkKeep" type="number" min="1" max="365" step="1"><span class="muted">backups</span></div>
+        <label>Last backup</label><div id="bkLast" class="muted"></div>
+        <label>Space</label><div id="bkFree" class="muted"></div>
+      </div>
+      <div class="row"><button id="bkNow">Back up now</button></div>
+      <div id="bkList" class="items capped"></div>
     </div>
   </section>
 </main>

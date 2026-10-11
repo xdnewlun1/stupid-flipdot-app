@@ -1,6 +1,7 @@
 // Settings page: location & display, fonts, AI drawing, Music Assistant, MQTT and webhook docs, gamepads, board hardware and maintenance (boardcare.js), backup.
-import { $, api, autosave, bus, confirmDialog, debounce, el, fillField as fill, fontCache, fontSelect, forgetFields, loadFonts, renderDots, rowsToGrid, safe, toast, undoable, unsavedFields } from "./common.js";
+import { $, api, autosave, bus, confirmDialog, debounce, el, fillField as fill, fontCache, fontSelect, forgetFields, loadFonts, renderDots, rowsToGrid, safe, toast, undoable, unsavedFields, uploadFile } from "./common.js";
 import { loadBoardCare } from "./boardcare.js";
+import { offerRestart, refreshOps } from "./ops.js";
 
 let settings = {};
 
@@ -77,6 +78,7 @@ function applySettings(only = null) {
   if (!only) {
     refreshGamepad().catch(() => {});  // after a save the Controllers group's own poll shows the restarted reader
     refreshStorage().catch(() => {});
+    refreshOps().catch(() => {});
   }
 }
 
@@ -239,16 +241,16 @@ curl -X POST ${base}/api/playlist/play -H 'Content-Type: application/json' -d '{
 #   action: rest_command.flipdot_notify
 #   data: { message: "Washer done" }`),
     el("h3", {}, "MQTT topics"),
-    pre(`${prefix}/notify    text, or JSON like the /api/notify body
+    pre(`${prefix}/notify    text, or JSON like the /api/notify body (priority, icon, sound, repeat, hold, key: Settings, Notifications)
 ${prefix}/run       {"app": "weather"}
-${prefix}/command   stop | schedule | next | black | white | invert
+${prefix}/command   stop | schedule | next | black | white | invert | dismiss | clear (notifications)
 ${prefix}/event     an event name for Automations, e.g. doorbell
 ${prefix}/status    (published by the board, retained)
 ${prefix}/availability  online | offline (retained, offline is the Last Will)`),
-    el("p", { class: "muted" }, "With Home Assistant discovery on, the board shows up in Home Assistant as a device with an app and playlist picker, schedule and quiet-hours switches, a Message box, Next and Stop buttons and a sensor for what's showing."),
+    el("p", { class: "muted" }, "With Home Assistant discovery on, the board shows up in Home Assistant as a device with an app and playlist picker, schedule, quiet-hours and do-not-disturb switches, a Message box, a notify entity, Next, Stop and Dismiss notification buttons, and sensors for what's showing and how many notifications wait."),
     el("h3", {}, "Trigger an automation"),
     pre(`curl -X POST ${base}/api/event/doorbell`),
-    el("p", { class: "muted" }, "If you set a password in config.yaml, add ?token=PASSWORD to URLs or use curl -u :PASSWORD."),
+    el("p", { class: "muted" }, "If you set a password in config.local.yaml, add ?token=PASSWORD to URLs or use curl -u :PASSWORD."),
   );
 }
 
@@ -318,9 +320,12 @@ $("stRestoreFile").onchange = safe(async e => {
   if (!file) return;
   if (!await confirmDialog({ title: `Restore "${file.name}"?`, confirmText: "Restore", danger: true,
     message: "It replaces all saved data (settings, playlists, scenes, drawings, slideshows, fonts) when the server restarts. Anything saved after the backup was made is lost." })) return;
-  const j = await api("/api/storage/restore?confirm=1", file, { raw: true });
-  toast(j.message);
+  $("stSize").textContent = "Uploading…";
+  const j = await uploadFile("/api/storage/restore?confirm=1", file, (done, total) => {
+    $("stSize").textContent = `Uploading… ${Math.round(100 * done / total)}%`;
+  }).finally(() => refreshStorage().catch(() => {}));
   await refreshStorage();
+  await offerRestart(j.message);
 });
 
 // ---- gamepads (gamepad.py): status, live inputs, button mapping ----

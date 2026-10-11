@@ -85,6 +85,8 @@ IDLE_SPEED = 0.7   # the flow clock runs this fast in silence...
 FLOW_SPEED = 1.5   # ...plus this times the level
 LIVE_FPS = 25  # with Snapcast audio: draws a second, each exactly when an analysis frame comes due (the board's
                # RS485 lines carry a whole steady picture in 34 ms at 57600 baud, so 25 leaves them headroom)
+PUNCH = 0.25  # a part with no new notes or hits draws this much lower, so a steady loud bass still pumps with the kicks
+BIN_BAND = [n for n, (a, b) in audio_signal.BANDS.items() for _ in range(a, b)]
 GAIN = 0.8  # Scale x GAIN multiplies the display values, so the default Scale 1.5 puts loud parts at the edges
 ONE = b"\x01" * 256
 RAYS = 8  # sunburst rays per quarter
@@ -814,7 +816,10 @@ class Visualizer(App):
         P("mix_variants", "checkbox", False, "Random look for each style (layout, bar count, wave look, scale)",
           show_if=MIX_ONLY),
         P("scale", "number", 1.5, "Scale: how far it moves (1.5 = loud parts reach the edges)", min=0.5, max=4, step=0.25),
-        P("sensitivity", "number", 1.0, "Sensitivity: higher shows quiet parts bigger", min=0.2, max=3, step=0.1),
+        P("sensitivity", "number", 1.0, "Sensitivity: how big quieter sounds look (1 = normal, 2 = quiet sounds "
+          "nearly as big as loud ones, 0.5 = only the loudest parts reach far)", min=0.2, max=3, step=0.1),
+        P("dynamics", "number", 0.3, "Dynamics: how much a quiet passage looks quieter (0 = every part of a song "
+          "fills the display, 1 = a breakdown or quiet intro stays small)", min=0, max=1, step=0.1),
         P("smoothing", "number", 0.3, "Smoothing: 0 = snappy, 1 = slow fall", min=0, max=1, step=0.1),
         P("beat_effects", "select", "off", "Beat effects", options=[
             ["off", "Off (follow the frequencies only)"], ["subtle", "Subtle (a ring from the middle)"],
@@ -921,9 +926,15 @@ class Visualizer(App):
             t = min(1.0, v ** g * k)
             return old + (t - old) * (up if t > old else down)
 
-        self.levels = [follow(o, v) for o, v in zip(self.levels, r["display_spectrum"])]
+        # dynamics: quieter for a passage below the song's loudest; punch: steady parts sit a bit lower, so new
+        # notes and hits (bassline, kicks, hats) stand out even when a part is loud the whole time
+        dyn = max(0.0, min(1.0, float(self.p.get("dynamics", 0.3))))
+        rel, hits = r["rel"], r["hits"]
+        hits = {**hits, "level": max(hits.values())}
+        gain = {n: (1 - dyn * (1 - rel[n])) * (1 - PUNCH * (1 - hits[n])) for n in rel}
+        self.levels = [follow(o, v * gain[n]) for o, v, n in zip(self.levels, r["display_spectrum"], BIN_BAND)]
         db = r["display_bands"]
-        self.bands = {n: follow(o, db[n]) for n, o in self.bands.items()}
+        self.bands = {n: follow(o, db[n] * gain[n]) for n, o in self.bands.items()}
         self.flow += dt * (IDLE_SPEED + FLOW_SPEED * self.bands["level"])
         if self.mix:
             self._mix_step(r, now)

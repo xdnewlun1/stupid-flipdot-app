@@ -46,7 +46,17 @@ def _rule_label(rule):
 def _sched_label(i, rule):
     days = rule.get("days", list(range(7)))
     d = "every day" if len(days) == 7 else ", ".join(DAYS[x] for x in days if 0 <= x < 7) or "no days"
+    if rule.get("when") == "once":
+        d = rule.get("date") or "one day"
+    elif rule.get("when") == "dates":
+        d = f"{rule.get('from')} to {rule.get('to')}, {d}"
     return f"Schedule rule {i + 1} ({d} {rule.get('start', '00:00')}-{rule.get('end', '24:00')})"
+
+
+def _sched_spec(rule):
+    """The app spec a schedule rule shows instead of a playlist, or None."""
+    spec = rule.get("spec")
+    return spec if isinstance(spec, dict) and spec.get("app") else None
 
 
 def _action_uses(a, kind, key):
@@ -76,8 +86,11 @@ def find(data, kind, key):
         if sched.get("default") == key:
             out.append("Schedule: default playlist")
         for i, rule in enumerate(sched.get("rules", [])):
-            if rule.get("playlist") == key:
+            if rule.get("playlist") == key and not _sched_spec(rule):
                 out.append(_sched_label(i, rule))
+    for i, rule in enumerate(data.get("schedule", {}).get("rules", [])):
+        if _sched_spec(rule) and spec_uses(rule["spec"], kind, key):
+            out.append(_sched_label(i, rule))
     for rule in data.get("rules", []):
         if _action_uses(rule.get("action", {}), kind, key):
             out.append(_rule_label(rule))
@@ -108,6 +121,10 @@ def rename(data, kind, old, new):
                 rule["playlist"] = new
                 n += 1
                 changed.add("schedule")
+    for rule in data.get("schedule", {}).get("rules", []):
+        if _sched_spec(rule) and spec_rename(rule["spec"], kind, old, new):
+            n += 1
+            changed.add("schedule")
     for rule in data.get("rules", []):
         a = rule.get("action", {})
         hit = 0
@@ -169,10 +186,16 @@ def remove(data, kind, key):
             done.append("Schedule: default playlist set to Nothing")
             changed.add("schedule")
         for i, rule in enumerate(sched.get("rules", [])):
-            if rule.get("playlist") == key:
+            if rule.get("playlist") == key and not _sched_spec(rule):
                 rule["playlist"] = ""
                 done.append(_sched_label(i, rule) + ": set to Nothing")
                 changed.add("schedule")
+    for i, rule in enumerate(data.get("schedule", {}).get("rules", [])):
+        if _sched_spec(rule) and spec_uses(rule["spec"], kind, key):
+            rule.pop("spec")
+            rule["playlist"] = ""
+            done.append(_sched_label(i, rule) + ": set to Nothing")
+            changed.add("schedule")
     for rule in data.get("rules", []):
         if _action_uses(rule.get("action", {}), kind, key) and rule.get("enabled", True):
             rule["enabled"] = False

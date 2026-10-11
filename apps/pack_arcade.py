@@ -134,8 +134,7 @@ class Classic(Arcade):
             if now - self.title_at < DEMO_AFTER:
                 self.draw_name(c)
                 self.draw_title(c, now)
-                if int(now * 2) % 2:
-                    c.text_center(36, "PRESS ANY BUTTON", SMALL)
+                self.title_footer(c, now)
                 return
             self.start_demo(now)
         if self.demo and now - self.demo_at > DEMO_LENGTH:

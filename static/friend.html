@@ -1,0 +1,313 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="referrer" content="no-referrer">
+<title>Send a message</title>
+<link rel="icon" href="data:,">
+<style>
+  :root {
+    color-scheme: dark;
+    --font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px; --s5: 24px;
+    --r2: 8px; --r3: 12px;
+    --bg: #0e0f11; --surface: #17181b; --surface-2: #1d1f23; --line: #2a2c31;
+    --text: #ececee; --text-2: #a4a7ae; --text-3: #8f939a; --field-line: #70747c;
+    --accent: #e9b949; --accent-ink: #1a1405; --accent-soft: rgba(233, 185, 73, 0.14);
+    --ok: #4fbf7a; --danger: #ef6b5e;
+    --board: #050506; --dot-off: #1c1d20; --dot-on: #f4f4f0;
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      color-scheme: light;
+      --bg: #f5f5f3; --surface: #ffffff; --surface-2: #f7f7f5; --line: #e4e4e0;
+      --text: #18181b; --text-2: #54565d; --text-3: #686b72; --field-line: #7f838a;
+      --accent: #8a6104; --accent-ink: #ffffff; --accent-soft: rgba(138, 97, 4, 0.1);
+      --ok: #23804a; --danger: #c9392b;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; min-height: 100vh; background: var(--bg); color: var(--text); font: 16px/1.5 var(--font);
+         display: flex; justify-content: center; padding: var(--s4) var(--s4) calc(var(--s5) + env(safe-area-inset-bottom)); }
+  main { width: 100%; max-width: 560px; }
+  h1 { font-size: 22px; font-weight: 600; margin: 0 0 var(--s1); }
+  h2 { font-size: 15px; font-weight: 600; margin: var(--s5) 0 var(--s2); }
+  p { margin: 0 0 var(--s4); color: var(--text-2); }
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r3); padding: var(--s4); }
+  .boardWrap { background: var(--board); border-radius: var(--r2); padding: 6px; margin: 0 0 var(--s2); }
+  canvas { display: block; width: 100%; aspect-ratio: 2 / 1; touch-action: none; }
+  canvas.doodling { cursor: crosshair; }
+  .modeRow { display: flex; gap: var(--s2); align-items: center; margin: 0 0 var(--s4); flex-wrap: wrap; }
+  .seg { display: inline-flex; border: 1px solid var(--field-line); border-radius: var(--r2); overflow: hidden; }
+  .seg button { min-height: 40px; padding: 0 var(--s3); border: 0; border-radius: 0; background: transparent; color: var(--text); font: inherit; font-size: 15px; cursor: pointer; }
+  .seg button + button { border-left: 1px solid var(--field-line); }
+  .seg button[aria-pressed="true"] { background: var(--accent-soft); color: var(--text); font-weight: 600; box-shadow: inset 0 -2px 0 var(--accent); }
+  .ghost { min-height: 40px; padding: 0 var(--s3); border: 1px solid var(--field-line); border-radius: var(--r2); background: transparent; color: var(--text); font: inherit; font-size: 15px; cursor: pointer; }
+  .hint { font-size: 13px; color: var(--text-3); margin: 0; flex-basis: 100%; }
+  label, .lbl { display: block; font-size: 14px; font-weight: 500; margin: 0 0 6px; }
+  input, textarea, select { width: 100%; font: inherit; color: var(--text); background: var(--surface-2); border: 1px solid var(--field-line);
+                            border-radius: var(--r2); padding: 10px var(--s3); min-height: 44px; }
+  textarea { min-height: 96px; resize: vertical; display: block; }
+  input:focus, textarea:focus, select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+  button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .count { font-size: 13px; color: var(--text-3); text-align: right; margin: 4px 0 var(--s4); font-variant-numeric: tabular-nums; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s3) var(--s3); margin: 0 0 var(--s4); }
+  .grid > div { min-width: 0; }
+  .check { display: flex; align-items: center; gap: var(--s2); min-height: 44px; font-size: 15px; font-weight: 400; margin: 0; }
+  .check input { width: 20px; height: 20px; min-height: 0; margin: 0; accent-color: var(--accent); }
+  .when { margin: 0 0 var(--s4); }
+  .when .seg { margin-bottom: var(--s2); }
+  .send { width: 100%; min-height: 48px; font: inherit; font-weight: 600; border: 0; border-radius: var(--r2);
+          background: var(--accent); color: var(--accent-ink); cursor: pointer; }
+  .send:disabled { opacity: 0.6; cursor: default; }
+  .status { min-height: 24px; margin: var(--s3) 0 0; font-size: 15px; }
+  .status.ok { color: var(--ok); }
+  .status.error { color: var(--danger); }
+  .mine { list-style: none; margin: 0; padding: 0; }
+  .mine li { padding: var(--s3) 0; border-top: 1px solid var(--line); }
+  .mine li:first-child { border-top: 0; }
+  .mine .t { white-space: pre-wrap; overflow-wrap: anywhere; }
+  .mine small { display: block; color: var(--text-3); font-size: 13px; }
+  .foot { margin-top: var(--s5); font-size: 14px; color: var(--text-3); }
+  .foot a { color: var(--text-2); }
+  [hidden] { display: none !important; }
+  @media (max-width: 360px) { .grid { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<main>
+  <h1 id="hello">Send a message</h1>
+  <p id="lede">It shows on the board with your name.</p>
+  <div class="card">
+    <div class="boardWrap"><canvas id="board" width="840" height="420" role="img" aria-label="Preview of the board"></canvas></div>
+    <div class="modeRow">
+      <div class="seg" role="group" aria-label="Preview mode">
+        <button type="button" id="modeType" aria-pressed="true">Type</button>
+        <button type="button" id="modeDraw" aria-pressed="false">Doodle</button>
+      </div>
+      <button type="button" class="ghost" id="clearDoodle" hidden>Clear doodle</button>
+      <p class="hint" id="drawHint" hidden>Tap or drag on the preview to draw dots. Drawing over a lit dot erases it.</p>
+    </div>
+
+    <label for="text">Message</label>
+    <textarea id="text" maxlength="280" autocomplete="off" placeholder="Happy birthday!"></textarea>
+    <div class="count" id="count">0 / 140</div>
+
+    <div class="grid">
+      <div><label for="font">Font</label><select id="font"></select></div>
+      <div><label for="size">Size</label>
+        <select id="size"><option value="fit">As big as fits</option><option value="1">1×</option><option value="2">2×</option><option value="3">3×</option><option value="4">4×</option></select></div>
+      <div><label for="align">Lines</label>
+        <select id="align"><option value="center">Centered</option><option value="left">Left</option><option value="right">Right</option></select></div>
+      <div><label for="transition">Letters arrive</label>
+        <select id="transition"><option value="none">All at once</option><option value="split-flap">Split-flap</option><option value="dissolve">Dissolve</option><option value="wipe-down">Wipe down</option></select></div>
+      <div><label class="check"><input id="invert" type="checkbox"> Dark text on lit dots</label></div>
+    </div>
+
+    <div class="when">
+      <span class="lbl" id="whenLabel">When</span>
+      <div class="seg" role="group" aria-labelledby="whenLabel">
+        <button type="button" id="whenNow" aria-pressed="true">Now</button>
+        <button type="button" id="whenLater" aria-pressed="false">Later</button>
+      </div>
+      <div id="laterBox" hidden>
+        <label for="at">Show it at</label>
+        <input id="at" type="datetime-local">
+      </div>
+    </div>
+
+    <button class="send" id="send" type="button">Send</button>
+    <div class="status" id="status" role="status" aria-live="polite"></div>
+  </div>
+
+  <h2 id="mineHead" hidden>Your recent messages</h2>
+  <ul class="mine" id="mine"></ul>
+
+  <p class="foot">Not you? <a href="/leave">Forget this link on this device</a>.</p>
+</main>
+<script>
+"use strict";
+const $ = id => document.getElementById(id);
+const canvas = $("board"), ctx = canvas.getContext("2d");
+let W = 84, H = 42, maxLen = 140, rows = null, doodle = null, drawing = false, mode = "type", later = false, timer = null, seq = 0;
+const status = $("status");
+const show = (text, ok) => { status.textContent = text; status.className = "status " + (ok ? "ok" : "error"); };
+const css = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+
+async function call(path, body) {
+  const r = await fetch(path, body === undefined ? { cache: "no-store" } : {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  const j = await r.json().catch(() => ({ error: `Something went wrong (${r.status}).` }));
+  if (!r.ok) throw new Error(j.error || `Something went wrong (${r.status}).`);
+  return j;
+}
+
+function paint() {
+  const cell = canvas.width / W;
+  ctx.fillStyle = css("--board"); ctx.fillRect(0, 0, canvas.width, canvas.height);
+  const on = css("--dot-on"), off = css("--dot-off"), r = cell * 0.42;
+  const inv = $("invert").checked;
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    let lit = rows ? rows[y][x] === "1" : false;
+    // the doodle shows at once while drawing; the server preview catches up a moment later
+    if (doodle && doodle[y][x] && !(rows && rows.fromDoodle)) lit = !inv;
+    ctx.fillStyle = lit ? on : off;
+    ctx.beginPath(); ctx.arc((x + 0.5) * cell, (y + 0.5) * cell, r, 0, 2 * Math.PI); ctx.fill();
+  }
+}
+
+const message = () => ({
+  text: $("text").value,
+  style: { font: $("font").value, size: $("size").value, align: $("align").value, invert: $("invert").checked, transition: $("transition").value },
+  doodle: doodle && doodle.some(r => r.includes(true)) ? doodle.map(r => r.map(v => (v ? "1" : "0")).join("")) : null,
+});
+
+function preview() {
+  clearTimeout(timer);
+  timer = setTimeout(async () => {
+    const n = ++seq, m = message();
+    if (!m.text.trim() && !m.doodle) { rows = null; paint(); return; }
+    try {
+      const j = await call("/api/friend/preview", m);
+      if (n !== seq) return;  // an older answer arriving late
+      rows = j.rows; rows.fromDoodle = true;
+      paint();
+      if (status.className.includes("error")) show("", true);
+    } catch (e) { if (n === seq) show(e.message, false); }
+  }, 120);
+}
+
+function count() {
+  const n = $("text").value.length;
+  $("count").textContent = `${n} / ${maxLen}`;
+  $("count").style.color = n > maxLen ? css("--danger") : "";
+}
+
+function setMode(m) {
+  mode = m;
+  $("modeType").setAttribute("aria-pressed", String(m === "type"));
+  $("modeDraw").setAttribute("aria-pressed", String(m === "draw"));
+  $("clearDoodle").hidden = $("drawHint").hidden = m !== "draw";
+  canvas.classList.toggle("doodling", m === "draw");
+}
+
+function dotAt(e) {
+  const b = canvas.getBoundingClientRect();
+  return [Math.floor((e.clientX - b.left) / b.width * W), Math.floor((e.clientY - b.top) / b.height * H)];
+}
+let paintValue = true, last = null;
+canvas.addEventListener("pointerdown", e => {
+  if (mode !== "draw") return;
+  e.preventDefault();
+  doodle ||= Array.from({ length: H }, () => Array(W).fill(false));
+  const [x, y] = dotAt(e);
+  if (x < 0 || y < 0 || x >= W || y >= H) return;
+  paintValue = !doodle[y][x];
+  drawing = true; last = null;
+  canvas.setPointerCapture(e.pointerId);
+  stroke(x, y);
+});
+canvas.addEventListener("pointermove", e => { if (drawing) stroke(...dotAt(e)); });
+const endStroke = () => { if (drawing) { drawing = false; preview(); } };
+canvas.addEventListener("pointerup", endStroke);
+canvas.addEventListener("pointercancel", endStroke);
+function stroke(x, y) {
+  const pts = [[x, y]];
+  if (last) {  // fill the gap between pointer events
+    const [lx, ly] = last, n = Math.max(Math.abs(x - lx), Math.abs(y - ly));
+    for (let i = 1; i < n; i++) pts.push([Math.round(lx + (x - lx) * i / n), Math.round(ly + (y - ly) * i / n)]);
+  }
+  for (const [px, py] of pts) if (px >= 0 && py >= 0 && px < W && py < H) doodle[py][px] = paintValue;
+  last = [x, y];
+  if (rows) rows.fromDoodle = false;
+  paint();
+}
+
+function when(ts) {
+  return new Date(ts * 1000).toLocaleString([], { weekday: "short", day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
+}
+const LABEL = { pending: "Waiting for approval", declined: "Not shown" };
+function renderMine(list) {
+  $("mineHead").hidden = !list.length;
+  $("mine").replaceChildren(...list.map(m => {
+    const li = document.createElement("li"), t = document.createElement("div"), s = document.createElement("small");
+    t.className = "t"; t.textContent = m.text || "(a doodle)";
+    s.textContent = m.status === "approved" ? (m.shown_at ? `Shown ${when(m.shown_at)}` : m.at ? `Scheduled for ${when(m.at)}` : "On its way")
+      : `${LABEL[m.status] || m.status}${m.at ? ` · for ${when(m.at)}` : ""}`;
+    li.append(t, s);
+    return li;
+  }));
+}
+
+function localInput(d) {
+  const p = n => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+function setLater(on) {
+  later = on;
+  $("whenNow").setAttribute("aria-pressed", String(!on));
+  $("whenLater").setAttribute("aria-pressed", String(on));
+  $("laterBox").hidden = !on;
+  if (on && !$("at").value) {
+    const d = new Date(Date.now() + 3600e3); d.setMinutes(0, 0, 0);
+    $("at").value = localInput(d);
+  }
+  $("at").min = localInput(new Date());
+}
+
+async function send() {
+  const m = message();
+  if (!m.text.trim() && !m.doodle) return show("Write a message or draw something first.", false);
+  if (m.text.length > maxLen) return show(`That's too long: ${maxLen} characters at most.`, false);
+  if (later) {
+    const t = new Date($("at").value).getTime();
+    if (!t) return show("Pick a day and time.", false);
+    if (t < Date.now()) return show("That time has passed. Pick a later one, or choose Now.", false);
+    m.at = Math.floor(t / 1000);
+  }
+  $("send").disabled = true;
+  try {
+    const j = await call("/api/friend/send", m);
+    $("text").value = ""; doodle = null; rows = null; count(); paint(); setMode("type");
+    renderMine(j.mine || []);
+    show(j.status === "approved" ? (j.at ? `Thanks! It will show ${when(j.at)}.` : "Thanks! It's on its way to the board.")
+      : "Thanks! It will show once it's approved.", true);
+  } catch (e) {
+    show(e.message === "Failed to fetch" ? "Couldn't reach the board. Check your connection and try again." : e.message, false);
+  } finally {
+    $("send").disabled = false;
+  }
+}
+
+async function start() {
+  try {
+    const info = await call("/api/friend");
+    W = info.width; H = info.height; maxLen = info.max_length;
+    $("text").maxLength = maxLen;
+    $("hello").textContent = `Hi ${info.name}`;
+    $("lede").textContent = info.trusted ? "Write something for the board. It shows with your name." :
+      "Write something for the board. It shows with your name once it's approved.";
+    for (const f of info.fonts) $("font").append(new Option(f.label, f.id));
+    $("font").value = "normal";
+    renderMine(info.mine || []);
+  } catch (e) {
+    show(e.message, false);
+    $("send").disabled = true;
+  }
+  count(); paint();
+}
+
+$("text").addEventListener("input", () => { count(); preview(); });
+for (const id of ["font", "size", "align", "invert", "transition"]) $(id).addEventListener("change", preview);
+$("modeType").onclick = () => { setMode("type"); $("text").focus(); };
+$("modeDraw").onclick = () => setMode("draw");
+$("clearDoodle").onclick = () => { doodle = null; preview(); paint(); };
+$("whenNow").onclick = () => setLater(false);
+$("whenLater").onclick = () => setLater(true);
+$("send").onclick = send;
+matchMedia("(prefers-color-scheme: light)").addEventListener?.("change", paint);
+start();
+</script>
+</body>
+</html>

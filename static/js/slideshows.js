@@ -1,5 +1,7 @@
 // Slideshows page: upload images / GIFs / zips, order them, set timings, play.
 import { $, api, ask, autosave, board, bus, catalog, confirmDelete, el, flushUndo, galleriesCache, icon, iconButton, renderDots, rowsToGrid, safe, toast, undoable, uploadFile } from "./common.js";
+import { reactTable, setStatus } from "./musicreact.js";
+import { addToPlaylistButton } from "./addto.js";
 
 let current = null, gallery = null, saveTimer = null;
 const thumbs = new Map();  // `${gid}/${file}/${settingsKey}` -> rows
@@ -273,6 +275,10 @@ $("ssAddLayer").onclick = safe(async () => {
   await api("/api/layers/add", { layer: { app: "slideshow", params: { gallery: current } }, position });
   toast(`Added "${gallery.name}" as a layer ${position === "top" ? "on top" : "underneath"}`);
 });
+$("ssAddLayer").after(addToPlaylistButton(() => {
+  if (!gallery?.items.length) { toast("Add some images first", true); return null; }
+  return { app: "slideshow", params: { gallery: current } };
+}, { name: () => gallery?.name || "", duration: () => 120 }));
 $("ssRemoveCovers").onclick = safe(async () => {
   if (!current) return;
   const j = await api(`/api/galleries/${current}/remove_covers`, {});
@@ -360,49 +366,9 @@ $("ssFxStrength").onchange = safe(() => saveSettings({ fx_strength: Math.max(0, 
 $("ssFxSeconds").onchange = safe(() => saveSettings({ fx_seconds: Math.max(0.3, Math.min(30, num("ssFxSeconds") || 3)) }));
 document.querySelectorAll("#ssFxMode [data-fx-mode]").forEach(b => { b.onclick = safe(() => saveSettings({ fx_mode: b.dataset.fxMode })); });
 
-// ---- React to music ----
-const SIGNALS = {
-  bass: ["Bass", "kick drum, low notes"], lowmid: ["Low-mid", "bass guitar, warmth"], mid: ["Mid", "vocals, guitars, keys"],
-  high: ["High", "hi-hats, cymbals"], beat: ["Beat", "each beat as it hits"], level: ["Loudness", "the overall volume"],
-};
-const REACT_FX = FX.filter(([id]) => id !== "life" && id !== "melt");
-const SENS = [[0, "Any sound"], [20, "High"], [35, "Medium"], [50, "Low"], [70, "Only the peaks"]];
+// ---- React to music (the table is shared with the generative apps: musicreact.js) ----
 let reactFor = null;  // gallery id the rows were built for
-
-function reactRows() { return gallery.settings.react_map.map(r => ({ ...r })); }
-const saveReact = rows => saveSettings({ react_map: rows });
-
-function reactRow(r, i) {
-  const [name, hint] = SIGNALS[r.signal];
-  const fx = el("select", { "aria-label": `Effect for ${name}` },
-    el("option", { value: "none" }, "Nothing"),
-    ...(r.signal === "level" ? [el("option", { value: "scale" }, "Tone others down when quiet")] : []),
-    ...REACT_FX.map(([id, label]) => el("option", { value: id }, label)));
-  const amt = el("input", { type: "range", min: 0, max: 100, step: 5, "aria-label": `Amount for ${name}` });
-  const out = el("output", { class: "rangeVal" });
-  const sens = el("select", { class: "sens", "aria-label": `Sensitivity for ${name}`, title: "How loud this part has to be before the effect starts" });
-  fx.onchange = safe(() => { const rows = reactRows(); rows[i].effect = fx.value; return saveReact(rows); });
-  amt.oninput = () => (out.textContent = `${amt.value}%`);
-  amt.onchange = safe(() => { const rows = reactRows(); rows[i].amount = Number(amt.value); return saveReact(rows); });
-  sens.onchange = safe(() => { const rows = reactRows(); rows[i].threshold = Number(sens.value); return saveReact(rows); });
-  const row = el("div", { class: "reactRow", "data-signal": r.signal },
-    el("div", { class: "sig" }, el("b", {}, name), el("small", {}, hint),
-      el("div", { class: "reactMeter", role: "meter", "aria-label": `${name} level`, "aria-valuemin": 0, "aria-valuemax": 100, "aria-valuenow": 0 }, el("span"))),
-    el("div", { class: "ctl" }, fx, el("label", { class: "amt" }, "Amount", amt, out), sens));
-  row.fill = r => {
-    fx.value = r.effect;
-    amt.value = r.amount;
-    out.textContent = `${r.amount}%`;
-    const opts = SENS.some(([v]) => v === r.threshold) ? SENS : [...SENS, [r.threshold, `Custom (${r.threshold}%)`]].sort((a, b) => a[0] - b[0]);
-    sens.replaceChildren(...opts.map(([v, label]) => el("option", { value: v }, `Sensitivity: ${label}`)));
-    sens.value = String(r.threshold);
-    // the beat is a short pulse and loudness-scaling has no threshold: no sensitivity choice for those
-    sens.hidden = r.signal === "beat" || r.effect === "scale";
-    row.classList.toggle("off", r.effect === "none");
-  };
-  row.fill(r);
-  return row;
-}
+const reactMap = reactTable({ box: $("ssReactRows"), onChange: rows => saveSettings({ react_map: rows }) });
 
 function renderReact(st) {
   $("ssReact").checked = !!st.react_enabled;
@@ -410,13 +376,8 @@ function renderReact(st) {
   $("ssReactSpeed").checked = !!st.react_speed;
   $("ssReactSkip").checked = !!st.react_skip;
   $("ssReactFallback").value = st.react_fallback || "none";
-  const box = $("ssReactRows");
-  if (reactFor !== current || box.children.length !== st.react_map.length) {
-    box.replaceChildren(...st.react_map.map(reactRow));
-    reactFor = current;
-  } else {
-    st.react_map.forEach((r, i) => box.children[i].fill(r));
-  }
+  reactMap.fill(st.react_map, reactFor !== current);
+  reactFor = current;
   pollLevels(true);
 }
 
@@ -428,36 +389,14 @@ $("ssReactFallback").onchange = safe(() => saveSettings({ react_fallback: $("ssR
 // Status line + live meters: polled ~5 times a second while the section is on screen (once every few
 // seconds when reacting is off, just for the status line); nothing while the page is hidden.
 let levelsTimer = null, levelsBusy = false, reactVisible = false;
-function setStatus(j) {
-  const s = $("ssReactStatus");
-  s.classList.toggle("on", !!j.receiving);
-  const quiet = j.quiet ? " · quiet hours: paused" : "";
-  const dot = el("span", { class: "dot", "aria-hidden": "true" });
-  if (j.connected) {
-    s.replaceChildren(dot, j.text + (!j.receiving && j.generated ? " · using the generated beat" : "") + quiet);
-  } else {
-    s.replaceChildren(dot, `${j.source ? j.text : "No live audio"}${j.generated ? ", using the generated beat" : ""} — set it up in `,
-      el("a", { href: "#settings/music" }, "Settings → Music"), `.${quiet}`);
-  }
-}
-function setMeters(j) {
-  const on = j.live || j.generated;
-  for (const row of $("ssReactRows").children) {
-    const sig = row.dataset.signal;
-    const v = on ? (sig === "beat" ? j.beat : j.levels[sig]) : 0;
-    const m = row.querySelector(".reactMeter");
-    m.firstChild.style.width = `${Math.round(v * 100)}%`;
-    m.setAttribute("aria-valuenow", Math.round(v * 100));
-  }
-}
 async function fetchLevels() {
   if (levelsBusy || !gallery) return;
   levelsBusy = true;
   try {
     const fb = gallery.settings.react_fallback === "beat" ? "?fallback=beat" : "";
     const j = await api(`/api/audio/levels${fb}`);
-    setStatus(j);
-    setMeters(j);
+    setStatus($("ssReactStatus"), j);
+    reactMap.setMeters(j);
   } catch { /* the next poll tries again */ } finally { levelsBusy = false; }
 }
 function pollLevels(now = false) {

@@ -11,6 +11,7 @@ import gzip
 import io
 import json
 import logging
+import math
 import mimetypes
 import os
 import re
@@ -27,22 +28,37 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, quote, urlparse
 
+import access
 import aidraw
+import camera
+import friends
+import friends_api
 import gamepad as gamepad_mod
 import apps
 import guestwall
+import health
 import media_upload
+import notifications
+import ntfy
 import panelsetup
+import party_api
+import programme_api
+import plugins_api
 import refs
 import rules
 import sendspin_link
 import snapcast_link
 import storage as storage_mod
 import timelapse
+import timers as timers_mod
+import backups as backups_mod
+import localconfig
+import updater as updater_mod
 import video as video_mod
 from apps import gamemenu, slideshow
 from apps import music, nes
 from apps.media import convert_image
+from apps.notice import ICONS
 from apps.widgets import geocode
 from boardcare import BoardCare
 from canvas import Canvas
@@ -72,6 +88,8 @@ recorder: timelapse.Recorder = None
 automations: rules.Automations = None
 persist: storage_mod.Storage = None
 config_path = None
+data_dir = storage_path = None  # where --data and --storage point (free disk in /api/health)
+backups = updater = None  # backups.Backups (scheduled backups) and updater.Updater (update from git)
 ha_lock = threading.Lock()
 ha_sent = {}  # topic -> payload last published for Home Assistant (states and discovery configs)
 
@@ -137,15 +155,41 @@ def convert_from_body(body, data=None):
         threshold=int(body.get("threshold", 128)), invert=bool(body.get("invert", False)))
 
 
-def notify(body):
-    """Show something temporarily, then go back to whatever was running."""
-    duration = float(body.get("duration", 10))
+def _truthy(v):
+    return v is True or str(v).strip().lower() in ("1", "true", "yes", "on")
+
+
+def notify_options(body, source="api"):
+    """The queue options of a notification body: priority, icon, sound, repeat, hold, key (notifications.py)."""
+    icon = body.get("icon") or None
+    if icon is not None and icon not in ICONS:
+        raise ValueError(f"unknown icon {icon!r}: use {', '.join(ICONS)}")
+    sound = body.get("sound") or None
+    if sound is not None and sound not in notifications.SOUNDS:
+        raise ValueError(f"unknown sound pattern {sound!r}: use {', '.join(notifications.SOUNDS)}")
+    text = body.get("text")
+    if text is not None and body.get("title"):
+        text = f"{body['title']}: {text}"
+    return {"priority": notifications.priority(body.get("priority")), "icon": icon, "sound": sound,
+            "repeat": max(1, min(20, int(body.get("repeat") or 1))), "hold": _truthy(body.get("hold")),
+            "key": str(body["key"])[:80] if body.get("key") else None,
+            "text": str(text)[:300] if text is not None else None, "source": body.get("source") or source}
+
+
+def notify(body, source="api"):
+    """Show something temporarily, then go back to whatever was running. It joins the notification queue
+    (priority, do-not-disturb, de-duplication: notifications.py); returns what the queue did with it."""
+    cfg = notifications.settings(store)
+    duration = float(body.get("duration") or cfg.get("duration") or 10)
     transition = body.get("transition", "dissolve")
     tdur = float(body.get("transition_duration") or 1.0)
+    opts = notify_options(body, source)
     if body.get("image") or body.get("url"):
         frames = convert_from_body(body)
-        app = apps.REGISTRY["scene"](runner.ctx, frames=frames, name="notification")
-        return runner.notify(app=app, duration=duration, transition=transition, transition_duration=tdur)
+        make = lambda: apps.REGISTRY["scene"](runner.ctx, frames=frames, name="notification")
+        opts["text"] = opts["text"] or "Picture"
+        return runner.notify(app=make(), remake=make, duration=duration, transition=transition,
+                             transition_duration=tdur, **opts)
     if body.get("scene"):
         spec = {"app": "scene", "params": {"scene": body["scene"]}}
     elif body.get("app"):
@@ -165,7 +209,13 @@ def notify(body):
         spec = {"app": "text", "params": params}
     else:
         raise ValueError("send 'text', 'image', 'url', 'scene' or 'app'")
-    runner.notify(spec=spec, duration=duration, transition=transition, transition_duration=tdur)
+    if spec["app"] == "text" and opts["icon"] and not body.get("font") and not body.get("style"):
+        # with an icon: the icon beside the message, the way a notification card looks
+        spec = {"app": "notice", "params": {"text": str(body["text"]), "title": str(body.get("title") or ""),
+                                            "icon": opts["icon"]}}
+    elif spec["app"] == "text" and body.get("title"):
+        spec["params"]["text"] = opts["text"]
+    return runner.notify(spec=spec, duration=duration, transition=transition, transition_duration=tdur, **opts)
 
 
 def masked_settings():
@@ -182,6 +232,9 @@ def masked_settings():
         mq["password"] = SECRET_MASK
     mq["connected"] = bool(mqtt_client and mqtt_client.connected)
     mq["error"] = mqtt_client.error if mqtt_client else None
+    nt = s.setdefault("notifications", {}).setdefault("ntfy", {})
+    if nt.get("token"):
+        nt["token"] = SECRET_MASK
     return s
 
 
@@ -233,8 +286,21 @@ def _apply_settings(old, merged):
                 link.set_unpaired_access(bool(merged["sendspin"].get("unpaired")))
         if merged.get("gamepad") != old.get("gamepad"):
             start_gamepad()
+        if merged.get("notifications") != old.get("notifications"):
+            nt = (merged["notifications"].get("ntfy") or {})
+            if nt.get("token") == SECRET_MASK:  # the masked token came back unchanged
+                nt["token"] = ((old.get("notifications") or {}).get("ntfy") or {}).get("token", "")
+                store.save_settings(merged)
+            if nt != ((old.get("notifications") or {}).get("ntfy") or {}):
+                start_ntfy()
+            runner._dnd_at = 0  # look at do-not-disturb again now
     except Exception:
         logging.exception("applying settings failed")
+
+
+def start_ntfy():
+    """(Re)subscribe to the ntfy topics in the notification settings."""
+    ntfy.start(store, lambda body: notify(body, source="ntfy"))
 
 
 def start_mqtt():
@@ -262,6 +328,8 @@ def mqtt_message(topic, payload):
         ha_command(topic[3:-4], payload.strip())
     elif topic == "event":
         automations.event(payload.strip())
+    elif topic == "timer":
+        timers_mod.for_store(store).command(payload)
     elif topic == f"{ha_disc_prefix(cfg)}/status":
         if payload.strip() == "online":  # Home Assistant restarted: announce everything again
             ha_sync(force=True)
@@ -305,6 +373,9 @@ def ha_states(t):
         t["playlist_state"]: playing or NOTHING,
         t["schedule_state"]: "ON" if store.schedule.get("enabled") else "OFF",
         t["quiet_state"]: "ON" if (store.settings.get("quiet_hours") or {}).get("enabled") else "OFF",
+        t["timer_state"]: timers_mod.for_store(store).summary(),
+        t["dnd_state"]: "ON" if notifications.settings(store)["dnd"].get("now") else "OFF",
+        t["notifications_state"]: str(len(runner.notify_queue.pending) + len(runner.notify_queue.held)),
     }
 
 
@@ -359,7 +430,13 @@ def ha_command(entity, payload):
         save_settings({"quiet_hours": {"enabled": payload.upper() == "ON"}})
     elif entity == "message":
         if payload:
-            notify({"text": payload})
+            notify({"text": payload}, source="home assistant")
+    elif entity == "dnd":
+        dnd = {**notifications.settings(store)["dnd"], "now": payload.upper() == "ON"}
+        save_settings({"notifications": {"dnd": dnd}})
+    elif entity == "timer":
+        if payload:
+            timers_mod.for_store(store).command(payload)
     else:
         raise ValueError(f"unknown entity {entity!r}")
     ha_sync()
@@ -381,6 +458,11 @@ def ws_message(msg):
             return  # that stream was stopped here; frames still on their way are dropped
         store.update_drawing(msg["drawing"], rows=msg["rows"], save=False)
         runner.wake.set()
+    elif msg.get("type") == "party":
+        party_api.ws(msg)  # quiz buzzer, Pictionary strokes, drum machine edits from /play
+    elif msg.get("type") == "camera":
+        # a grayscale frame from a browser's camera for the silhouette mirror (Mirror page); kept in memory only
+        camera.get(store).push_browser(msg)
     elif msg.get("type") == "dots" and msg.get("drawing"):
         # drawing on a layer: leave whatever is running alone
         store.drawing_dots(msg["drawing"], [parse_dot(d) for d in msg["dots"]])
@@ -418,9 +500,10 @@ def start_sendspin():
         # Music Assistant is asking for the pairing code: put it on the board
         if code:
             runner.notify(spec={"app": "text", "params": {"text": f"PAIR {code}", "style": "static", "fit": True}},
-                          duration=120, transition="none")
-        elif runner.notif:
-            runner.notif["until"] = 0
+                          duration=120, transition="none", priority="high", key="sendspin-pair", source="sendspin",
+                          dedupe=False)
+        else:
+            runner.dismiss(key="sendspin-pair")
     link = sendspin_link.start_link(store.dir, name=cfg.get("name") or "Flipdot board",
                                     port=int(cfg.get("port") or 8928), on_pair_code=show_code,
                                     server_url=cfg.get("server_url", "auto"))
@@ -551,6 +634,11 @@ def get_apps(req):
 @route("POST", "/api/run")
 def post_run(req):
     body = req.json()
+    if getattr(req, "role", "owner") != "owner":  # the player link may start games, nothing else
+        cls = apps.REGISTRY.get(body.get("app"))
+        if cls is None or cls.category != "Games":
+            raise HttpError(403, "This link can only start games.")
+        body = {"app": body["app"]}
     runner.run({"app": body["app"], "params": body.get("params") or {}}, body.get("transition", "none"),
                float(body.get("transition_duration") or 1.0))
     return state()
@@ -801,7 +889,7 @@ def delete_gallery(req, gid):
 
 # ---- videos (video.py converts and stores them, apps/video.py plays them) ----------------
 
-STREAMED_UPLOADS = {"/api/videos/upload"}  # big bodies these routes read from req.rfile themselves
+STREAMED_UPLOADS = {"/api/videos/upload", "/api/storage/restore"}  # big bodies these routes read from req.rfile themselves
 
 
 def video_display(req):
@@ -1047,8 +1135,34 @@ def post_input(req):
 @route("GET|POST", "/api/notify")
 def api_notify(req):
     body = {k: v[0] for k, v in req.query.items() if k != "token"} if req.command == "GET" else req.json()
-    notify(body)
-    return state()
+    result = notify(body)
+    return {**state(), "notify": result}
+
+
+@route("GET|POST", "/api/notifications")
+def api_notifications(req):
+    """The notification queue: GET what's showing, waiting, held for do-not-disturb and the last 20 shown.
+    POST {"action": "dismiss", "id"?, "key"?} (no id/key: the one on the board) | "clear" | "reshow" + id |
+    "test" (+ priority, sound, icon)."""
+    if req.command == "POST":
+        body = req.json()
+        action = body.get("action")
+        if action == "dismiss":
+            eid = int(body["id"]) if body.get("id") is not None else None
+            if not runner.dismiss(eid, body.get("key")):
+                raise HttpError(404, "no such notification")
+        elif action == "clear":
+            runner.clear_notifications()
+        elif action == "reshow":
+            runner.reshow(int(body["id"]))
+        elif action == "test":
+            notify({"text": "Test notification", "icon": body.get("icon") or "bell", "key": "test",
+                    "priority": body.get("priority") or "normal", "sound": body.get("sound"),
+                    "duration": body.get("duration")}, source="test")
+        else:
+            raise ValueError("action is dismiss, clear, reshow or test")
+    return {**runner.notifications_status(), "icons": list(ICONS), "sounds": list(notifications.SOUNDS),
+            "priorities": list(notifications.PRIORITIES), "ntfy": ntfy.status()}
 
 
 @route("POST", "/api/next")
@@ -1092,16 +1206,13 @@ def post_play_playlist(req):
 
 @route("GET", "/api/playlists")
 def get_playlists(req):
-    return {"playlists": store.playlists, "transitions": TRANSITIONS, "warnings": playlist_warnings()}
+    return {"playlists": store.playlists, "transitions": TRANSITIONS, "warnings": playlist_warnings(),
+            **programme_api.playlist_extras()}
 
 
 @route("POST", "/api/playlists")
 def post_playlists(req):
-    data = req.json()["playlists"]
-    for name, pl in data.items():
-        for item in pl.get("items", []):
-            if item.get("app") not in apps.REGISTRY and item.get("app") not in apps.base.ALIASES:
-                raise ValueError(f"playlist {name}: unknown app {item.get('app')!r}")
+    data = programme_api.clean_playlists(req.json()["playlists"])  # checks apps, tidies shuffle/effects/conditions
     store.save_playlists(data)
     ha_sync()  # the Home Assistant playlist list
     return {"playlists": store.playlists, "warnings": playlist_warnings()}
@@ -1120,12 +1231,12 @@ def playlist_warnings():
 
 @route("GET", "/api/schedule")
 def get_schedule(req):
-    return {"schedule": store.schedule, "off": OFF}
+    return programme_api.schedule_payload()  # older schedules come back in the current format
 
 
 @route("POST", "/api/schedule")
 def post_schedule(req):
-    store.save_schedule(req.json()["schedule"])
+    store.save_schedule(programme_api.clean_schedule(req.json()["schedule"]))
     runner.wake.set()
     ha_sync()
     return {"schedule": store.schedule}
@@ -1175,6 +1286,42 @@ def post_ai_draw(req):
                            board.width, board.height)
     except aidraw.AiError as e:
         raise HttpError(e.status, str(e)) from None
+
+
+# ---- daily postcard and counters (apps/pack_daily.py) ---------------------------------
+
+@route("POST", "/api/postcard")
+def post_postcard(req):
+    """Make today's postcard now (again, if it was already made)."""
+    from apps import pack_daily
+    try:
+        entry = pack_daily.make_postcard(store, force=bool(req.json().get("force", True)), w=board.width, h=board.height)
+    except pack_daily.NeedsSetup as e:
+        raise HttpError(400, str(e)) from None
+    except aidraw.AiError as e:
+        raise HttpError(e.status, str(e)) from None
+    runner.wake.set()
+    return {"haiku": entry["haiku"], "rows": entry["rows"]}
+
+
+@route("GET|POST", "/api/counter/([A-Za-z0-9_.-]+)")
+def counter_value(req, name):
+    """GET the counter's value; POST {"value": n} to set it or {"add": n} to change it (Counter app)."""
+    from apps import pack_daily
+    if req.command == "GET":
+        rec = pack_daily.counters(store).get(name)
+        if rec is None:
+            raise HttpError(404, "no such counter")
+        return {"name": name, **rec}
+    body = req.json() if req.raw() else {}
+    value = body.get("value", req.query.get("value", [None])[0])
+    add = body.get("add", req.query.get("add", [None])[0])
+    try:
+        out = pack_daily.set_counter(store, name, value=value, add=add)
+    except (TypeError, ValueError) as e:
+        raise HttpError(400, str(e)) from None
+    runner.wake.set()
+    return out
 
 
 # ---- guest wall -------------------------------------------------------------------
@@ -1261,6 +1408,66 @@ def run_rule(req, rid):
 def post_event(req, name):
     """Trigger the automations waiting for this event name."""
     return {"event": name, "fired": automations.event(name)}
+
+
+@route("GET|POST", "/api/timers")
+def api_timers(req):
+    """Kitchen / Pomodoro timers (timers.py). POST {"command": "pasta 8m"} or {"action": "start"|"pause"|"resume"|
+    "toggle"|"cancel"|"dismiss"|"pomodoro", "name", "duration", "on", "work", "break"}; GET lists them."""
+    box = timers_mod.for_store(store)
+    out = box.command(req.json()) if req.command == "POST" else {}
+    return {**out, **box.snapshot()}
+
+
+def timer_rang(t):
+    """A timer finished: unless the Timers app is on the board (it rings there), show its alarm over what's on."""
+    with runner.lock:
+        top = runner.notif["app"] if runner.notif else runner.app
+        ids = {l.app.id for l in top.layers} if top is not None and top.id == "layers" else {getattr(top, "id", None)}
+    if "timers" not in ids:
+        name = str((t or {}).get("name") or "").strip()
+        runner.notify(spec={"app": "timers", "params": {"alarm_only": True}}, duration=timers_mod.RING_S + 1,
+                      transition="none", priority="high", icon="timer", key="timer-alarm", source="timer",
+                      text=f"{name} timer done" if name else "Timer done", dedupe=False)
+
+
+@route("GET", "/api/mirror")
+def get_mirror(req):
+    """Silhouette mirror: camera settings, what camera hardware there is, and live numbers (camera.py)."""
+    cam = camera.get(store)
+    return {**cam.status(), "takeover": cam.takeover.status() if getattr(cam, "takeover", None) else None}
+
+
+@route("POST", "/api/mirror")
+def post_mirror(req):
+    save_settings({"mirror": camera.clean_settings(req.json())})
+    camera.get(store).apply_settings()
+    return get_mirror(req)
+
+
+@route("POST", "/api/mirror/background")
+def post_mirror_background(req):
+    """Take the current picture as the empty room."""
+    if not camera.get(store).capture_background():
+        raise ValueError("the camera isn't sending pictures yet")
+    return get_mirror(req)
+
+
+@route("POST", "/api/mirror/frame")
+def post_mirror_frame(req):
+    """A browser camera frame over HTTP (when the WebSocket is down): {"w", "h", "data" (base64 gray), "id"}."""
+    return {"used": camera.get(store).push_browser(req.json())}
+
+
+@route("GET", "/api/mirror/preview")
+def get_mirror_preview(req):
+    """The mirror's picture right now, for the Mirror page (?mode=…). Keeps a Pi camera running while polled."""
+    mode = (req.query.get("mode") or [""])[0]
+    rows = camera.preview(runner.ctx, mode if mode in camera.MODES else "")
+    cam = camera.get(store)
+    return {"rows": rows, "live": cam.latest() is not None, "present": cam.presence.present,
+            "fg": round(cam.snap.fg * 100, 1) if cam.snap else 0, "motion": round(cam.snap.motion * 100, 1) if cam.snap else 0,
+            "ms": round(cam.ms, 2), "error": cam.error}
 
 
 @route("GET", "/api/settings")
@@ -1444,7 +1651,10 @@ def audio_levels(req):
     return {**audio_signal.status(store), "live": r["live"], "generated": r["generated"],
             "quiet": quiet_active(store.settings.get("quiet_hours") or {}, dt.datetime.now()),
             "levels": {k: round(r[k], 3) for k in ("bass", "lowmid", "mid", "high", "level")},
-            "beat": round(r["pulse"], 3)}
+            # hits fade slower here than in the reading, so a meter polled a few times a second still shows them
+            "hits": {k: round(math.exp(-max(0.0, a) / 0.3), 3) for k, a in r["hit_age"].items()},
+            "beat": round(r["pulse"], 3), "bpm": round(r["bpm"]),
+            "bpm_sure": r["bpm_confidence"] >= audio_signal.TEMPO_SURE, "groove": round(r["groove"], 2)}
 
 
 @route("GET", "/api/snapcast")
@@ -1499,6 +1709,13 @@ def post_wear_exercise(req):
     return {**care.exercise(int(req.json().get("times") or 3)), **state()}
 
 
+@route("GET", "/api/scores")
+def get_scores(req):
+    """The games' high-score tables: {game key: {"lower", "top": [{score, name, at}]}}."""
+    from apps import scores
+    return {"scores": scores.everything(store)}
+
+
 @route("GET", "/api/panels")
 def get_panels(req):
     return {"panels": panelsetup.panel_list(board), "panel_width": board.pw, "panel_height": board.ph,
@@ -1507,9 +1724,10 @@ def get_panels(req):
 
 @route("POST", "/api/panels")
 def post_panels(req):
-    """Save a new panel mapping to config.yaml and apply it right away (when the board size stays the same)."""
+    """Save a new panel mapping to config.local.yaml and apply it right away (when the board size stays the same)."""
     panels = panelsetup.validate(req.json().get("panels"))
-    panelsetup.write_config(config_path, panels)
+    localconfig.update(config_path, {"panels": panels})  # config.local.yaml, not the tracked config.yaml
+    backups_mod.save_config_copy(persist, config_path)
     try:
         board.set_panels(panels)
     except ValueError as e:
@@ -1529,6 +1747,24 @@ def post_board_timing(req):
     it by eye. Not saved: put the values that look right in config.yaml."""
     body = req.json()
     return board.set_timing(body.get("sweep_ms"), body.get("sync_refresh"), body.get("sweep_mode"))
+
+
+@route("POST", "/api/board/refresh")
+def post_board_refresh(req):
+    """Resend every panel now, and retry buses that can't be reached without waiting (Retry now)."""
+    board.refresh()
+    return {"ok": True, "link": board.link_status()}
+
+
+@route("GET", "/api/health")
+def get_health(req):
+    """Runner heartbeat, every bus, temperature, throttling, disk, memory, uptime, version, and an overall
+    status: ok, degraded or failing (with the reasons). Same password as the rest of the API."""
+    out = health.report(board, runner, data_dir, storage_path)
+    if backups:
+        st = backups.status()
+        out["backup"] = {k: st[k] for k in ("last", "last_auto", "next")}
+    return out
 
 
 @route("POST", "/api/panels/identify")
@@ -1575,6 +1811,7 @@ def get_storage(req):
 def get_storage_backup(req):
     """A consistent copy of storage.db (settings, playlists, scenes, drawings, slideshows, fonts…)."""
     persist.mirror_once()  # include anything written in the last few seconds
+    backups_mod.save_config_copy(persist, config_path)  # config.local.yaml goes in the backup too
     fd, tmp = tempfile.mkstemp(prefix="backup-", suffix=".db", dir=persist.path.parent)
     os.close(fd)
     try:
@@ -1588,12 +1825,130 @@ def get_storage_backup(req):
 
 @route("POST", r"/api/storage/restore")
 def post_storage_restore(req):
-    """Raw bytes of a backup .db. It's checked now and replaces the database when the server next starts."""
-    if req.query.get("confirm", [""])[0] != "1":
-        raise ValueError("add ?confirm=1 to replace all saved data with this backup")
-    files = persist.stage_restore(req.raw())
-    return {"ok": True, "files": files, **persist.info(),
+    """Raw bytes of a backup .db (streamed to disk), or ?name=<a backup in the backups folder>. It's checked now and
+    replaces the database (and config.local.yaml) when the server next starts."""
+    try:
+        if req.query.get("confirm", [""])[0] != "1":
+            raise ValueError("add ?confirm=1 to replace all saved data with this backup")
+        name = req.query.get("name", [""])[0]
+        if name:
+            files = persist.stage_restore_file(backups.path(name))
+        else:
+            if req.body_length <= 0:
+                raise ValueError("send the backup file as the request body")
+            free = shutil.disk_usage(persist.path.parent).free
+            if req.body_length + 50 * 2**20 > free:
+                raise ValueError(f"not enough free space for the upload: {req.body_length // 2**20 + 1} MB "
+                                 f"(+50 MB spare) needed, {free // 2**20} MB free")
+            files = persist.stage_restore_stream(req.rfile, req.body_length)
+            req.body_length = 0
+    finally:
+        if req.body_length:
+            req.close_connection = True  # the unread body would otherwise be taken for the next request
+    return {**persist.info(), "ok": True, "files": files,
             "message": f"Backup checked ({files} files). Restart the server to restore it; until then nothing changes."}
+
+
+# ---- backups folder, version, restart and update (backups.py, updater.py) ----------------
+
+@route("GET", "/api/backups")
+def get_backups(req):
+    return backups.status()
+
+
+@route("POST", "/api/backups")
+def post_backups(req):
+    """Make a backup in the backups folder now."""
+    entry = backups.make("manual")
+    return {"ok": True, "backup": entry, **backups.status()}
+
+
+@route("POST", "/api/backups/settings")
+def post_backup_settings(req):
+    """{"schedule": "off|daily|weekly", "time": "03:00", "weekday": 0-6 (Monday = 0), "folder": "../backups", "keep": 7}"""
+    clean = backups_mod.clean_settings(req.json())
+    save_settings({"backup": clean})
+    if "keep" in clean:
+        backups.rotate(clean["keep"])
+    return backups.status()
+
+
+@route("GET", r"/api/backups/(flipdot-backup-[0-9a-z-]+\.db)")
+def get_backup_file(req, name):
+    return RawFile(backups.path(name), "application/vnd.sqlite3", {"Content-Disposition": f'attachment; filename="{name}"'})
+
+
+@route("POST", r"/api/backups/(flipdot-backup-[0-9a-z-]+\.db)/delete")
+def delete_backup_file(req, name):
+    backups.delete(name)
+    return backups.status()
+
+
+@route("GET", "/api/system")
+def get_system(req):
+    """Version (git describe, commit and its date), uptime, and how a restart works here."""
+    return {**health.version_info(), "uptime_s": round(time.time() - health.STARTED), "started": health.STARTED,
+            "systemd": updater_mod.under_systemd(), "python": sys.executable,
+            "venv": sys.prefix != sys.base_prefix, "update": updater.status() if updater else None,
+            "update_source": dict(zip(("remote", "branch"), updater.target())) if updater else None}
+
+
+@route("POST", r"/api/(?:system/)?restart")
+def post_restart(req):
+    return updater_mod.restart()
+
+
+@route("GET", "/api/update")
+def get_update(req):
+    return updater.status()
+
+
+@route("POST", "/api/update/check")
+def post_update_check(req):
+    try:
+        return updater.check()
+    except updater_mod.UpdateError as e:
+        raise HttpError(409, str(e)) from None
+
+
+@route("POST", "/api/update")
+def post_update(req):
+    """Back up, git pull --ff-only, install changed requirements, self-check, restart; rolls back on failure.
+    Runs in the background: poll GET /api/update."""
+    try:
+        return updater.start()
+    except updater_mod.UpdateError as e:
+        raise HttpError(409, str(e)) from None
+
+
+@route("POST", "/api/update/source")
+def post_update_source(req):
+    """{"remote": "origin", "branch": "main"} ("" = the current branch's upstream)."""
+    body = req.json()
+    clean = {}
+    for k in ("remote", "branch"):
+        if k in body:
+            v = str(body[k] or "").strip()
+            if v and not re.fullmatch(r"[^-\s]\S{0,500}", v):  # a name, URL or path; never an option
+                raise ValueError(f"{v!r} isn't a valid git {k} name")
+            clean[k] = v
+    save_settings({"update": clean})
+    return {"update_source": dict(zip(("remote", "branch"), updater.target()))}
+
+
+@route("POST", "/api/update/reset-config")
+def post_update_reset_config(req):
+    """Put config.yaml back to the committed version when all its edits are kept in config.local.yaml."""
+    try:
+        return updater.reset_config()
+    except updater_mod.UpdateError as e:
+        raise HttpError(409, str(e)) from None
+
+
+friends_api.install(sys.modules[__name__])  # People & access, friend messages (friends_api.py)
+programme_api.install(sys.modules[__name__])  # Add to playlist, schedule preview: owner-only (programme_api.py)
+party_api.install(sys.modules[__name__])  # party games' /play modes: player + owner (party_api.py)
+plugins_api.install(sys.modules[__name__])  # Settings → Plugins: Python plugins and Pixlet apps, owner-only
 
 
 # ---- HTTP plumbing ----------------------------------------------------------------
@@ -1662,19 +2017,31 @@ class Handler(BaseHTTPRequestHandler):
         self._send(status, json.dumps(obj).encode(), "application/json")
 
     def _authorized(self):
-        if not password:
-            return True
-        token = parse_qs(urlparse(self.path).query).get("token", [""])[0]
-        if token and secrets.compare_digest(token, password):
-            return True
+        return self._access()[0] == "owner"
+
+    def _access(self):
+        """(role, link record): "owner" with the password (or when there is none), a link's role
+        (access.py) with a valid link token, else (None, None), or (None, "bad") for a link that stopped working."""
+        q = parse_qs(urlparse(self.path).query).get("token", [""])[0]
         auth = self.headers.get("Authorization", "")
-        if auth.startswith("Basic "):
-            try:
+        try:
+            if password and q and secrets.compare_digest(q, password):
+                return "owner", None
+            if password and auth.startswith("Basic "):
                 _, _, pw = base64.b64decode(auth[6:]).decode().partition(":")
-                return secrets.compare_digest(pw, password)
-            except ValueError:
-                return False
-        return False
+                if secrets.compare_digest(pw, password):
+                    return "owner", None
+        except (ValueError, TypeError):
+            pass
+        bearer = auth[7:].strip() if auth.startswith("Bearer ") else ""
+        token = bearer or q or access.cookie_token(self.headers.get("Cookie"))
+        if token and store is not None:
+            rec = access.get(store).check(token)
+            if rec:
+                return rec["role"], rec
+            if bearer or token != q:  # (a wrong ?token= is just a wrong password)
+                return None, "bad"
+        return ("owner", None) if not password else (None, None)
 
     def do_OPTIONS(self):
         self.send_response(204)
@@ -1696,11 +2063,13 @@ class Handler(BaseHTTPRequestHandler):
         # Read the body up front, every request: the handler object is reused for all requests on a
         # keep-alive connection, and an unread body would corrupt the next request.
         public = (self.command, url.path) in GUEST_PUBLIC
+        self.role, self.token_rec = self._access()
+        scoped = self.role not in ("owner", None)  # someone with a player, friend or viewer link
         try:
             length = int(self.headers.get("Content-Length") or 0)
         except ValueError:
             length = -1
-        if length < 0 or (public and length > guestwall.BODY_MAX):
+        if length < 0 or (public and length > guestwall.BODY_MAX) or (scoped and length > access.BODY_MAX):
             self.close_connection = True  # don't read a body like that; drop the connection instead
             return self._json({"error": "That message is too long." if length > 0 else "bad Content-Length"}, 413 if length > 0 else 400)
         streamed = self.command == "POST" and url.path in STREAMED_UPLOADS
@@ -1710,18 +2079,35 @@ class Handler(BaseHTTPRequestHandler):
             self._raw = self.rfile.read(length)
         if public:
             return self._guest(url)
-        if not self._authorized():
+        if self.command == "GET" and url.path.startswith("/join/"):
+            return self._join(url.path[len("/join/"):])
+        if url.path == "/leave":
+            return self._send(303, b"", "text/plain", {"Location": "/", "Set-Cookie": access.clear_cookie()})
+        if self.role is None:
             if streamed:
                 self.close_connection = True  # the unread body would otherwise be taken for the next request
+            if self.token_rec == "bad":  # a revoked or expired link: forget it here, and say so
+                gone = {"Set-Cookie": access.clear_cookie(), "Cache-Control": "no-store"}
+                if url.path.startswith("/api/") or url.path == "/ws":
+                    return self._send(401, json.dumps({"error": access.GONE}).encode(), "application/json", gone)
+                return self._send(401, access.GONE_PAGE, "text/html; charset=utf-8", gone)
             return self._send(401, b"password required", "text/plain", {"WWW-Authenticate": 'Basic realm="flipdot"'})
         guestwall.note_host(self.headers.get("Host"))
         if url.path == "/ws":
+            if scoped and (self.role not in access.WS_TYPES or not access.same_origin(self.headers)):
+                return self._json({"error": "not allowed with this link"}, 403)
             return self._websocket()
         if self.command == "GET" and not url.path.startswith("/api/"):
+            if not access.page_allowed(self.role, url.path):
+                if url.path in ("/", "/index.html") and self.role in access.PAGES:
+                    return self._send(302, b"", "text/plain", {"Location": access.PAGES[self.role]})
+                return self._json({"error": "not allowed with this link"}, 403)
             return self._static(url.path)
         for method, pattern, fn in ROUTES:
             m = pattern.match(url.path)
             if m and self.command in method.split("|"):
+                if not access.allowed(self.role, self.command, pattern.pattern[1:-1]):
+                    return self._json({"error": "not allowed with this link"}, 403)
                 try:
                     result = fn(self, *m.groups())
                 except HttpError as e:
@@ -1740,6 +2126,15 @@ class Handler(BaseHTTPRequestHandler):
                     return self._send(302, b"", "text/plain", {"Location": result.url})
                 return self._json(result if result is not None else {"ok": True})
         self._json({"error": "not found"}, 404)
+
+    def _join(self, token):
+        """A share link: remember its token in a cookie and open the role's page."""
+        rec = access.get(store).check(token) if access.TOKEN_RE.fullmatch(token) else None
+        if rec is None:
+            return self._send(404, access.GONE_PAGE, "text/html; charset=utf-8", {"Cache-Control": "no-store"})
+        return self._send(303, b"", "text/plain", {"Location": access.PAGES[rec["role"]], "Cache-Control": "no-store",
+                                                  "Referrer-Policy": "no-referrer",
+                                                  "Set-Cookie": access.set_cookie(token, rec.get("expires"))})
 
     def _guest(self, url):
         if self.command == "GET":
@@ -1761,10 +2156,17 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.flush()
         self.close_connection = True
-        hub.serve(self.connection, self.rfile)
+        types = access.WS_TYPES.get(self.role) if self.role != "owner" else None
+
+        def limited(msg):  # a player link sends game input only; a viewer only watches
+            if msg.get("type") not in types:
+                raise PermissionError("not allowed with this link")
+            ws_message(msg)
+        hub.serve(self.connection, self.rfile, limited if types is not None else None)
 
     def _static(self, path):
-        page = {"/": "index.html", "/play": "play.html", "/guest": "guest.html"}.get(path, path.lstrip("/"))
+        page = {"/": "index.html", "/play": "play.html", "/guest": "guest.html", "/friend": "friend.html",
+                "/view": "view.html"}.get(path, path.lstrip("/"))
         if page.startswith("static/"):
             page = page[len("static/"):]
         f = (STATIC / page).resolve()
@@ -1789,7 +2191,8 @@ class Server(ThreadingHTTPServer):
 
 
 def main():
-    global board, store, runner, password, hub, care, recorder, config_path, automations, persist
+    global board, store, runner, password, hub, care, recorder, config_path, automations, persist, data_dir, storage_path
+    global backups, updater
     ap = argparse.ArgumentParser()
     ap.add_argument("--config", default=ROOT / "config.yaml")
     ap.add_argument("--data", default=ROOT / "data", help="working copy of the saved data (restored from --storage at startup)")
@@ -1803,24 +2206,49 @@ def main():
     logging.basicConfig(level=logging.DEBUG if args.verbose else logging.INFO, format="%(asctime)s %(message)s")
 
     config_path = args.config
+    data_dir, storage_path = args.data, args.storage
     guestwall.server_port = args.port
-    config = load_config(args.config)
+    persist = storage_mod.Storage(args.storage, args.data)  # first: a restored backup brings its config.local.yaml
+    if persist.restored_backup:
+        backups_mod.restore_config_copy(persist, args.config)
+    try:
+        localconfig.migrate(args.config)  # first run: hand edits of config.yaml move into config.local.yaml
+    except OSError as e:
+        logging.warning("config: can't create %s: %s", localconfig.local_path(args.config), e)
+    config = localconfig.load(args.config)  # config.yaml with config.local.yaml on top
     password = str(config.get("password") or "")
     board = Board(config, dry_run=args.dry_run)
-    persist = storage_mod.Storage(args.storage, args.data)
     persist.startup()  # restore data/ from the database before anything reads it
+    backups_mod.save_config_copy(persist, args.config)
     store = Store(args.data, persist=persist)
     fonts.USER_FONT_DIR = Path(args.data) / "fonts"
     fonts.USER_FONT_DIR.mkdir(parents=True, exist_ok=True)
     video_mod.library = video_mod.Library(store, board.width, board.height, on_purge=lambda vid: clean_refs("video", vid))
     runner = Runner(board, store)
+    apps.base.notify = runner.notify  # apps that raise a notification themselves (the hourglass running out)
+    plugins_api.start(store, notify=runner.notify)  # plugin apps exist before a playlist or the schedule needs them
     care = BoardCare(board, runner, store)
     atexit.register(persist.flush)  # runs last (atexit is LIFO), after the wear counts are written
     atexit.register(care.save)  # keep wear counts across restarts
     persist.start_mirror()
+    backups = backups_mod.Backups(persist, lambda: store.settings.get("backup"), ROOT, args.config)
+    backups.start()
+    updater = updater_mod.Updater(ROOT, settings=lambda: store.settings.get("update"), backup=backups.make,
+                                  restart=updater_mod.restart, state_path=Path(f"{args.storage}.update.json"),
+                                  config_name=Path(args.config).name if Path(args.config).resolve().parent == ROOT.resolve() else "",
+                                  reset_config_ok=lambda: localconfig.covers_edits(args.config))
     signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
     recorder = timelapse.Recorder(board)
     automations = rules.Automations(runner, board, store, notify)
+    timer_box = timers_mod.for_store(store)  # kitchen timers ring even when their app isn't on the board
+    timer_box.on_ring = timer_rang
+    timer_box.on_change = lambda: threading.Thread(target=ha_sync, daemon=True).start()
+    timer_box.watch()
+    friends.get(store).start(runner, (board.width, board.height))  # friend messages: due, scheduled and pinned
+    camera.setup(store, runner, automations, board.width, board.height)  # silhouette mirror and its takeover
+    from apps import pack_daily
+    pack_daily.start_scheduler(store, board.width, board.height)  # the morning postcard, once its app is set up
+    atexit.register(camera.get().stop)
     runner.listeners.append(lambda: mqtt_client and threading.Thread(target=publish_status, daemon=True).start())
     hub = Hub(board, runner, ws_message)
     board.listeners.append(hub.notify)
@@ -1829,6 +2257,7 @@ def main():
     if store.schedule.get("enabled"):
         runner.resume_schedule()
     start_mqtt()
+    start_ntfy()
     start_sendspin()
     start_snapcast()  # snapcast_link stops snapclient at exit
     start_gamepad()
@@ -1837,7 +2266,11 @@ def main():
     logging.info("%dx%d board, %d panels%s", board.width, board.height, len(board.panels),
                  " (dry run)" if args.dry_run else "")
     logging.info("open http://localhost:%d%s", args.port, " (password protected)" if password else "")
-    Server((args.host, args.port), Handler).serve_forever()
+    httpd = Server((args.host, args.port), Handler)
+    # systemd (Type=notify): up and serving; then watchdog pings for as long as the runner keeps ticking
+    health.sd_notify("READY=1")
+    health.start_watchdog(lambda: time.monotonic() - runner.beat)
+    httpd.serve_forever()
 
 
 if __name__ == "__main__":

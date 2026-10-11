@@ -156,11 +156,11 @@ $("psAdd").onclick = () => {
   renderPanels();
 };
 $("psSave").onclick = safe(async () => {
-  if (!await confirmDialog({ title: "Write this panel mapping to config.yaml?", message: "The board switches to it right away.", confirmText: "Save to config.yaml" })) return;
+  if (!await confirmDialog({ title: "Save this panel mapping?", message: "It goes into config.local.yaml, and the board switches to it right away.", confirmText: "Save" })) return;
   const j = await api("/api/panels", { panels });
   panels = j.panels;
   panelsEdited = false;
   renderPanels();
   $("psMsg").textContent = j.applied ? "Saved and applied" : j.message;
-  toast(j.applied ? "Saved to config.yaml and applied" : j.message);
+  toast(j.applied ? "Saved to config.local.yaml and applied" : j.message);
 });

@@ -11,4 +11,6 @@ export const GAME_GROUPS = {
     ["battleship", "Battleship"], ["quickdraw", "Quick Draw"], ["air_hockey", "Air Hockey"]],
   "Puzzles": [["game2048", "2048"], ["minesweeper", "Minesweeper"], ["sokoban", "Sokoban"], ["lights_out", "Lights Out"],
     ["simon", "Simon"], ["columns", "Columns"], ["mastermind", "Mastermind"]],
+  "Party": [["party", "Flipdot Party"], ["quiz", "Buzzer Quiz"], ["pictionary", "Pictionary"], ["rhythm", "Rhythm"],
+    ["drummachine", "Drum Machine"]],
 };

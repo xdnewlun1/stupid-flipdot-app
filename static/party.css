@@ -1,0 +1,76 @@
+/* /play modes for the party games (static/js/partyplay.js). body[data-party] is the running game's mode
+   (pad, quiz, draw, drum), body[data-party-view] what the panel shows (lobby, end, quiz, drawer, guesser, drum, pad). */
+.party { display: flex; flex-direction: column; gap: var(--s2); min-width: 0; }
+.party[hidden] { display: none; }
+.party p { margin: 0; }
+.party .ptitle { font-size: var(--fs-lg); font-weight: 600; }
+.party .pmuted, .party .pnote { color: var(--text-2); font-size: var(--fs-sm); }
+.party .pnote:empty { display: none; }
+.party .pline { text-align: center; }
+.party .prow { display: flex; flex-wrap: wrap; gap: var(--s2); align-items: center; }
+.party .prow > button, .party .prow > select, .party .prow > input { min-height: 44px; }
+.party button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.party .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+
+/* the controller's own pad and extra buttons give way to the panel in the phone-driven games */
+body[data-party="quiz"] .pad, body[data-party="draw"] .pad, body[data-party="drum"] .pad,
+body[data-party]:not([data-party=""]) .extras { display: none; }
+body[data-party-view="quiz"] .screen .wrap, body[data-party-view="drawer"] .screen .wrap,
+body[data-party-view="drum"] .screen .wrap { display: none; }
+body[data-party-view="quiz"] #status, body[data-party-view="drawer"] #status, body[data-party-view="drum"] #status { display: none; }
+body[data-party-view="drawer"] #padHint, body[data-party-view="drum"] #padHint, body[data-party-view="quiz"] #padHint { display: none; }
+
+/* quiz */
+.party .pquestion { font-size: var(--fs-xl); line-height: 1.3; font-weight: 600; min-height: 2.6em; }
+.party .pbuzz { min-height: 88px; font: 700 28px/1 var(--font); border-radius: var(--r3); touch-action: manipulation; }
+.party .panswers { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s2); }
+.party .panswers button { min-height: 60px; justify-content: flex-start; gap: var(--s2); text-align: left; white-space: normal; height: auto; padding: var(--s2) var(--s3); }
+.party .panswers b { font-size: var(--fs-lg); }
+.party .panswers button.right { background: var(--ok); border-color: var(--ok); color: #fff; opacity: 1; }
+.party .panswers button.wrong { border-color: var(--danger); color: var(--danger); opacity: 1; }
+
+/* Pictionary */
+.party .pdraw { width: 100%; aspect-ratio: 84 / 41; image-rendering: pixelated; touch-action: none; background: #000;
+                border: 1px solid var(--line-strong); border-radius: var(--r2); cursor: crosshair; }
+.party .phint { font: 600 var(--fs-xl)/1.2 var(--mono); letter-spacing: 0.1em; text-align: center; }
+.party .pguess input { flex: 1; min-width: 0; min-height: 44px; font-size: 16px; }
+.party .pfeed { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; font-size: var(--fs-sm); max-height: 7.5em; overflow: auto; }
+.party .pfeed li.right { color: var(--ok); font-weight: 600; }
+
+/* drum machine */
+.party .pfield { display: inline-flex; align-items: center; gap: var(--s1); font-size: var(--fs-sm); color: var(--text-2); }
+.party .pfield input[type=number] { width: 4.5em; min-height: 40px; }
+.party .pfield input[type=range] { width: 96px; }
+.party .pgrid { display: flex; flex-direction: column; gap: var(--s2); }
+.party .prowgrid { display: grid; gap: 2px; }
+.party .plabel { font-size: var(--fs-xs); color: var(--text-2); }
+.party .pcells { display: grid; grid-template-columns: repeat(16, minmax(0, 1fr)); gap: 3px; }
+.party .pcell { min-width: 0; height: 30px; padding: 0; border-radius: 4px; background: var(--surface-2); border-color: var(--line-strong); touch-action: manipulation; }
+.party .pcell:nth-child(4n + 1) { border-color: var(--text-3); }
+.party .pcell.now { outline: 2px solid var(--text); outline-offset: -2px; }
+.party .pcell[aria-pressed="true"].now { filter: brightness(1.25); }
+.party #dmName { width: 8em; }
+
+@media (orientation: landscape) and (max-height: 500px) {
+  .party { grid-column: 2; grid-row: 3; }
+  /* the four player buttons and the game picker share the top row with the pad on either side */
+  .pick { gap: var(--s2); }
+  .pick .group { flex-wrap: nowrap; }
+  .pick .group button { padding: 0 var(--s2); }
+  .gamePick { min-width: 96px; flex: 1 1 96px; }
+  body[data-party="quiz"] .party, body[data-party="draw"] .party, body[data-party="drum"] .party {
+    grid-column: 1 / 4; grid-row: 2 / 4; overflow: auto; min-height: 0; }
+  body[data-party="pad"][data-party-view="lobby"] .party, body[data-party="pad"][data-party-view="end"] .party {
+    grid-row: 2 / 4; overflow: auto; min-height: 0; }
+  body[data-party-view="lobby"] .screen, body[data-party-view="end"] .screen { display: none; }
+  /* guessing: the board (the drawing) in the middle, the guess box beside it */
+  body[data-party-view="guesser"] .party { grid-column: 3; grid-row: 1 / 4; width: min(300px, 38vw); overflow: auto; min-height: 0; }
+  .party .pquestion { min-height: 0; font-size: var(--fs-lg); }
+  .party .pbuzz { min-height: 64px; }
+  .party .panswers { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .party .panswers button { min-height: 52px; }
+  .party .pdraw { width: auto; height: calc(100dvh - 150px); max-width: 100%; align-self: center; }
+  .party .prowgrid { grid-template-columns: 64px minmax(0, 1fr); align-items: center; }
+  .party .pcell { height: 34px; }
+  .party .pgrid { gap: var(--s1); }
+}

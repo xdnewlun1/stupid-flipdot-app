@@ -2,12 +2,11 @@
 
 Built on games.Game. These are mostly still pictures, so each game keeps its last
 frame and only redraws when something changed; an idle game flips no dots. On the
-title screen the name alternates with a self-playing demo. Best scores are saved
-in the data folder (puzzle_scores.json).
+title screen the name alternates with a self-playing demo. Scores go in the shared
+high-score table (apps/scores.py; Minesweeper per difficulty, Sokoban per level).
 """
 
 import itertools
-import logging
 import random
 import time
 
@@ -17,9 +16,6 @@ from .arcade import fill
 from .base import P, register
 from .games import Game
 
-log = logging.getLogger("puzzle")
-
-SCORES = "puzzle_scores.json"
 DEMO = P("demo", "checkbox", True, "Self-playing demo on the title screen")
 MOVES = {"up": (0, -1), "down": (0, 1), "left": (-1, 0), "right": (1, 0)}
 
@@ -61,32 +57,27 @@ class Puzzle(Game):
         self.ver = 0
         self._key = self._frame = None
         self.result = ("GAME OVER", "0", "")
-        try:
-            self.scores = ctx.store._load(SCORES, {})
-        except Exception:
-            self.scores = {}
 
     # ---- best scores ----------------------------------------------------------------
 
     def best(self, key=None):
-        return self.scores.get(key or self.id)
+        e = self.hi(key)
+        return e["score"] if e else None
 
     def record(self, value, key=None, lower=False):
-        """Save value if it beats the best (lower=True: smaller is better). True if it did."""
+        """File value in the high-score table (lower=True: smaller is better). True if it beat the best."""
         if self.demo:
             return False
-        key = key or self.id
-        old = self.scores.get(key)
-        if old is not None and (value >= old if lower else value <= old):
+        key = key or self.score_key()
+        old = self.best(key)
+        mine = self._eids.get(key)
+        self.file_score(key, value, lower)
+        if mine and old == value:
             return False
-        self.scores[key] = value
-        try:
-            data = self.ctx.store._load(SCORES, {})  # another puzzle game may have saved meanwhile
-            data[key] = value
-            self.ctx.store._save(SCORES, data)
-        except Exception as e:
-            log.warning("can't save best score: %s", e)
-        return True
+        return old is None or (value < old if lower else value > old)
+
+    def score_entry(self):
+        return self._last  # puzzles file their scores through record()
 
     def best_line(self, new, value, key=None, unit=""):
         b = self.best(key)
@@ -115,6 +106,7 @@ class Puzzle(Game):
             self.press(key, player)
 
     def restart(self):
+        self._eids, self._last = {}, None
         self.reset()
 
     def game_over(self, headline="GAME OVER", big=None, detail=""):
@@ -182,8 +174,7 @@ class Puzzle(Game):
         else:
             c.text_center(8, t, NORMAL)
         self.draw_title(c, now)
-        if int(now * 2) % 2:
-            c.text_center(36, "PRESS ANY BUTTON", SMALL)
+        self.title_footer(c, now)
 
     def draw_over(self, c, now):
         head, big, detail = self.result
@@ -412,6 +403,9 @@ class Minesweeper(Puzzle):
     ]
     AI_STEP = 0.12
 
+    def score_key(self):
+        return f"minesweeper:{self.p['difficulty']}"
+
     def reset(self):
         n = MS_COLS * MS_ROWS
         self.nmines = self.LEVELS.get(self.p["difficulty"], 14)
@@ -478,7 +472,7 @@ class Minesweeper(Puzzle):
     def tick(self, now):
         if self.ended and now - self.ended > 3:
             if self.won:
-                key = f"minesweeper:{self.p['difficulty']}"
+                key = self.score_key()
                 new = self.record(self.score, key, lower=True)
                 self.game_over("CLEARED", f"{self.score}s", self.best_line(new, self.score, key, "S"))
             else:

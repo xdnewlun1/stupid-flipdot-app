@@ -5,6 +5,9 @@ Triggers (edge-triggered: they fire when the condition starts, not while it last
     weather                    the current weather turns rain / snow / clear (Open-Meteo, every 10 min)
     event                      POST /api/event/<name> or MQTT <prefix>/event with the name as payload
     idle                       nothing running and no change on the board for N minutes
+    presence                   someone walks up to the mirror's camera ("arrive") or has left ("leave"); camera.py
+    calendar                   an event starts in an iCal feed (optionally only titles with a keyword); with
+                               "until_end", an app or layer set action shows until the event ends, then what was on
 Actions: app, composition, playlist, notify (text / scene / image URL), schedule (resume), black.
 """
 
@@ -21,7 +24,8 @@ TICK = 3              # seconds between evaluations
 MUSIC_EVERY = 5       # seconds between Music Assistant polls
 WEATHER_EVERY = 600   # seconds between weather checks
 DEFAULT_COOLDOWN = 60
-TRIGGERS = ("music_start", "music_stop", "weather", "event", "idle")
+TRIGGERS = ("music_start", "music_stop", "weather", "event", "idle", "presence", "calendar")
+CALENDAR_EVERY = 60   # seconds between calendar checks (the feed itself is cached for 5 minutes)
 ACTIONS = ("app", "composition", "playlist", "notify", "schedule", "black")
 WEATHER_KINDS = ("rain", "snow", "clear")
 
@@ -55,6 +59,10 @@ def validate(rules):
             raise ValueError(f"rule {i + 1}: give the event a name")
         if trig["type"] == "idle" and not float(trig.get("minutes") or 0) > 0:
             raise ValueError(f"rule {i + 1}: idle minutes must be more than 0")
+        if trig["type"] == "presence" and trig.get("state", "arrive") not in ("arrive", "leave"):
+            raise ValueError(f"rule {i + 1}: presence must be arrive or leave")
+        if trig["type"] == "calendar" and not str(trig.get("urls") or "").strip():
+            raise ValueError(f"rule {i + 1}: add an iCal link for the calendar")
         out.append({
             "id": str(r.get("id") or f"r{int(time.time() * 1000) % 10**9}{i}"),
             "name": str(r.get("name") or ""),
@@ -103,14 +111,15 @@ class Automations:
                     str(t.get(k) or "").strip().lower() == str(v).strip().lower() for k, v in match.items()):
                 yield r
 
-    def fire(self, rule, now=None, force=False):
-        """Run a rule's action unless it's cooling down. Returns True if it ran."""
+    def fire(self, rule, now=None, force=False, until=None):
+        """Run a rule's action unless it's cooling down. Returns True if it ran. until: (calendar) show an app or
+        layer set only until then, over what was on."""
         now = now or time.time()
         if not force and now - self.last_fired.get(rule["id"], -1e9) < float(rule.get("cooldown", DEFAULT_COOLDOWN)):
             return False
         self.last_fired[rule["id"]] = now
         try:
-            self.run_action(rule["action"])
+            self.run_action(rule["action"], until=until)
             self.last_error.pop(rule["id"], None)
             log.info("automation %s fired", rule.get("name") or rule["id"])
         except Exception as e:
@@ -118,9 +127,22 @@ class Automations:
             log.warning("automation %s failed: %s", rule.get("name") or rule["id"], e)
         return True
 
-    def run_action(self, a):
+    def run_action(self, a, until=None):
         kind = a.get("type")
         transition = a.get("transition") or "dissolve"
+        if until is not None and kind in ("app", "composition"):
+            # for the length of a calendar event: over what's on, which comes back when it ends
+            if kind == "app":
+                spec = {"app": a["app"], "params": a.get("params") or {}}
+            else:
+                comp = self.store.compositions.get(a.get("composition") or "")
+                if comp is None:
+                    raise ValueError(f"no composition {a.get('composition')!r}")
+                spec = {"app": "layers", "params": {"layers": comp["layers"]}}
+            # low: other notifications show over it, and it comes back after them
+            self.runner.notify(spec=spec, duration=max(1.0, until - time.time()), transition=transition,
+                               priority="low", source="automation", dedupe=False)
+            return
         if kind == "app":
             self.runner.run({"app": a["app"], "params": a.get("params") or {}}, transition)
         elif kind == "composition":
@@ -138,6 +160,10 @@ class Automations:
                     break
             else:
                 raise ValueError("the notification needs a text, scene or image URL")
+            for k in ("priority", "icon", "sound", "repeat", "hold", "key"):
+                if a.get(k) not in (None, ""):
+                    body[k] = a[k]
+            body.setdefault("source", "automation")
             self.notify_fn(body)
         elif kind == "schedule":
             self.runner.resume_schedule()
@@ -150,6 +176,11 @@ class Automations:
     def event(self, name):
         """An incoming named event (HTTP or MQTT). Returns the ids of the rules that ran."""
         return [r["id"] for r in list(self._matching("event", event=name)) if self.fire(r)]
+
+    def presence(self, state, now=None):
+        """The mirror's camera saw someone walk up ("arrive") or leave ("leave"). Returns the ids of the rules that ran."""
+        return [r["id"] for r in list(self._matching("presence"))
+                if (r["trigger"].get("state") or "arrive") == state and self.fire(r, now)]
 
     # ---- background evaluation -----------------------------------------------------
 
@@ -170,7 +201,42 @@ class Automations:
             self.music = None
         if "weather" in types:
             self._check_weather(now)
+        if "calendar" in types:
+            self._check_calendar(now)
         self._check_idle(now)
+
+    def _check_calendar(self, now):
+        """Fire calendar rules for events that started since the last look (also one already on at startup)."""
+        seen = self.__dict__.setdefault("_calendar_seen", {})  # rule id -> keys of the events on at the last look
+        due = self.__dict__.setdefault("_calendar_next", {})
+        for r in list(self._matching("calendar")):
+            if now < due.get(r["id"], 0):
+                continue
+            due[r["id"]] = now + CALENDAR_EVERY
+            try:
+                on = self.calendar_events(r["trigger"], now)
+            except Exception as e:
+                self.last_error[r["id"]] = f"calendar: {e}"
+                due[r["id"]] = now + 120
+                continue
+            keys = {(title, start.isoformat()): end for start, end, title in on}
+            fresh = [k for k in keys if k not in seen.get(r["id"], set())]
+            seen[r["id"]] = set(keys)
+            if fresh:
+                until = max(keys[k] for k in fresh).timestamp() if r["trigger"].get("until_end", True) else None
+                self.fire(r, now, force=True, until=until)
+
+    def calendar_events(self, trig, now):
+        """[(start, end, title)] of the trigger's calendar events on at `now` that match its keyword."""
+        import datetime as dt
+        from apps.ical import parse_ics
+        from apps.pack_ambient import meetings_now
+        events = []
+        for url in str(trig.get("urls") or "").split():
+            if url.startswith("webcal://"):
+                url = "https://" + url[len("webcal://"):]
+            events += parse_ics(http_get(url, ttl=300, raw=True, timeout=20).decode("utf-8", "replace"))
+        return meetings_now(events, dt.datetime.fromtimestamp(now).astimezone(), trig.get("keyword") or "")
 
     def _check_music(self, now):
         if now < self._next_music or not (self.store.settings.get("music_assistant") or {}).get("url"):

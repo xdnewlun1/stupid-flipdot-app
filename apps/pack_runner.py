@@ -13,7 +13,6 @@ from fonts import NORMAL, SMALL
 from .arcade import STEP, Arcade, fill
 from .base import P, register
 
-BEST = {}  # best score per game, kept while the server runs
 DEMO_AFTER = 5  # idle seconds on the title screen before the demo starts
 DEMO_LENGTH = 90  # a demo game ends after this many seconds at most
 DEMO = P("demo", "checkbox", True, "Play a demo when nobody is playing")
@@ -79,15 +78,14 @@ def label(c, x, y, s, align="left"):
 
 
 class PackGame(Arcade):
-    """Arcade game with an attract-mode demo, restart on A and a best score that
-    survives restarting the app. Subclasses read buttons through keys() and set
+    """Arcade game with an attract-mode demo, restart on A and a best score from the
+    shared high-score table. Subclasses read buttons through keys() and set
     demo_keys (and call press()) from autoplay()."""
 
     over_text = "GAME OVER"
 
     def __init__(self, ctx, **params):
         super().__init__(ctx, **params)
-        self.best = BEST.get(self.id, 0)
         self.demo = False
         self.demo_keys = set()
         self.idle_at = None
@@ -130,7 +128,7 @@ class PackGame(Arcade):
                 self.autoplay()
             self.step()
         if not self.demo and self.score > self.best:
-            self.best = BEST[self.id] = self.score
+            self.best = self.score
 
     def autoplay(self): ...
 

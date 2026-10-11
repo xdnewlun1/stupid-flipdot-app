@@ -199,6 +199,7 @@ class Slideshow(App):
         self.react_rate = 1.0   # smoothed loudness-driven GIF speed
         self.react_beats = None  # beat counter last seen, so each beat skips exactly one frame
         self.react_t = None
+        self.react_reading = None
         self.quiet = (0, False)  # (checked at, quiet hours active)
 
     @property
@@ -320,7 +321,7 @@ class Slideshow(App):
                 self.trans, self.prev = None, None
             frame = out
         if strengths:  # on top of the random effect and the transition, so it carries on across items
-            frame = self.react.apply(frame, now, strengths)
+            frame = self.react.apply(frame, now, strengths, self.react_reading)
         if (frame.w, frame.h) == (c.w, c.h):
             c.px[:] = frame.px
         else:
@@ -361,7 +362,7 @@ class Slideshow(App):
         return self.quiet[1]
 
     def _react(self, settings, now):
-        """Music → GIF speed / beat skips on the current item; returns {effect: strength} to apply."""
+        """Music → GIF speed / beat skips on the current item; returns slidefx.react_plan() to apply."""
         on = bool(settings.get("react_enabled")) and not self._quiet()
         r = None
         if on:
@@ -386,7 +387,8 @@ class Slideshow(App):
         if self.react_beats is not None and r["beat_count"] != self.react_beats and settings.get("react_skip"):
             self.cur.skip_frame(now)
         self.react_beats = r["beat_count"]
-        return slidefx.react_strengths(slidefx.clean_react_map(settings.get("react_map")), r)
+        self.react_reading = r
+        return slidefx.react_plan(slidefx.clean_react_map(settings.get("react_map")), r)
 
     def describe(self):
         g = self.ctx.store.galleries.get(self.gid)

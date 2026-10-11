@@ -24,23 +24,107 @@ The sidebar (a tab bar at the bottom on phones) has **Now playing**, **Create** 
 | **Draw** | the board stays in view above the tools (pinned at the top on a phone); **zoom** in with the buttons under it or a two-finger pinch, and pan with the Move tool or by dragging while not drawing; the preview is view-only until you tick **Draw on the board** (that stops what's running) or pick a drawing layer; pencil, line, rectangle, circle (outline/filled), flood fill, text stamp, select + copy/cut/paste/flip, undo/redo (Ctrl+Z / Ctrl+Y), save to Pictures, **animation mode** (frame strip: add / duplicate / delete / reorder frames, per-frame duration, onion skin, play on the board, save to Pictures or open one from there; tools, undo and copy/paste work on the current frame), **Draw me…** (Claude draws a picture or a short animation from a description; needs an Anthropic API key in Settings → AI drawing), export PNG, **export GIF** (timelapse of the last 1–30 minutes, sped up; recorded in memory) |
 | **Import** (was Image & video) | the one place to drop, choose or paste files, and each goes where it belongs, then that page opens with it highlighted: a **photo or GIF** is converted with the options on the page (stretch / cut / fit, threshold or dither, cutoff, negative) and saved to **Pictures** (change the options afterwards, or press **Change conversion** on its card, and the saved picture is updated); a **video** uploads into **Videos** (with progress) and opens selected while it converts; **several images or a .zip** ask whether to make a new **slideshow** (it opens on Slideshows as it uploads) or save each to Pictures. **Stream without saving**: a video file or the webcam (webcam on `http://localhost` or https only) streamed live (while a stream runs every status view says "Live stream: name", from this browser or another one, it stops when the tab closes or after 4 s without frames, and Stop ends it), or a short clip converted and saved to Pictures |
 | **Pictures** (was Scenes) | one library for still pictures, animations and drawing layers (filter by kind), each with **Show on board**, **Add as layer**, **Edit** (opens it in Draw), Rename, PNG/JSON download and Delete; drawing layers on the board are marked |
-| **Apps** | a search box and category chips (Everyday, Widgets, Generative, Utilities, Used in playlists, Games); everyday apps come first and games last, grouped as on the phone controller; "Used in playlists" holds the apps that show something you made (a picture, drawing layer, layer set or slideshow); the **Show on board** button sits under the app's name, above its options; options of the app you started change it on the board as you edit them (and the form opens with the values that are on the board); fields that don't apply hide (e.g. pixel scale vs size in dots, scroll speed only for the ticker); clocks (digital, analog, countdown), text (static / ticker / typewriter), weather, **calendar** (iCal links: next events with today/tomorrow labels and a countdown; all-day events, time zones, simple repeats), crypto, stocks, sports scores, any JSON URL, now playing from Music Assistant, music visualizer, Game of Life, matrix rain, plasma, bouncing balls, starfield, fireworks, ripples, metaballs, tunnel, spiral, maze, Lissajous, fire, **random effects** (cycles through them all), Snake / Tetris / Pong / Breakout / Space Invaders / Tron light cycles (vs a CPU or a second player) / Flappy / **Platformer** (run, jump, stomp walkers, reach the flag) / Blackjack (dealt from deckofcardsapi.com), **Doom** (the real game; see below), **NES** (your own ROMs; see below), **arcade**: Asteroids, Galaxian, Missile Command, Centipede, Lunar Lander; **maze & action**: Pac-Man, Frogger, Qix, Bomberman (up to 4 players), Tank Combat; **runners & racing**: Dino Run, Road Racer (pseudo-3D road), Cave Copter, Stacker, Sky Jump, Pitfall Run; **two players** (or vs the computer): Connect Four, Tic-tac-toe, Artillery, Checkers, Battleship, Quick Draw, Air Hockey; **puzzles**: 2048, Minesweeper, Sokoban, Lights Out, Simon, Columns, Mastermind (every game plays a demo of itself when idle and keeps a best score), disc exerciser, **Guest wall** (a QR code to `/guest`, where guests leave a name and message from their phone, alternating with the approved messages as scrolling text; moderate on the Guest wall page, or approve automatically), **Wi-Fi QR code** (guests scan it to join; very long names/passwords switch to a full-height inverted code) |
+| **Apps** | a search box and category chips (Everyday, Widgets, Generative, Utilities, Used in playlists, Games); everyday apps come first and games last, grouped as on the phone controller; "Used in playlists" holds the apps that show something you made (a picture, drawing layer, layer set or slideshow); the **Show on board** button sits under the app's name, above its options; options of the app you started change it on the board as you edit them (and the form opens with the values that are on the board); fields that don't apply hide (e.g. pixel scale vs size in dots, scroll speed only for the ticker); clocks (digital, analog, countdown), text (static / ticker / typewriter), weather, **calendar** (iCal links: next events with today/tomorrow labels and a countdown; all-day events, time zones, simple repeats), crypto, stocks, sports scores, any JSON URL, now playing from Music Assistant, music visualizer, Game of Life, matrix rain, plasma, bouncing balls, starfield, fireworks, ripples, metaballs, tunnel, spiral, maze, Lissajous, fire, **random effects** (cycles through them all; every generative app can **react to music**, see below), Snake / Tetris / Pong / Breakout / Space Invaders / Tron light cycles (vs a CPU or a second player) / Flappy / **Platformer** (run, jump, stomp walkers, reach the flag) / Blackjack (dealt from deckofcardsapi.com), **Doom** (the real game; see below), **NES** (your own ROMs; see below), **arcade**: Asteroids, Galaxian, Missile Command, Centipede, Lunar Lander; **maze & action**: Pac-Man, Frogger, Qix, Bomberman (up to 4 players), Tank Combat; **runners & racing**: Dino Run, Road Racer (pseudo-3D road), Cave Copter, Stacker, Sky Jump, Pitfall Run; **two players** (or vs the computer): Connect Four, Tic-tac-toe, Artillery, Checkers, Battleship, Quick Draw, Air Hockey; **puzzles**: 2048, Minesweeper, Sokoban, Lights Out, Simon, Columns, Mastermind (every game plays a demo of itself when idle, except Doom and NES; scored games keep a top 5 with initials, see **High scores** below), **Sand hourglass** and **Sandbox** (falling sand), **Slow painting** (see below), disc exerciser, **Guest wall** (a QR code to `/guest`, where guests leave a name and message from their phone, alternating with the approved messages as scrolling text; moderate on the Guest wall page, or approve automatically), **Wi-Fi QR code** (guests scan it to join; very long names/passwords switch to a full-height inverted code) |
 | **Layers** | stack apps with blend modes (On top, Add (light up), Halo, Invert where overlapping, Mask, Cut out), drawing layers you can keep editing live, position/size, scrolling, density, speed, Negative (swap a layer's lit and dark dots); saved **layer sets** (the API calls them compositions; usable in playlists) save themselves as you edit, and when the set you're editing is on the board, changes show there right away; picking a set only opens it, **Show on board** shows it; the editor follows the stack that's on the board |
 | **Slideshows** | a playlist of your own images and GIFs: drop files or a .zip, which is unpacked automatically, any time; the pictures come first and **Display options** explain sizing, dithering and the brightness cutoff; while it plays, Previous / Pause / Next work and the picture on the board is highlighted; option changes apply to the playing slideshow right away; images show for 10 s by default, GIFs play through, then it moves on and loops; **GIF speed** (0.5×–4×) for the whole slideshow or per GIF, where fast GIFs at high speed skip frames the board can't flip in time; optional **random effects** give some items an effect such as glitch, wave or Game of Life, for a short burst or the whole item, with a chance, effect list and strength per slideshow; **React to music** lets the bass, beats and other parts of live music drive effects and GIF speed (see below) |
 | **Playlists** | playlists of apps with durations and transitions (dissolve, wipe, slide); items that need setup (Weather without a location, Now playing without Music Assistant) are flagged and skipped; removing an item, rule, layer or slideshow image can be undone from the toast; renaming a playlist or composition updates the schedule, playlists and automations that use it, and deleting something lists what uses it first, then removes those items (automations are turned off); the **transitions** gallery (preview each one on the board) |
 | **Schedule** | time-of-day/day-of-week rules choosing a playlist or "off", the default playlist, and **quiet hours** (cap on dots flipped per second + slower transitions during a time window) |
 | **Automations** | when music starts/stops (Music Assistant), the weather turns rainy/snowy/clear, an event arrives, or the board has been idle N minutes → run an app or composition, play a playlist, show a notification, resume the schedule or go all black |
 | **Guest wall** | messages left at `/guest`: approve, hide or delete them, or approve automatically; the count of waiting messages shows in the navigation |
-| **Settings** | **Location & display** (theme, weather location and units, transition frame rate), **Fonts** (upload your own), **AI drawing**, **Music** (Music Assistant, live audio for the visualizer over Sendspin or Snapcast), **Smart home & API** (MQTT with optional Home Assistant discovery, webhook examples), **Controllers** (gamepads, button mapping), **Board hardware** (step through panels to check the mapping, edit column/row/ip/port/address/rotate, save to `config.yaml` without a restart), **Maintenance** (flips per disc as a heatmap, exercise rarely flipped discs now or daily), **Backup** (backup / restore of `storage.db`) |
+| **Friend messages** | messages sent from friend links (see People & access below): approve or decline, history, show again, pin for N hours, limits |
+| **Settings** | **Location & display** (theme, weather location and units, transition frame rate), **Fonts** (upload your own), **AI drawing**, **Music** (Music Assistant, live audio for the visualizer over Sendspin or Snapcast), **Smart home & API** (MQTT with optional Home Assistant discovery, webhook examples), **Controllers** (gamepads, button mapping), **Board hardware** (step through panels to check the mapping, edit column/row/ip/port/address/rotate, save to `config.local.yaml` without a restart), **Maintenance** (flips per disc as a heatmap, exercise rarely flipped discs now or daily; version, restart, updates with rollback), **Backup** (backup / restore of `storage.db`, automatic backups to a folder) |
 
 `/play` is a phone game controller (pick any game from the grouped list; held sideways it puts the D-pad left and A/B right of the board; it reminds gamepad players that holding Start opens the game menu; D-pad + A/B with per-game labels, Start/X/Y/Z, player 1 or 2; Doom's extra buttons while Doom runs; Select / Start / Save / Load while the NES runs). USB gamepads work too; see below.
 
 Drawing or showing something yourself pauses the schedule; **Resume schedule** (in the Now showing strip and on Now playing) goes back to it. "Draw me…" and Undo only change the board with **Draw on the board** ticked; otherwise a drawing goes onto a new drawing layer that you can add when you like.
 
+## High scores, hourglass and slow painting
+
+**High scores** (`apps/scores.py`): every scored game files its result in one table, `scores.json` in the data
+folder (so it's in `storage.db` and the backups), a top 5 per game; Minesweeper keeps one per difficulty and
+Sokoban one per level. A result that makes the top 5 asks for three initials on the board, arcade style: up/down
+picks a letter, A or right moves on, B or left goes back, A on the last letter (or Start) saves; the table then
+shows for a few seconds. The score is saved the moment the game ends, so walking away keeps it, unnamed ("---").
+A game cut short (playlist moved on, another app started) still counts. Title screens alternate
+PRESS ANY BUTTON with "HI 1234 ABC". Demo games never count, and neither do two-player games (Pong and Tron
+against a second person, the versus games). Pong against the computer scores 10 a point plus 1 a return; Tron
+1 a cell plus 100 a round won; Blackjack's score is the biggest stack in a game, which ends when the chips run
+out or after 5 idle minutes. The older `puzzle_scores.json` is read in once.
+
+**Demos for the classic games**: Snake, Tetris, Pong, Breakout, Space Invaders, Tron, Flappy, Platformer and
+Blackjack now play themselves after 8 idle seconds on the title (the `demo` option turns it off), like the newer
+packs: Snake heads for the food but never into a pocket smaller than itself, Tetris places pieces by the usual
+height/holes/bumpiness weights, Breakout aims for where the ball lands, Invaders dodges bombs and picks off the
+lowest aliens, Flappy aims for each gap, the Platformer runner jumps walls, pits and walkers, Blackjack plays
+basic strategy from a local shoe (no API calls). Each misjudges now and then, so a demo ends. Any button takes
+over with a fresh game.
+
+**Sand hourglass** (`hourglass`, Clocks): a falling-sand hourglass that runs out at the set duration (the neck
+lets grains through at grains/duration a second). Left/right (gamepad stick, phone D-pad) tilts it and the sand
+leans against the low wall; A, B or up turns it over, and it then runs for as long as the sand that had fallen.
+Shows the time left and an optional name beside it. When it runs out the board clatters (three bands sweep down
+it), and with "Also raise a notification" a high-priority notification with the name goes out (a banner when
+it's on the board itself, so you see it over a game too). It can stay empty or turn over and go again. Only
+grains that moved are looked at (at most 900 a step): well under a millisecond a frame.
+
+**Sandbox** (`sandbox`, Games): falling sand to play with on the phone controller or a gamepad. Arrows move the
+cursor, hold A to pour sand / draw walls / erase (B switches tool), Start clears. Up to 1500 grains (option).
+Left alone it pours from a few spouts and drains through the floor.
+
+**Slow painting** (`slowpaint`, Generative): morphs from one picture to the next (Pictures, a slideshow, or the
+daily postcards) within a flip budget a day or an hour (1000 a day by default), spread evenly over the day or
+hour, so the board changes over hours or days. The next dot is chosen where the picture is most wrong (shapes
+come before stray dots), away from the last few flips (the change creeps in all over) and, between near-equal
+choices, on the less-worn disc (Board care's wear counts). A finished picture stays for "Keep a finished picture"
+minutes. The status says how far it is ("63% of Sunset; 412 of 1000 flips today"). The picture so far and the
+flips spent are kept in `slowpaint.json`, so a restart or a playlist going round neither starts over nor spends
+the budget twice.
+
+Tests: `tests/test_scores_sand_paint.py`.
+
+## Party games (up to 4 players)
+
+Five games in the **Party** group of the game pickers and the gamepad menu, for the GameCube pads and phones on
+`/play` (now player 1-4; the phone remembers its number). They all work through a **player** link. Players join on
+the board's lobby by pressing A (B leaves, Start begins; it also starts 12 s after the last join). Presses are
+timestamped as they arrive (`input_now`), so reaction and rhythm timing don't depend on frames. The winner gets a
+celebration of whole-board flips spaced so each one gets the sweep wave (none in quiet hours), then the usual
+high-score initials.
+
+- **Flipdot Party** (`party`): a set number of rounds, each a 20-40 s mini-game: mash race, reaction (an early
+  press costs a point), memory, dodge, tug of war (teams), stop the clock, hot potato (passes land on the music's
+  beat) and quick count. 3/2/1/0 points by place, scores between rounds. CPU players: one when you play alone
+  (default), every empty seat, or none.
+- **Buzzer Quiz** (`quiz`): buzz with any button; the buzzer's quarter of the board slams, then answer with A, B,
+  X, Y (or the A-D buttons on the phone). Right scores 100/200/300 by difficulty, wrong costs half and locks you
+  out of that question; buzzing while the question is still being read locks you out too. Claude writes the
+  questions (category, difficulty, 20 at a time, cached in `quiz_cache.json` and fetched while players join) when
+  Settings → AI drawing has a key; a bundled set of 90 (`apps/party_data/quiz.json`) fills in otherwise.
+- **Flipdot Pictionary** (`pictionary`): the drawer gets the word and a drawing canvas on `/play`; the board
+  mirrors each stroke. The others type guesses; the first right one scores 50 plus up to 50 for speed, and the
+  drawer 50. Bundled words in three difficulties. With an API key Claude can guess (it's sent the drawing as a
+  PNG every 14 s, 4 guesses a turn) and take a drawing turn (AI drawing, revealed a few dots at a time).
+- **Rhythm** (`rhythm`): one lane per player. With live music, each bass note, snare, hat and beat is put on the
+  beat grid and comes back as a note a bar later; without it there's a practice beat at a set tempo. Judged on
+  what you hear: the board runs the Board delay (Settings → Music) behind the speakers, so notes are due that much
+  earlier unless "The speakers are delayed to match the board" is ticked; a fine-tune offset is there too.
+  Windows: perfect 45 ms, great 90, good 135; combos multiply up to x4. Scores and best combo (`rhythm:combo`)
+  go in the high-score table.
+- **Drum Machine** (`drummachine`): a 16-step grid on `/play` with 4-6 instruments made of flips (one dot, a
+  small cluster, a panel crack, a column roll, a full sweep, a shaker), tempo, swing, built-in and saved patterns
+  (`drum_patterns.json`), and "Follow the live music". Any number of phones edit the same pattern. Steps run on a
+  clock, not frames (within a few ms). In quiet hours the loud instruments play as quiet ones under the flip budget.
+
+`/api/party` (GET `?seat=N`, POST `{"action", "seat", "data"}`) and WebSocket `{"type": "party", ...}` messages
+carry the phone side; both are open to player links. Tests: `tests/test_party.py` (Claude mocked).
+
 ## API (selected)
 
 ```
 GET  /api/board                      current dots + what's running
+GET  /api/health                     runner heartbeat, every bus, CPU temperature, throttling, disk, memory, uptime,
+                                     version, and "status": "ok" | "degraded" | "failing" with the reasons
+POST /api/board/refresh              resend every panel now, and retry buses that can't be reached (Retry now)
 POST /api/dot     {"x":5,"y":3,"color":"white|black|toggle"}
 POST /api/dots    {"dots":[...]}
 POST /api/frame   {"rows":[42 strings of 84 "0"/"1"]}
@@ -48,7 +132,10 @@ POST /api/fill    {"color":"black"}        POST /api/invert
 POST /api/animation {"frames":[{"rows":[...],"delay":100}], "loop":true}
 POST /api/ai/draw {"prompt":"a cat","frames":1,"style":"outline only"}   → {"frames":[{"rows":[...]}]} (1–8 frames; doesn't touch the board)
 GET  /api/guest                      guest wall queue; POST /api/guest/messages/<id>/approve|reject|delete, POST /api/guest/settings {"auto_approve":true}
+GET  /api/access                     share links; POST /api/access {"name","role":"friend|player|viewer","expires","trusted"}, POST /api/access/<id>/revoke|rotate
+GET  /api/friends                    friend messages; POST /api/friends/messages/<id>/approve|decline|show|pin {"hours"}|unpin|delete
 POST /api/run     {"app":"clock","params":{...},"transition":"dissolve"}
+GET  /api/scores                     the games' high-score tables: {"scores": {game: {"lower", "top": [{score, name, at}]}}}
 POST /api/notify  {"text":"Hi","duration":10} | {"url":"https://...png"} | {"app":...} | {"scene":id}
 GET  /api/notify?text=Hi&duration=10
 POST /api/image?mode=crop&dither=true&save=Name   (raw image bytes)
@@ -92,6 +179,13 @@ tear across the seams that way, so with `sweep_mode: auto` (the default) only a 
 the wave; a change arriving while the last wave is still crossing flips every column together. Tune it by eye with the disc exerciser running and
 `POST /api/board/timing {"sweep_ms": 40, "sync_refresh": true}` (live, not saved), then put it in `config.yaml`.
 `python3 tests/bench_core.py` times the per-frame paths (worth running on the Pi).
+When a bus can't be reached, every page says so ("Board not reachable (192.168.11.100:5000, 5001, 5002, since
+12:03)", or "6 of 18 panels not reachable" when only some are), with a Retry now button; the preview then shows what
+the board would display. The warning clears by itself when the bus answers again (it's retried every 2 s), and that
+bus resends all its panels, since the converter or the panels may have lost power. With `full_refresh_s:` (default
+300, 0 = off) each bus also resends all its panels that often while it's idle, never during the music visualizer or
+a game; resending a frame a panel already shows flips nothing, so it costs nothing against the quiet-hours budget.
+The runner status (`/api/board`, the WebSocket) carries this as `link`.
 Flip counts are saved to `data/wear.json` every two minutes and on shutdown.
 
 Live updates: connect a WebSocket to `/ws`. The server pushes a binary message whenever the dots
@@ -108,9 +202,55 @@ black, white, invert), `flipdot/event` (an automation event name); status is pub
 and `flipdot/availability` is `online`/`offline` (offline is also the MQTT Last Will). With **Home Assistant
 discovery** on, the board appears in Home Assistant as a "Flipdot board" device: app and playlist selects, schedule
 and quiet-hours switches, a Message text box (shows a notification), Next/Stop buttons and a "Showing" sensor.
+Timers: `flipdot/timer` takes a timer command ("pasta 8m", "pause pasta", "cancel all", "pomodoro"); discovery
+adds a Timer text box (point an Assist sentence like "set a {name} timer for {minutes} minutes" at it), a Timers
+sensor ("Pasta until 18:42"), and Cancel timers / Start Pomodoro buttons.
 
-Set `password:` in `config.yaml` to require a password (HTTP basic auth, or `?token=` for webhooks). Only the guest wall page `/guest` and its submit endpoint stay open (3 messages per address per 10 minutes, 2 KB bodies, 24-character names, 140-character messages).
+Set `password:` in `config.local.yaml` (see below) to require a password (HTTP basic auth, or `?token=` for webhooks). Only the guest wall page `/guest` and its submit endpoint stay open (3 messages per address per 10 minutes, 2 KB bodies, 24-character names, 140-character messages).
+
+### People & access: player, friend and viewer links
+
+Settings → **People & access** makes links that open one part of the board without the password: a **friend** link
+opens a page for sending messages, a **player** link opens the `/play` controller (game input, picking a game, the
+on-board game menu), a **viewer** link shows the board live, read-only. Each link has a name, an optional expiry, and
+can be revoked or replaced by a new one; it is shown once (with a QR code, which can also go on the board), because
+only its SHA-256 is saved (`access.json`). Opening `/join/<token>` sets an HttpOnly, SameSite=Lax cookie and goes to
+the role's page; scripts can send `Authorization: Bearer <token>`. Every route is owner-only unless `access.py` lists it
+for a role, and `tests/test_friends.py` checks every route against every role.
+
+**Friend messages.** A friend writes a message (up to 8 lines; 140 characters by default), sees a live preview of the
+84×42 frame with the Text app's pixel fonts, sizes and letter effects, can draw a doodle on the preview, and sends it
+now or for a time (a birthday morning). Friends marked "No approval needed" show right away or at their time; the
+others wait under **Guests → Friend messages**, which also has the history (show again, pin for N hours, delete) and
+the limits: length, how long each shows, messages per friend per period (5 an hour by default), and an optional
+filter that holds messages with rude words (a short bundled list, off by default) for approval. Messages go through
+the notification queue with the sender's name on top; a pinned one waits at low priority, so other notifications
+still show and then it comes back. The **Message wall** app rotates the recent ones.
+
+**Threat model.** The board is meant for your home network. Without a password anyone on the network can do
+everything, so links only add something when `password:` is set. Links are bearer secrets: whoever has one can use
+it until it expires or you revoke it. The server speaks plain HTTP, so on an untrusted Wi-Fi a link or the password
+can be sniffed. Don't forward the port to the internet; for remote access put the board on a private network such as
+[Tailscale](https://tailscale.com) (friends join your tailnet, or use Tailscale's node sharing), or behind a reverse
+proxy with HTTPS. The owner password never appears in a link.
 AI drawing (`aidraw.py`) calls the Anthropic Messages API; set `FLIPDOT_ANTHROPIC_BASE_URL` to point it at a test server.
+
+## Playlists and the schedule
+
+- **Add to playlist** is on Apps, Pictures (pictures, animations and drawing layers), Import (once the picture is saved), Slideshows, Videos, Layers (a saved set by name, an unsaved stack as it is) and Draw (a drawing layer). One dialog: pick a playlist or start a new one, set the seconds, then **Added** with a link to the playlist.
+- **Playlists** can **Shuffle** (each item once per round, never the same one twice in a row), give items **random effects** and **React to music** on top of whatever they show (the same effects and table as slideshows; games being played are left alone, quiet hours pause it). Each item can have its own transition and seconds, and an **Only show it** condition: music playing or not, after sunset or in daylight, someone at the mirror camera or not, during quiet hours or not, or "it has something to show" (for departures: a departure within N minutes). Items that can't show are skipped; if none can, what's on stays.
+- **Schedule rules** show a playlist, a layer set, a slideshow, a video, a picture, a drawing or any app with its options, or turn the board off. They repeat every week (chosen days), between dates every year (wrapping past New Year, e.g. 1 Dec to 1 Jan), or happen on one day (**Add one-off event**). Start and end can be a clock time or sunrise/sunset with an offset ("30 min after sunset"), worked out locally for the weather location (no network). The higher rule wins when rules overlap; the page says which rule is showing now, which ones also match, and until when, and draws what plays when for today or the next 7 days, with quiet hours and sunrise/sunset marked. Older schedules keep working (they're read in the new format). `GET /api/schedule/preview?hours=24|168` returns the same; `POST /api/playlists/add` adds one item.
+- Testing: `FLIPDOT_FAKE_TIME=2026-10-10T18:25 python3 server.py --dry-run ...` runs the schedule's clock from that time (everything else uses the real time).
+
+## Notifications: queue, priorities, do not disturb, ntfy
+
+A new notification no longer replaces the one on the board. It waits its turn unless it has a higher priority (`notifications.py`).
+
+- **Priorities.** `low`, `normal`, `high` and `critical` (ntfy's 1–5 also work). Critical shows at once, even over a game or another critical one. High shows over a game as a banner along the bottom and interrupts a live browser stream. Low and normal wait until the game or stream ends. If you turn on Settings → Notifications → *Banner over games*, they show as the banner too. A notification taken off the board by a more urgent one comes back afterwards with the time it had left.
+- **Options** (in `/api/notify`, MQTT `<prefix>/notify` JSON and automations): `duration`, `repeat`, `hold` (stays until dismissed: here, or any controller button), `sound` (`none`/`tick`/`clatter`/`sweep`, discs flipped for the click before it shows), `icon` (`bell`, `mail`, `door`, `alert`, `timer`, `music`, `weather`, `calendar`, `person`; text with an icon shows as an icon card), `title`, and `key` (replaces the notification with the same key instead of adding another). Identical messages within 60 s are shown once.
+- **Do not disturb.** By default this follows quiet hours. It can also have its own hours, be off, or be switched on by hand (there is a Home Assistant switch for it). During it, low and normal notifications are held and then shown as one summary card ("3 notifications"), or dropped if you choose that. High ones show without the sound pattern. Critical ones always show.
+- **ntfy.** Subscribe to one or more topics on ntfy.sh or your own server (Settings → Notifications). Then `curl -d "Washer done" ntfy.sh/your-topic` reaches the board. Tags such as `door`, `warning` or `calendar` pick the icon.
+- **Now playing** lists what's on the board, what's waiting (dismiss or clear all) and the last 20 notifications (show again), and has a test button. The API is `GET/POST /api/notifications` with `{"action": "dismiss"|"clear"|"reshow"|"test"}`. The MQTT command `dismiss` or `clear` works too. Home Assistant discovery adds a notify entity, a do-not-disturb switch, a "Notifications waiting" sensor and a Dismiss button.
 
 ## Saved data: `storage.db`
 
@@ -126,9 +266,65 @@ and on shutdown. Deleting `data/` while the server is stopped is harmless.
 
 Settings → *Storage* shows where the database is and how big it is. **Download backup** saves a consistent
 copy of it (`GET /api/storage/backup`). **Restore from backup** uploads one
-(`POST /api/storage/restore?confirm=1`, raw `.db` bytes); it's checked, then replaces all saved data when
-the server next restarts (the replaced database is kept as `storage.db.before-restore`). `config.yaml`
-(panel mapping, password) stays in the app folder and isn't part of the database.
+(`POST /api/storage/restore?confirm=1`, raw `.db` bytes, streamed to disk so a backup full of videos doesn't
+need to fit in memory); it's checked, then replaces all saved data when the server next restarts (the replaced
+database is kept as `storage.db.before-restore`), and the page offers to restart right away. Backups are made
+with SQLite's online backup in 1 MB steps, so saving carries on while a big one is written. Every backup also
+holds `config.local.yaml` (panel mapping, password), which a restore puts back (the replaced one is kept as
+`config.local.yaml.before-restore`).
+
+### Automatic backups
+
+Settings → *Backup* → *Automatic backups*: off, every day or every week at a set time, into a folder
+(`../backups` by default, next to `storage.db`; a USB stick or a network share keeps them off the SD card).
+The newest N are kept (7 by default) and older `flipdot-backup-*.db` files are deleted; nothing else in the
+folder is touched. A backup is refused when the folder lacks room for it plus 50 MB. A time missed while the
+server was off is caught up once, a couple of minutes after it starts. The list shows each backup with
+Download, Restore and Delete; the last result also shows in `/api/health` (`backup`).
+API: `GET /api/backups`, `POST /api/backups` (back up now), `POST /api/backups/settings`
+`{"schedule": "daily", "time": "03:00", "weekday": 0, "folder": "/mnt/usb/flipdot", "keep": 14}`,
+`GET /api/backups/<name>`, `POST /api/backups/<name>/delete`, `POST /api/storage/restore?confirm=1&name=<name>`.
+
+## This board's settings: `config.local.yaml`
+
+`config.yaml` is tracked by git and holds the defaults. `config.local.yaml` next to it (git-ignored) overrides it
+key by key (a key there replaces the same key in `config.yaml`; `panels:` is replaced as a whole). Everything the
+web page writes, such as the panel mapping from Settings → *Board hardware*, goes into `config.local.yaml`, so
+`git pull` never conflicts and the password never ends up in a commit. Put `password:`, `panels:` and timing
+changes there too:
+
+```yaml
+password: "s3cret"
+sweep_ms: 60
+```
+
+The first time the server starts with this version, it creates `config.local.yaml` and copies into it every
+setting whose value in `config.yaml` differs from the committed one (`git show HEAD:config.yaml`), so nothing
+you changed by hand stops working. After that, `git checkout config.yaml` (or *Put config.yaml back* under
+Settings → *Maintenance* → *Updates*) is safe. With `--config other.yaml` the local file is `other.local.yaml`.
+
+## Version, restart and updates
+
+Settings → *Maintenance* shows the version (`git describe`, the commit and its date) and how long the server has
+been running. **Restart the server** (`POST /api/restart`): under systemd it exits cleanly and systemd starts it
+again (the unit needs `Restart=always`, as below); run by hand, it runs its shutdown steps and starts itself
+again in place with the same command line.
+
+**Check for updates** runs `git fetch` and lists the incoming commits. **Update and restart**:
+
+1. refuses if tracked files have local changes (and lists them), or if this checkout has commits of its own that
+   the remote doesn't (it never forces, rebases or resets those away);
+2. writes a backup (tagged `before-update`) to the backups folder;
+3. `git pull --ff-only`;
+4. reinstalls a `requirements*.txt` that changed, but only into the venv the server runs in, and only the file that
+   venv was set up from (the installed versions match its old pins);
+5. checks that the new version imports (`python -c "import server, apps"`);
+6. restarts.
+
+If step 3, 4 or 5 fails, the checkout goes back to the commit it was on (`git reset --keep`) and the page says
+why. The update source is the branch the checkout tracks; set another remote (a name, URL or folder) and branch
+under *Update source*. API: `GET /api/system`, `POST /api/update/check`, `POST /api/update` (then poll
+`GET /api/update`), `POST /api/update/source`, `POST /api/update/reset-config`.
 
 ## Videos
 
@@ -197,7 +393,12 @@ edge, so it reads over everything else.
 
 - **Scale** (0.5–4, default 1.5) multiplies how far it moves: bar height, ray and ring size, wave height,
   amount of rain, warp speed, sparkle density. At 1.5 loud parts reach the edges; 3 pins more of it there.
-- **Sensitivity** (default 1) shows quiet parts bigger (higher) or smaller (lower).
+- **Sensitivity** (default 1): how big quieter sounds look. 2 draws quiet sounds nearly as big as loud
+  ones; 0.5 lets only the loudest parts reach far.
+- **Dynamics** (0–1, default 0.3): how much a quiet passage looks quieter. 0 lets every part of a song
+  fill the display; 1 keeps a breakdown or quiet intro small. Levels adjust to each song either way.
+- A part that stays loud without new notes (a constant sub-bass) sits a little lower, so kicks, bass notes
+  and hats still pump on top of it instead of everything staying pinned at the top.
 - **Smoothing** (0 = snappy, 1 = slow fall; default 0.3) sets how fast things fall back.
 - **Beat effects**: off (default), subtle (a ring from the middle on each beat) or big (a thick
   shockwave, and the board flashes every 4th beat).
@@ -347,21 +548,240 @@ Slideshows → Display options → **React to music** lets the live audio from S
 Snapcast, the same signal the visualizer uses) drive effects on top of the pictures:
 
 - Each part of the music drives one effect, with an amount and a sensitivity. Defaults: **bass** (kick
-  drum, low notes) → glitch, **mid** → wave, **high** (hi-hats) → static, **beat** → a one-frame invert,
+  drum, low notes) → glitch, **mid** → wave (it sways further in groovy, syncopated music), **high**
+  (hi-hats) → static, **beat** → a one-frame invert,
   **loudness** → tones all of them down in quiet parts. Life and Melt aren't offered: they build up over
   time and don't suit a strength that changes every frame. Several effects can run at once; they're
   applied in a fixed order (pixelate, mirror, kaleidoscope, wave, glitch, outline, scanlines, static,
   flash, invert), after the item's random effect and the transition between items.
+- **Follows** (bass, low-mid, mid, high rows): **level** (how loud that part is), **notes and hits** (each
+  new bass note, snare, clap or hi-hat, found per band from the rise in its spectrum, so a moving bassline
+  under a steady loud bass, ghost notes and off-beat hats all register), or **level and hits** (some of
+  the level with the hits on top). Defaults: bass and mid follow both, high follows hits, low-mid the
+  level. Rows saved before this get these defaults.
+- **Amount and speed are separate.** Amount is how much an effect does (how far the wave bends, how many
+  dots of static); speed is how fast it moves (how often it waves). Effects that move (wave, scanlines,
+  flash, glitch, static) each run on their own clock, and **Speed follows** picks its rate: **Fixed**
+  (0.25×–4×), **Its signal** (quiet parts slow, busy parts fast: wave on High waves faster when the hi-hats
+  are busy), **Tempo** (scaled by the song's BPM against 120, so slow songs move slowly; optionally locked to
+  one cycle per 1, 2 or 4 beats, so wave crests and scanline sweeps land on the beat), or **Tempo and
+  signal**. Defaults: wave follows the tempo, locked to 1 cycle per 2 beats (today's speed at 120 BPM);
+  scanlines and flash are locked to 1 cycle per beat; glitch and static follow their signal. Slideshows
+  saved before this get these defaults. Changing the rate never makes the motion jump.
+- The tempo comes from the autocorrelation of an onset envelope (all bands' spectral flux, about the last
+  8 s), not from the gaps between beats, so syncopated kicks, missing downbeats and swing don't throw it.
+  It covers 60–180 BPM; between half and double time it prefers 90–130 (groove music). The beat phase is
+  found by folding the recent onsets onto the beat and followed smoothly; once the tempo is sure, beats
+  come from that grid. Four-on-the-floor locks on the kick; heavily syncopated funk may lock on the "and"
+  (still on the eighth-note grid). The tempo shows next to the status line ("≈ 96 BPM", or "tempo
+  unsure"); the generated beat is 120 BPM. The same fold gives `groove` (the share of onsets off the beat)
+  and `swing` (1 = straight, 2 = triplet swing).
 - **Loudness drives GIF speed** (on by default): quiet parts play at 0.75×, loud parts up to 2×, on top of
   the GIF speed, eased so there are no jumps. **Skip a frame on each beat** jumps GIFs one frame forward.
-- Levels adjust to each song (a running peak and floor per band), so quiet and loud songs both use the
-  whole range. Without live audio the slideshow plays normally, or reacts to a generated 120 BPM beat if
+- Levels adjust to each song: per band a ceiling near its loud end and a floor near its quiet end, drifting
+  over about 10 s, so quiet and loud songs both use the whole range, and a steady loud bass reads high (its
+  movement comes from the hits) instead of sinking to 0. A new song (track change, or sound after a
+  gap) and a jump in loudness (intro → drop) re-adjust within about 2 s; a drop in loudness (a breakdown)
+  adjusts slowly, so it still reads quieter for a while. Without live audio the slideshow plays normally, or reacts to a generated 120 BPM beat if
   you choose. Reacting pauses during quiet hours. It works the same when the slideshow is a layer.
 - The section shows whether audio is arriving and small live meters (`GET /api/audio/levels`).
 
-The audio reading lives in `audio_signal.py`, shared with the visualizer. `tests/test_audio_react.py`
-covers the band mapping, auto-gain, the display reading (held notes stay up, attack and release), beats and
-the variable-rate GIF clock.
+The audio reading lives in `audio_signal.py`, shared with the visualizer; it costs about 0.06 ms per
+reading on a PC (`tests/bench_core.py`). `tests/test_audio_react.py` covers the band mapping, levels, the
+display reading, beats, tempo from beat trains (and none from random onsets), the effects' motion clocks
+and the variable-rate GIF clock. `tests/test_groove.py` runs synthetic songs (`tests/music_signals.py`:
+funk at 100 BPM with swung 16ths, disco at 120, a jazz trio at −25 dB, brickwalled EDM at −3 dB, an
+intro into a drop, a breakdown, song changes) through the real Sendspin/Snapcast analyser and checks tempo,
+beat phase, swing, bass hits against the bassline, off-beat hats, range use and adaptation time.
+
+## Generative apps that react to music
+
+Every Generative app (and Random effects, which passes it on to the effect it runs) has **React to music**
+in its options (off by default). It drives the app's own motion from the same live signal slideshows use,
+so the effect dances rather than getting a filter on top:
+
+| App | With music |
+|---|---|
+| Fire | flames burn lower in quiet parts, taller with the bass; each bass note flares them up |
+| Starfield | the kick surges you forward (stars streak), louder passages fly faster |
+| Fireworks | rockets go up on the beat (bass notes too while no beat comes), rockets near the top burst on it; louder music, bigger bursts |
+| Matrix rain | the highs speed the streams; hi-hats start new ones |
+| Plasma | the bass pushes the rings outwards; the mids roll the bands (palette shift) |
+| Metaballs | the bass swells the blobs; the mids stir them faster |
+| Ripples | drops fall on the hits: big ones on bass notes, smaller on snares, tiny on hats |
+| Game of Life | generations on the tempo, landing on the beat; a burst of new cells on each beat |
+| Spiral, Lissajous, Tunnel | rotation / one ring per beat locked to the tempo; bass kicks or squashes them, the mids widen the arms / morph the Lissajous ratio |
+| Bouncing balls | bass notes kick every ball upwards |
+| Maze | carves faster with the tempo, a spurt on each beat; the head blinks on the beat |
+
+- **Music amount** (0–200 %) scales all of it; 0 % changes nothing. **Speed follows** (motion only): Fixed, The music
+  (louder is faster), or Tempo (in time with the beat: periodic motion is locked to the beat phase). Speeds
+  ease and every clock carries on from where it is, so nothing jumps.
+- **Without live music**: do nothing (default) or use the generated 120 BPM beat. The switch shows the
+  status ("Listening: Snapcast · ≈ 104 BPM", or "No live audio — Settings → Music").
+- **Reacts with**: **Effects only** (the default for new setups): the app moves exactly as it does without
+  music, so slow songs never make it jumpy, and the music only drives the slideshows' effects table
+  (bass → glitch, …) over its frames. **Motion only**: beats and volume drive the movement (the table above).
+  **Effects and motion**: both. Apps set up before this choice existed keep what they did (motion, plus the
+  effects if "Effects on top" was ticked). The table is the same component as on the Slideshows page
+  (`static/js/musicreact.js`).
+- It works standalone, as a layer and in playlists; several reactive layers share one cached reading, and a
+  small sampler thread reads the signal 25 times a second while any app listens, so slow apps still get
+  steady beats and tempo. Reacting pauses in quiet hours.
+- With React to music off, every app draws exactly what it drew before (checked frame by frame).
+
+Adding it to an app: decorate the class with `@reactive` (`apps/react.py`) and read `self.music`
+(`level(band)`, `hits(band)`, `both(band)`, `beat`, `hit(band)`, `pulse`, `speed`, `presence`,
+`clock(key, now, rate, per_beat)`, `ticks(...)`). Cost on a PC: under 0.3 ms per frame extra; changed dots
+per frame rise about 1.5–3× (spiral, fireworks, bounce, rain most) while reacting. Tests:
+`tests/test_generative_react.py`.
+
+## Live-data boards: departures, planes, weather sky
+
+Three widgets in `apps/pack_live.py`. Each caches what it fetches, sends a User-Agent, waits longer after each
+failed request (up to 15 min) and keeps the last good data on the board while offline.
+
+- **Next departures** (`departures`): a station sign with route, destination and minutes ("due" under a minute,
+  "now" at the stop, the clock time beyond an hour). Set your stop IDs plus the agency's GTFS schedule zip and/or
+  GTFS-realtime TripUpdates URL (with an optional API-key header). The schedule zip is downloaded to
+  `data/cache/live/`, refreshed weekly, and cut down to the chosen stops (a parent station includes its
+  platforms), so the Pi only keeps a small index. Realtime predictions correct the schedule (delays carry on
+  down the line, cancelled trips and skipped stops drop out); if the realtime feed fails, the header says
+  SCHEDULED and the timetable carries on. Agencies without GTFS: choose "JSON URL" and give the paths to the
+  list, route, destination and time (ISO time, Unix time or minutes from now). "Walk time" hides what you
+  can't catch and inverts the row when it's time to leave. Characters change with a split-flap transition
+  when one is installed (or any character transition you pick). The protobuf decoder (`gtfs_rt.py`) and the
+  GTFS index (`gtfs_static.py`) need no extra packages.
+- **Planes overhead** (`planes`): aircraft near the Settings location on a radar (heading lines, the closest one
+  blinking, with its callsign, route, altitude, speed and distance) or a map with plane icons. Positions move on
+  between updates from each plane's speed and track. Sources: your own dump1090/readsb/tar1090 `aircraft.json`
+  (best), adsb.lol, or the OpenSky Network anonymously (at most every 15 s, and the app stops before the 400
+  requests a day anonymous users get, and waits when OpenSky asks it to). Routes come from adsbdb.com, cached
+  for 12 h; they are what a callsign usually flies, so treat them as a hint.
+- **Live weather sky** (`weathersky`): clouds drift at the real wind speed and direction (the board is taken to
+  face south; change it under "The board looks"), cloud cover sets how much of the sky is cloud, rain or snow
+  falls as hard as Open-Meteo says (mm/h), fog and lightning show when reported, and the sun or moon (with its
+  phase) sits where it really is. It shares the weather app's request and cache, and keeps the last weather on
+  disk for restarts while offline.
+
+Tests: `tests/test_live.py` (builds its own GTFS zip and a TripUpdates feed with a tiny protobuf encoder; plane
+and weather responses are recorded fixtures, nothing touches the network).
+
+## Daily channels, postcard, launches, counter, ISS
+
+Five widgets in `apps/pack_daily.py`. Network results are kept in `data/cache/` (only the fields the app
+uses), so a restart doesn't ask the APIs again; offline, each app shows its last copy or a quiet "no
+connection" card.
+
+- **Daily channels** (`daily`), one app with a Channel setting. Each channel picks something new each day.
+  Long text goes over pages (or rolls up line by line). Large type is used when it fits on two pages.
+  - **Quote of the day:** a built-in list of public-domain quotes, or ZenQuotes.io's quote of the day; when
+    ZenQuotes can't be reached, the built-in list is used.
+  - **Word of the day:** a built-in list with short definitions.
+  - **On this day:** events from Wikipedia's on-this-day feed (text CC BY-SA), cached per day.
+  - **Oblique Strategies:** the built-in deck is original prompts in the same spirit. Eno and Schmidt's cards
+    are copyrighted, so they aren't included; to use your own deck, put one card per line in
+    `data/oblique_strategies.txt`.
+  - **Literature clock:** each minute, a sentence from a book that mentions that time, with the time shown
+    inverted. The quotes (665, covering 333 of the 1,440 minutes) come from 87 public-domain books on
+    Project Gutenberg, all published before 1930 by authors and translators who died more than 70 years
+    ago; `scripts/build_litclock.py` rebuilds the list. Minutes with no quote show the time in words.
+- **Daily postcard** (`postcard`): at the time you set (07:00 by default), Claude writes a haiku about the
+  day (the date, the season and, if a location is set, the weather) and draws an 84 × 42 picture for it.
+  It uses the key and model from Settings → AI drawing. The app shows the picture, then types out the
+  haiku. Each postcard is saved to a "Postcards" slideshow (the picture and a haiku card) and/or to
+  Pictures (a two-frame picture). Once the app has been used, a background job makes the postcard every
+  morning even when the app isn't on the board; turn that off with "Make it every morning". After a
+  failure it tries again 30 minutes later. `POST /api/postcard` makes today's postcard now. Without an API
+  key, the app shows what to set up.
+- **Launch countdown** (`launches`): the next launches from Launch Library 2 (The Space Devs), showing the
+  provider, rocket, mission/pad and a T-minus countdown. Dates that aren't fixed yet show as "NET October".
+  The last 10 seconds take the whole board as one big digit, followed by a short liftoff. The free tier
+  allows 15 calls an hour; the app asks at most every 15 minutes, and a restart reuses the file copy.
+  Settings: how many launches to cycle through, a provider/rocket filter, and the development server
+  (unlimited calls, but its data may be stale).
+- **Counter** (`counter`): one big number whose digits roll through the numbers in between when the value
+  changes, like a mechanical counter. Options: a label, a goal bar with a percentage, decimals and
+  thousands separators. Sources:
+  - The API: `POST /api/counter/<name>` with `{"value": n}` or `{"add": n}` (or `?value=`/`?add=`), and
+    `GET` to read it. Values are kept in `counters.json`.
+  - A JSON URL plus a path, read like the JSON widget.
+  - An MQTT topic on the broker from Settings → MQTT, for example a Home Assistant `mqtt_statestream`
+    entity. The payload can be a number, JSON with a path, or `{"state": …}`.
+- **ISS tracker** (`iss`): a 1-bit world map (Natural Earth, public domain), the station's position from
+  wheretheiss.at and its ground track 45 minutes back and 50 minutes ahead, alternating with details:
+  altitude, speed and the next pass over the Settings location. Pass times come from the station's orbital
+  elements (fetched every 6 hours), worked out on the board to within about a minute, along with the
+  highest elevation, the directions and whether the pass is visible. For the 10 minutes before a pass and
+  during it, the app shows where to look instead.
+
+Tests: `tests/test_daily.py` (recorded API responses in `tests/fixtures/daily/`; the Anthropic API is mocked).
+
+## Silhouette mirror
+
+Create → Mirror shows whoever stands in front of a camera as dots (app `mirror`, also usable in playlists and
+layers). Camera pictures stay in the house: they're shrunk to 84 × 42 gray dots in the board's memory and never
+saved or sent anywhere.
+
+- **Sources:** this page's camera (a phone or laptop; front or rear camera; frames go over the WebSocket, so the
+  page needs to stay open, and browsers allow cameras only on https or localhost), a USB webcam on the Pi
+  (`/dev/videoN`, read with `ffmpeg`), a Pi camera module (`rpicam-vid`), or a looping video file for testing.
+  The page lists what it finds. With no camera, the board shows a "start the camera" screen.
+- **Finding you:** difference from the empty room ("Capture empty room"; the background also follows slow light
+  changes), darker than the surroundings, or edges. The result is cleaned up and given per-dot hysteresis so
+  sensor noise doesn't flip discs.
+- **Modes:** solid, outline, fading trails, Game of Life seeded by your outline, a dithered pixel mirror; plus
+  mirrored (selfie) and negative.
+- **Take over when someone walks up:** after someone has been in view for a moment the mirror takes over the board
+  as a notification, and whatever was on comes back after N seconds with nobody there. It never interrupts a game,
+  a live stream or another notification, and stays off during quiet hours unless allowed. Automations also get a
+  "Someone walks up / has left" trigger.
+
+API: `GET|POST /api/mirror` (status and settings), `POST /api/mirror/background`, `GET /api/mirror/preview`,
+`POST /api/mirror/frame` (HTTP fallback for the WebSocket message `{"type": "camera", "w", "h", "data"}`, with
+`data` as base64 gray bytes). Tests: `tests/test_mirror.py` (synthetic walking figure over a noisy room).
+
+## Apps where the click is the point
+
+`apps/pack_ambient.py`. Each sets its flip rate on purpose (that's the volume) and goes quiet in quiet hours. All
+work on their own, in playlists and as layers.
+
+- **Percussion** (`percussion`): the board plays along with the music. A few dots flip on each hi-hat, a block on
+  each snare and beat (sized by how loud that part is), and a fast sweep on every Nth beat (a downbeat when the
+  link reports one); off-beat ticks when the groove swings. Plays round the border, in the corners or on the
+  whole board. It's timed like the music visualizer (the same Board delay, a draw as each analysis frame comes
+  due, steady timing), and a layer stack with it in keeps steady timing, so it fits as an Invert layer over a
+  clock or text. Measured with the click track on the real link → runner → board path and fake RS485 buses:
+  every click flipped, 189 ms behind the click (the sync test: 185 ms), the same ±11 ms spread as the sync
+  test (the 40 ms picture grid), no flips between clicks.
+- **Split-flap board** (`splitflap`): text on a departures board. Each character flaps forward through the
+  alphabet to its new letter, staggered along the line. Pages are separated by a blank line; `{time}`, `{date}`
+  and `{day}` fill themselves in. Quiet hours: one flap per change. "split-flap" is also a **character
+  transition** (Digital clock, Countdown, Text: seven-segment digits go round a digit drum) and a whole-board
+  transition for playlists.
+- **Mechanical clock** (`mechclock`): one disc runs round the border once a minute, a step a second. On the hour
+  it strikes the hour: each strike inverts the board as a sweep wave (the seconds stand still meanwhile so every
+  strike gets its own wave), with a quick un-invert after an odd count. No strikes in quiet hours.
+- **Rain on the roof** (`asmrrain`): single discs (sometimes two) flip at random times, Poisson-spaced like real
+  rain, and flip back after a few seconds. The volume is drops a second; quiet hours cap it (and never above a
+  sixth of the quiet-hours flip budget). "When it rains outside" follows Open-Meteo's current rain rate for the
+  Settings location (drizzle a few drops, 8 mm/h and up the full volume); dry, it shows nothing as a layer.
+- **Pendulum wave** (`pendulums`): 84 (or 42, 28, 21) pendulums, each swinging once more per cycle than the
+  last. They drift through waves and stripes, line up again after the cycle and rest, still and silent, before
+  the next round. React to music sets the pace and swing.
+- **Timers** (`timers`): up to four named timers, or a Pomodoro (25/5 minutes, a long break every 4, sessions
+  counted per day), as countdowns and shrinking bars. At zero the board clatters (four 3-flip bursts; just the
+  border in quiet hours), then flashes the name for 20 s. When the Timers app isn't on the board, the alarm is
+  shown over whatever is. Control them from the app's settings (start, pause, cancel, quick starts),
+  `POST /api/timers` (`{"command": "pasta 8m"}` or `{"action": "start|pause|resume|toggle|cancel|dismiss|pomodoro",
+  "name", "duration"}`; `GET` lists them), MQTT `flipdot/timer`, or Home Assistant (see MQTT above). Kept in
+  `timers.json`.
+- **On air** (`onair`): ON AIR, the meeting's title and when it ends, while an event in your iCal feeds is on
+  (optionally only titles with a word like "meeting"). Between meetings it shows nothing (as a top layer, what's
+  below) or the next meeting. To have it take over: Automations → "A calendar event starts" (iCal links, title
+  keyword, "Until it ends") → Show an app → On air. It shows over what's on and goes away when the event ends.
+
+Tests: `tests/test_ambient.py`.
 
 ## Doom (optional)
 
@@ -458,6 +878,38 @@ Legal: agnes is MIT-licensed and built locally from its source (not distributed 
 NES games are copyrighted: only use ROMs you have the right to use. None are included, downloaded
 or committed (`*.nes` is in `.gitignore`).
 
+## Plugins and Pixlet apps
+
+**Python plugins.** Drop a `.py` file (or a folder with `__init__.py`) into `plugins/` and press
+**Settings → Plugins → Reload plugins**; its apps appear in **Apps → Plugins** and work standalone, as layers
+and in playlists. They use the same `App`/`Widget`/`P`/`@register` API as the built-in apps:
+`plugins/example_hello.py` is a commented example and `plugins/README.md` the reference. Settings → Plugins
+also installs a plugin from an uploaded `.py`/`.zip` or a URL (a raw file, a GitHub file, repo or folder);
+those go in `data/plugins/` so they're in `storage.db` and backups.
+
+**Security:** a plugin runs inside the server with its full privileges (settings, passwords, files, network).
+Only install code you trust. Installed plugins stay off until you've read the code and ticked "I trust this
+code", and need that again if the code changes. Plugin management is owner-only (no share link reaches it).
+
+A plugin that fails to import is skipped and its traceback shown; a crash while drawing shows "Plugin error";
+5 crashes in a row turn the plugin off, with a low-priority notification.
+
+**Pixlet apps** (the Tidbyt/Tronbyt community catalogue, github.com/tronbyt/apps, Apache-2.0). Run
+`scripts/setup-pixlet.sh` once: it downloads Tronbyt's Pixlet v0.54.0 for arm64 (Pi 5) or x86-64, checks its
+SHA-256 and installs it in `native/pixlet/build/`. Then search the catalogue in Settings → Plugins and install
+apps; each becomes an app in Apps → Plugins with its own settings (from the app's schema; the location comes
+from Settings → Location; OAuth and "generated" fields aren't supported) plus how it becomes dots:
+
+- *Picture size*: 64×32 centred (default, sharpest), stretched to 84×42, drawn at 84×42 (only apps that
+  adapt to the size look right) or, for 2× apps, 128×64 scaled down.
+- *Colours to dots*: any lit colour (suits most apps: they draw on black), brightness threshold, or
+  dithering (pictures and gradients). *Invert* helps apps that draw on white (e.g. Analog Clock).
+- *Render again every*: Pixlet runs in the background (one at a time, low priority; a render takes
+  ~0.05 s on a PC), and the frames loop like a GIF in between.
+
+Clocks and text apps convert well; apps that use colour for meaning need tuning. Many catalogue apps fetch
+data from the web when they render, as they do on a Tidbyt.
+
 ## Gamepads and the GameCube adapter
 
 Plug USB gamepads or a Mayflash GameCube adapter (PC mode, the switch on the side) into the Pi. Each
@@ -477,7 +929,52 @@ Settings → Controllers turns gamepads on or off, sets the stick dead zone, lis
 controllers with their player numbers, shows the last inputs live, and remaps buttons (code name →
 game key). `GET /api/gamepad` returns the same status.
 
-## Run at boot (systemd user service)
+## Run at boot (systemd)
+
+As a system service, `/etc/systemd/system/flipdot.service` (change the paths to where the app lives):
+
+```ini
+[Unit]
+Description=Flipdot board server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=notify
+NotifyAccess=main
+WatchdogSec=30
+User=pi
+SupplementaryGroups=input
+WorkingDirectory=/home/pi/Documents/Programming/flipdisk
+ExecStart=/home/pi/Documents/Programming/flipdisk/venv/bin/python /home/pi/Documents/Programming/flipdisk/server.py --port 8080
+Restart=always
+RestartSec=5
+KillMode=control-group
+TimeoutStopSec=15
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target
+```
+
+```sh
+sudo systemctl daemon-reload
+sudo systemctl enable --now flipdot
+journalctl -u flipdot -f              # logs
+curl -s localhost:8080/api/health     # add ?token=PASSWORD when a password is set
+```
+
+What changed from the earlier `Type=simple` unit:
+
+- `Type=notify` and `NotifyAccess=main`: the server tells systemd when it's actually serving (`READY=1`), so
+  `systemctl start` waits for that and anything ordered after it starts at the right time.
+- `WatchdogSec=30`: the server pings systemd every 15 s, but only while the loop that drives the board is still
+  ticking. If that loop hangs, the pings stop and systemd restarts the service within 30 s, even though the web
+  page would still answer. An unreachable board doesn't stop the pings (a restart wouldn't fix a cable).
+- `Restart=always` instead of `on-failure`: it also comes back after a clean exit or a watchdog kill.
+
+Without systemd (run by hand) none of this happens: no `NOTIFY_SOCKET`, nothing is sent.
+`flipdot.service` in this folder is the same thing as a user service (`~/.config/systemd/user/`):
 
 ```sh
 mkdir -p ~/.config/systemd/user
@@ -494,11 +991,15 @@ journalctl --user -u flipdot -f       # logs
 - `canvas.py`, `fonts.py` – 1-bit drawing, pixel fonts, seven-segment digits
 - `apps/` – everything that draws over time
 - `runner.py` – manual / app / playlist / schedule modes, notifications
+- `health.py` – `/api/health` and the systemd notify/watchdog pings
+- `localconfig.py` – `config.local.yaml` over `config.yaml`; `backups.py` – backups folder, schedule, rotation; `updater.py` – update from git with rollback, restart
 - `transitions.py` – ~40 transitions (reveal maps like wipes/iris/clock/spiral, plus slides, pushes, zoom, melt, glitch…)
 - `apps/layers.py` – the layer compositor
 - `rules.py` – automations; `qr.py` – QR code encoder (byte mode, ECC L/M/Q/H, versions 1–40)
 - `store.py` – JSON files in `data/`; `storage.py` – the `storage.db` they're kept in; `mqtt.py` – tiny MQTT client + Home Assistant discovery; `ws.py` – WebSocket push; `server.py` – HTTP
 - `static/` – web UI
 - `apps/pack_arcade.py`, `pack_maze.py`, `pack_runner.py`, `pack_versus.py`, `pack_puzzle.py` – the game packs
+- `apps/pack_live.py`, `gtfs_rt.py`, `gtfs_static.py` – departures, planes overhead and the live weather sky
 - `native/doom/` – Doom platform file + Makefile (`scripts/setup-doom.sh` fetches and builds the engine); `apps/doom.py` – the Doom app
 - `native/nes/` – NES driver, agnes patch + Makefile (`scripts/setup-nes.sh` fetches and builds the emulator); `apps/nes.py` – the NES app
+- `plugins.py`, `plugins_api.py`, `static/js/plugins.js` – Python plugins (`plugins/`, `data/plugins/`); `pixlet.py`, `apps/pixlet_apps.py`, `scripts/setup-pixlet.sh` – Pixlet apps

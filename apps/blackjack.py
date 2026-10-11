@@ -1,7 +1,9 @@
 """Blackjack, dealt from a shoe shuffled by the Deck of Cards API (https://deckofcardsapi.com).
 
 Controls: up/down = change bet, A = deal / hit, B = stand, right = double down.
-Dealer stands on all 17s, blackjack pays 3:2.
+Dealer stands on all 17s, blackjack pays 3:2. A game lasts until the chips run out
+(or nobody has pressed a button for IDLE seconds); its score is the biggest stack
+reached. The idle title shows a demo playing basic strategy from a local shoe.
 """
 
 import collections
@@ -15,7 +17,7 @@ import urllib.request
 from fonts import NORMAL, SMALL
 
 from .base import UA, P, register
-from .games import Game
+from .games import DEMO, Attract, Game
 
 log = logging.getLogger("blackjack")
 API = "https://deckofcardsapi.com/api/deck"
@@ -28,6 +30,7 @@ SUIT_GLYPHS = {
     "SPADES": ["00100", "01110", "11111", "00100", "01110"],
 }
 CARD_W, CARD_H = 12, 16
+IDLE = 300  # seconds without a button before a game cashes out
 
 
 def _get(url):
@@ -134,8 +137,25 @@ def is_blackjack(cards):
     return len(cards) == 2 and hand_value(cards)[0] == 21
 
 
+def basic_strategy(player, dealer_up, can_double):
+    """'hit', 'stand' or 'double' for a hand against the dealer's up card (simplified basic strategy)."""
+    total, soft = hand_value(player)
+    up = 11 if dealer_up == "ACE" else 10 if dealer_up in ("KING", "QUEEN", "JACK") else int(dealer_up)
+    if can_double and not soft and (total == 11 or (total == 10 and up < 10) or (total == 9 and 3 <= up <= 6)):
+        return "double"
+    if soft:
+        return "hit" if total <= 17 or (total == 18 and up >= 9) else "stand"
+    if total <= 11:
+        return "hit"
+    if total == 12:
+        return "stand" if 4 <= up <= 6 else "hit"
+    if total <= 16:
+        return "stand" if up <= 6 else "hit"
+    return "stand"
+
+
 @register
-class Blackjack(Game):
+class Blackjack(Attract, Game):
     id = "blackjack"
     title = "Blackjack"
     description = "Dealt from the Deck of Cards API. Up/down = bet, A = deal/hit, B = stand, right = double down."
@@ -143,20 +163,32 @@ class Blackjack(Game):
         P("decks", "number", 6, "Decks in the shoe", min=1, max=8),
         P("bankroll", "number", 100, "Starting chips", min=10, max=10000),
         P("deal_speed", "number", 0.45, "Seconds between dealt cards", min=0.1, max=2, step=0.05),
+        DEMO,
     ]
+    DEMO_POS = (-1, 1)
 
     def __init__(self, ctx, **params):
         super().__init__(ctx, **params)
-        self.shoe = Shoe(int(self.p["decks"]))
-        self.shoe._start()  # get the first cards while the title shows
+        self.table_shoe = Shoe(int(self.p["decks"]))
+        self.table_shoe._start()  # get the first cards while the title shows
+        self.demo_shoe = Shoe(int(self.p["decks"]))
+        self.demo_shoe.offline = True  # the demo doesn't spend API calls
         self.chips = int(self.p["bankroll"])
         self.bet = 10
+        self.ai_at = 0
         self.reset_hand()
+
+    @property
+    def shoe(self):
+        return self.demo_shoe if self.demo else self.table_shoe
 
     # ---- game state -------------------------------------------------------------
 
     def reset(self):
-        """Called by Game when a player presses a button on the title screen."""
+        """A new game (a button on the title screen, or the demo): a fresh bankroll."""
+        self.chips = self.score = int(self.p["bankroll"])
+        self.bet = 10
+        self.touched = time.time()
         self.reset_hand()
 
     def reset_hand(self):
@@ -180,6 +212,26 @@ class Blackjack(Game):
         self.queue = ["player", "dealer", "player", "dealer", "check"]
         self.next_at = 0
 
+    def input(self, key, action="down", player=1):
+        self.touched = time.time()
+        super().input(key, action, player)
+
+    def autoplay(self, now):
+        if now < self.ai_at:
+            return
+        self.ai_at = now + 0.9
+        if self.phase == "bet":
+            if random.random() < 0.3:
+                self.press(random.choice(("up", "down")), 1)
+            else:
+                self.press("a", 1)
+        elif self.phase == "player":
+            move = basic_strategy(self.player, self.dealer[0][2], len(self.player) == 2 and self.chips >= self.bet)
+            self.press({"hit": "a", "stand": "b", "double": "right"}[move], 1)
+        elif self.phase == "result":
+            self.ai_at = now + 2.5
+            self.press("a", 1)
+
     def press(self, key, player):
         if self.phase == "bet":
             if key == "up":
@@ -201,7 +253,7 @@ class Blackjack(Game):
             self.next_at = 0
         elif self.phase == "result":
             if self.chips < 5:
-                self.chips = int(self.p["bankroll"])
+                return self.game_over()
             self.bet = min(self.bet, self.chips)
             self.reset_hand()
 
@@ -240,13 +292,15 @@ class Blackjack(Game):
             "lose": (0, f"DEALER WINS -{bet}"),
         }[outcome]
         self.chips += payout
-        self.score = self.chips
+        self.score = max(self.score, self.chips)
         if self.doubled:
             self.bet //= 2
         self.phase = "result"
         self.queue = []
 
     def tick(self, now):
+        if not self.demo and time.time() - self.touched > IDLE:
+            return self.game_over()  # cashed out: the biggest stack counts
         if not self.queue or now < self.next_at:
             return
         step = self.queue[0]
@@ -328,7 +382,7 @@ class Blackjack(Game):
             c.text(0, 32, ("S" if soft and total < 21 else "") + str(total), NORMAL)
         # message line
         if self.phase == "bet":
-            msg = self.msg or (f"${self.chips}  BET {self.bet}  A=DEAL" + (" (LOCAL DECK)" if self.shoe.offline else ""))
+            msg = self.msg or (f"${self.chips}  BET {self.bet}  A=DEAL" + (" (LOCAL DECK)" if self.shoe.offline and not self.demo else ""))
         elif self.phase == "player":
             msg = "A HIT  B STAND" + ("  > DBL" if len(self.player) == 2 and self.chips >= self.bet else "")
         elif self.phase == "result":
@@ -337,17 +391,14 @@ class Blackjack(Game):
             msg = self.msg or f"BET {self.bet}"
         c.text_center(19, msg, SMALL)
 
-    def render(self, c, now):
-        if self.state == "title":
-            self.draw_card(c, 6, 4, ("A", "SPADES", "ACE"))
-            self.draw_card(c, 15, 8, ("K", "HEARTS", "KING"))
-            c.text(32, 8, "BLACK", NORMAL)
-            c.text(32, 17, "JACK", NORMAL)
-            if int(now * 2) % 2:
-                c.text_center(32, "PRESS ANY BUTTON", SMALL)
-            return
-        self.tick(now)
-        self.draw(c, now)
+    def draw_title_screen(self, c, now):
+        self.draw_card(c, 6, 4, ("A", "SPADES", "ACE"))
+        self.draw_card(c, 15, 8, ("K", "HEARTS", "KING"))
+        c.text(32, 8, "BLACK", NORMAL)
+        c.text(32, 17, "JACK", NORMAL)
+        self.title_footer(c, now, 32)
 
     def describe(self):
-        return f"Blackjack (${self.chips}, {self.phase})"
+        if self.state != "playing" or self.scoreboard is not None:
+            return super().describe()
+        return f"Blackjack ({'demo, ' if self.demo else ''}${self.chips}, {self.phase})"

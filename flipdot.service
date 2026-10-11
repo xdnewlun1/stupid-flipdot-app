@@ -4,11 +4,14 @@ After=network-online.target
 Wants=network-online.target
 
 [Service]
-Type=simple
+Type=notify
+NotifyAccess=main
+WatchdogSec=30
 WorkingDirectory=%h/Documents/Programming/flipdisk
 ExecStart=/usr/bin/python3 %h/Documents/Programming/flipdisk/server.py --port 8080
-Restart=on-failure
+Restart=always
 RestartSec=5
+Environment=PYTHONUNBUFFERED=1
 
 [Install]
 WantedBy=default.target

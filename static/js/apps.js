@@ -1,6 +1,8 @@
 // Apps tab: browse apps, set options (live for the app you started), show on board / for N s / as a layer / in a playlist.
 import { $, api, appSections, autosave, board, catalog, el, icon, iconButton, loadNesRoms, nesCache, paramForm, safe, toast, bus, undoable } from "./common.js";
-import { addToPlaylist, playlistNames } from "./playlists.js";
+import { addToPlaylistButton } from "./addto.js";
+import "./musicreact.js";  // the React to music option on generative apps
+import "./timers.js";  // the Timers app's live controls
 
 let selected = null, form = null;
 let filter = "all", query = "";
@@ -55,9 +57,7 @@ function select(app, { reveal = false } = {}) {
   form = paramForm(app, running);
   const transition = el("select", { "aria-label": "Transition" }, catalog.transitions.map(t => el("option", { value: t }, t)));
   const tDur = el("input", { type: "number", value: 1, min: 0.1, max: 10, step: 0.1, inputmode: "decimal", style: "width:64px", "aria-label": "Transition seconds" });
-  const duration = el("input", { type: "number", value: 30, min: 1, style: "width:80px", "aria-label": "Seconds in the playlist" });
   const notifySecs = el("input", { type: "number", value: 10, min: 1, style: "width:70px", "aria-label": "Seconds to show it" });
-  const plSelect = el("select", { "aria-label": "Playlist" }, playlistNames().map(n => el("option", { value: n }, n)));
   const spec = () => ({ app: app.id, params: form.values() });
   const liveNote = el("p", { class: "muted liveNote", role: "status" });
   const updateNote = () => { liveNote.textContent = noteText(app); };
@@ -106,12 +106,7 @@ function select(app, { reveal = false } = {}) {
         toast(`Added ${app.title} as a layer on top`);
       }) }, "Add as layer"), el("span", { class: "muted" }, "on top of what's on the board")),
     el("div", { class: "row" },
-      el("button", { onclick: safe(async () => {
-        if (!plSelect.value) return toast("Create a playlist first", true);
-        await addToPlaylist(plSelect.value, { ...spec(), duration: +duration.value });
-        toast(`Added to "${plSelect.value}"`);
-      }) }, "Add to playlist"),
-      plSelect, el("label", { class: "muted" }, "for ", duration, " s")),
+      addToPlaylistButton(spec, { name: app.title }), el("span", { class: "muted" }, "with these options")),
   ].filter(Boolean));
   // on narrow screens the details sit below the long list: bring them into view
   if (reveal && window.matchMedia("(max-width: 1100px)").matches)

@@ -101,8 +101,10 @@ class Hub:
                 self._status = (seq, json.dumps({"type": "status", "runner": self.runner.status()}).encode())
             return self._status[1]
 
-    def serve(self, sock, rfile):
-        """Run one client connection (blocks until it closes)."""
+    def serve(self, sock, rfile, on_message=None):
+        """Run one client connection (blocks until it closes). `on_message` replaces the hub's handler
+        for this connection (e.g. one that only accepts game input)."""
+        on_message = on_message or self.on_message
         send_lock = threading.Lock()
         closed = threading.Event()
 
@@ -157,7 +159,7 @@ class Hub:
                     send(0xA, data)
                 elif op == 0x1:
                     try:
-                        self.on_message(json.loads(data))
+                        on_message(json.loads(data))
                     except Exception as e:
                         send(0x1, json.dumps({"type": "error", "error": str(e)}).encode())
         except (Closed, OSError, ValueError):

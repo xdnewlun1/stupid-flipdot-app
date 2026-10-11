@@ -22,6 +22,8 @@ log = logging.getLogger("storage")
 SCHEMA_VERSION = 1
 MIRROR_EVERY = 15  # seconds: saves and uploads are copied in at once (sync); this catches files written by hand
 RESTORE_SUFFIX = ".restore"  # an uploaded backup waiting to replace the database at the next start
+BACKUP_PAGES = 256  # pages per online-backup step (1 MB with 4 KB pages); the lock is free between steps
+BACKUP_PAUSE = 0.001  # seconds between steps, for anything waiting on the lock
 
 
 def _migrate(db, version):
@@ -275,20 +277,64 @@ class Storage:
                 "data_bytes": data_bytes, "last_sync": self.last_sync,
                 "restore_pending": Path(str(self.path) + RESTORE_SUFFIX).exists()}
 
-    def backup_to(self, dest):
-        """A consistent copy of the database (safe while it's in use)."""
+    def backup_to(self, dest, pages=BACKUP_PAGES, pause=BACKUP_PAUSE):
+        """A consistent copy of the database (safe while it's in use). SQLite's online backup copies `pages` pages
+        per step and the lock is let go between steps, so saves and the mirror carry on during a long backup (they
+        go through this same connection, so SQLite copies their changes too instead of starting over)."""
         out = sqlite3.connect(str(dest))
+        lock = self._lock
+
+        def between_steps(status, remaining, total):
+            lock.release()
+            try:
+                time.sleep(pause)
+            finally:
+                lock.acquire()
+
         try:
-            with self._lock:
-                self.db.backup(out)
+            with lock:
+                self.db.backup(out, pages=pages, progress=between_steps)
         finally:
             out.close()
+
+    def stage_restore_stream(self, rfile, length, chunk=1 << 20):
+        """Like stage_restore, but reads `length` bytes from a file object straight to disk (a backup holding
+        videos can be bigger than the Pi's memory)."""
+        staged = Path(str(self.path) + RESTORE_SUFFIX)
+        tmp = staged.with_name(staged.name + ".tmp")
+        try:
+            with open(tmp, "wb") as f:
+                left = length
+                while left > 0:
+                    block = rfile.read(min(chunk, left))
+                    if not block:
+                        raise ValueError("the upload was cut off before the end")
+                    f.write(block)
+                    left -= len(block)
+            return self._stage(tmp, staged)
+        except BaseException:
+            tmp.unlink(missing_ok=True)
+            raise
 
     def stage_restore(self, data):
         """Validate an uploaded backup and put it in place to replace the database at the next start."""
         staged = Path(str(self.path) + RESTORE_SUFFIX)
         tmp = staged.with_name(staged.name + ".tmp")
         tmp.write_bytes(data)
+        return self._stage(tmp, staged)
+
+    def stage_restore_file(self, path):
+        """Stage a backup file already on this machine (from the backups folder); the file itself is kept."""
+        staged = Path(str(self.path) + RESTORE_SUFFIX)
+        tmp = staged.with_name(staged.name + ".tmp")
+        try:
+            shutil.copyfile(path, tmp)
+        except BaseException:
+            tmp.unlink(missing_ok=True)
+            raise
+        return self._stage(tmp, staged)
+
+    def _stage(self, tmp, staged):
         try:
             files = check_backup(tmp)
         except ValueError:

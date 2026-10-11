@@ -104,23 +104,51 @@ class Collector:
     """A fake RS485-to-Ethernet port: remembers the latest frame for each panel address."""
 
     def __init__(self):
-        self.srv = socket.socket()
-        self.srv.bind(("127.0.0.1", 0))
-        self.srv.listen()
-        self.port = self.srv.getsockname()[1]
+        self.port = 0
         self.latest, self.refreshes, self.writes = {}, 0, 0
         self.events = []  # (time, "refresh" | panel address)
-        threading.Thread(target=self._run, daemon=True).start()
+        self.start()
 
-    def _run(self):
+    def start(self):
+        """Listen (again, on the same port after stop())."""
+        self.srv = socket.socket()
+        self.srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self.srv.bind(("127.0.0.1", self.port))
+        self.srv.listen()
+        self.port = self.srv.getsockname()[1]
+        self.conns = []
+        threading.Thread(target=self._run, args=(self.srv,), daemon=True).start()
+
+    def stop(self):
+        """The converter goes away: connections are dropped and new ones refused."""
+        try:
+            self.srv.shutdown(socket.SHUT_RDWR)  # wakes the accept() (close alone leaves the port listening)
+        except OSError:
+            pass
+        self.srv.close()
+        for c in self.conns:
+            try:
+                c.shutdown(socket.SHUT_RDWR)
+            except OSError:
+                pass
+            c.close()
+
+    def _run(self, srv):
         while True:  # the board reconnects after a panel remap
-            conn, _ = self.srv.accept()
+            try:
+                conn, _ = srv.accept()
+            except OSError:
+                return  # stopped
+            self.conns.append(conn)
             threading.Thread(target=self._serve, args=(conn,), daemon=True).start()
 
     def _serve(self, conn):
         buf = b""
         while True:
-            data = conn.recv(4096)
+            try:
+                data = conn.recv(4096)
+            except OSError:
+                return
             if not data:
                 return
             self.writes += 1
@@ -362,6 +390,121 @@ class SendTest(unittest.TestCase):
             time.sleep(0.01)
         self.assertTrue(self.wait_for(lambda: self.board_matches(b, buses), timeout=5))
         self.assertLessEqual(max(c.writes for c in buses), 4)
+
+
+class LinkTest(unittest.TestCase):
+    """Buses going down and coming back, and the periodic full refresh."""
+    wait_for, run_board, board_matches = SendTest.wait_for, SendTest.run_board, SendTest.board_matches
+
+    def setUp(self):
+        self._retry = flipdot.RETRY
+        flipdot.RETRY = 0.2  # retry a dead bus quickly
+
+    def tearDown(self):
+        flipdot.RETRY = self._retry
+
+    def toggle_dot(self, b, x, y):
+        _, px = b.dots()
+        c = Canvas(b.width, b.height)
+        c.px = bytearray(px)
+        c.px[y * b.width + x] ^= 1
+        b.set_canvas(c)
+
+    def test_dead_bus_is_reported(self):
+        buses = [Collector(), Collector()]
+        dead = socket.socket()
+        dead.bind(("127.0.0.1", 0))
+        dead_port = dead.getsockname()[1]
+        dead.close()
+        b = flipdot.Board(config(ports=[buses[0].port, buses[1].port, dead_port]))
+        self.assertTrue(self.wait_for(lambda: not b.link_status()["ok"]))
+        link = b.link_status()
+        self.assertEqual((link["panels"], link["panels_down"]), (18, 6))
+        self.assertEqual([d["port"] for d in link["down"]], [dead_port])
+        self.assertIsNotNone(link["down"][0]["since"])
+        health = {h["bus"]: h for h in b.bus_health()}
+        self.assertIs(health[f"127.0.0.1:{dead_port}"]["connected"], False)
+        live = {f"127.0.0.1:{c.port}" for c in buses}
+        self.assertTrue(self.wait_for(lambda: all(h["connected"] for h in b.bus_health() if h["bus"] in live)))
+
+    def test_bus_that_comes_back_gets_every_panel_again(self):
+        b, buses = self.run_board()
+        b.set_canvas(random_canvas(b.width, b.height, 11))
+        self.assertTrue(self.wait_for(lambda: self.board_matches(b, buses)))
+        changed = []
+        b.link_listeners.append(lambda: changed.append(b.link_status()["ok"]))
+        buses[2].stop()
+        # a change on that bus finds it gone (the first write may still land in the socket buffer)
+        self.assertTrue(self.wait_for(lambda: self.toggle_dot(b, 2 * 28, 0) or not b.link_status()["ok"]))
+        self.assertEqual(b.link_status()["panels_down"], 6)
+        self.assertIn(False, changed)
+        buses[2].latest.clear()
+        buses[2].start()
+        # only one panel of that bus changed, but all six are sent: the panels may have lost power meanwhile
+        _, px = b.dots()
+        self.assertTrue(self.wait_for(lambda: all(
+            buses[2].latest.get(p.address) == expected_frame(b, p, px) for p in b.panels if p.col == 2)))
+        self.assertTrue(self.wait_for(lambda: b.link_status()["ok"]))
+        self.assertEqual(changed[-1], True)
+        self.assertTrue(self.board_matches(b, buses))
+
+    def test_converter_restart_between_changes_resends_everything(self):
+        # the converter restarts while nothing changes: the next change finds the connection closed, connects again
+        # and sends every panel of that bus, not just the one that changed
+        b, buses = self.run_board()
+        b.set_canvas(random_canvas(b.width, b.height, 13))
+        self.assertTrue(self.wait_for(lambda: self.board_matches(b, buses)))
+        buses[2].stop()
+        time.sleep(0.1)
+        buses[2].latest.clear()
+        buses[2].start()
+        self.toggle_dot(b, 2 * 28, 0)
+        _, px = b.dots()
+        self.assertTrue(self.wait_for(lambda: all(
+            buses[2].latest.get(p.address) == expected_frame(b, p, px) for p in b.panels if p.col == 2)))
+        self.assertTrue(b.link_status()["ok"])
+
+    def test_refresh_retries_now(self):
+        b, buses = self.run_board()
+        self.assertTrue(self.wait_for(lambda: self.board_matches(b, buses)))
+        for c in buses:
+            c.events.clear()
+        b.refresh()  # nothing changed: every panel is sent anyway
+        self.assertTrue(self.wait_for(lambda: all(sorted(k for _, k in c.events) == [0, 1, 2, 3, 4, 5] for c in buses)))
+
+    def test_periodic_full_refresh_when_idle(self):
+        b, buses = self.run_board(full_refresh_s=0.5)
+        b.set_canvas(random_canvas(b.width, b.height, 12))
+        self.assertTrue(self.wait_for(lambda: self.board_matches(b, buses)))
+        b.max_flips_per_sec = 10  # quiet hours: an unchanged frame flips nothing, so it isn't held back
+        b._tokens = 0.0
+        flips = sum(b.flips)
+        for c in buses:
+            c.events.clear()
+        self.assertTrue(self.wait_for(lambda: all({k for _, k in c.events} >= {0, 1, 2, 3, 4, 5} for c in buses), timeout=3))
+        self.assertTrue(self.board_matches(b, buses))
+        self.assertEqual(sum(b.flips), flips)
+
+    def test_no_periodic_refresh_during_steady_timing_or_games(self):
+        b, buses = self.run_board(full_refresh_s=0.3)
+        self.assertTrue(self.wait_for(lambda: self.board_matches(b, buses)))
+        for flag in ("steady", "interactive"):
+            setattr(b, flag, True)
+            time.sleep(0.1)
+            for c in buses:
+                c.events.clear()
+            time.sleep(1.0)
+            self.assertEqual([c.events for c in buses], [[], [], []], flag)
+            setattr(b, flag, False)
+        self.assertTrue(self.wait_for(lambda: all(c.events for c in buses)))  # and back once it's idle again
+
+    def test_no_periodic_refresh_when_off(self):
+        b, buses = self.run_board(full_refresh_s=0)
+        self.assertTrue(self.wait_for(lambda: self.board_matches(b, buses)))
+        for c in buses:
+            c.events.clear()
+        time.sleep(0.8)
+        self.assertEqual([c.events for c in buses], [[], [], []])
 
 
 if __name__ == "__main__":

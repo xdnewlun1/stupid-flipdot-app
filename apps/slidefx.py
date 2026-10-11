@@ -70,6 +70,8 @@ class Effect:
         self.rng = rng or random.Random()
         self.hold = hold  # how long the discs take to show a whole new picture (Board.settle_time()): Flash's floor
         self.state = {}
+        self.cycles = None  # reacting to music: the effect's own motion clock in cycles (see Reactive), else wall time
+        self.sway = 1.0     # reacting to music: the wave sways further in groovy (syncopated, off-beat) music
 
     def active(self, now):
         return now >= self.start and (self.end is None or now < self.end)
@@ -93,21 +95,38 @@ class Effect:
         c.invert()
 
     def _flash(self, c, t):
+        if self.cycles is not None:  # one flash per cycle (on the beat when locked), longer when stronger
+            if self.cycles % 1 < 0.25 + 0.5 * self.strength:
+                c.invert()
+            return
         rate = 3 + 6 * self.strength  # toggles a second...
         if self.hold:
             rate = min(rate, 1 / self.hold)  # ...but each picture stays until the discs have shown it
         if int(t * rate) % 2 == 0:
             c.invert()
 
+    def _held(self, make):
+        """A random pattern: new every frame, or with a motion clock, new each whole cycle and held between."""
+        if self.cycles is None:
+            return make()
+        step, held = int(self.cycles), self.state.get("held")
+        if held is None or held[0] != step:
+            held = self.state["held"] = (step, make())
+        return held[1]
+
     def _glitch(self, c, t):
         w, h, px, rng = c.w, c.h, c.px, self.rng
         s = self.strength
-        for y in range(h):
-            if rng.random() < 0.25 * s:
-                shift = rng.randint(-int(4 + 16 * s), int(4 + 16 * s))
+        # per row: (chance to shift, shift as a fraction of the reach, chance to invert); strength applies on top,
+        # so a held pattern still follows the strength
+        plan = self._held(lambda: [(rng.random(), rng.uniform(-1, 1), rng.random()) for _ in range(h)])
+        reach = 4 + 16 * s
+        for y, (u, f, inv) in enumerate(plan):
+            if u < 0.25 * s:
+                shift = round(f * reach)
                 row = px[y * w:(y + 1) * w]
                 px[y * w:(y + 1) * w] = row[-shift:] + row[:-shift] if shift else row
-            if rng.random() < 0.06 * s:
+            if inv < 0.06 * s:
                 px[y * w:(y + 1) * w] = px[y * w:(y + 1) * w].translate(_FLIP)
 
     def _mirror(self, c, t):
@@ -127,7 +146,7 @@ class Effect:
 
     def _wave(self, c, t):
         w, px = c.w, c.px
-        amp = 1 + 5 * self.strength
+        amp = (1 + 5 * self.strength) * self.sway
         src = bytes(px)
         for y in range(c.h):
             shift = round(amp * math.sin(y / 4 + t * 6))
@@ -157,9 +176,13 @@ class Effect:
         c.px[:] = (s & missing).to_bytes(w * h, "big").translate(_BITS)
 
     def _static(self, c, t):
-        n = int(len(c.px) * 0.12 * self.strength)
-        for _ in range(n):
-            i = self.rng.randrange(len(c.px))
+        size = len(c.px)
+        if self.cycles is None:
+            for _ in range(int(size * 0.12 * self.strength)):
+                c.px[self.rng.randrange(size)] ^= 1
+            return
+        dots = self._held(lambda: [self.rng.randrange(size) for _ in range(int(size * 0.12))])
+        for i in dots[:int(len(dots) * self.strength)]:
             c.px[i] ^= 1
 
     def _life(self, c, t):
@@ -187,24 +210,51 @@ class Effect:
 
 
 # ---- reacting to music ---------------------------------------------------------------------
-# Each signal drives one effect with strength = signal above its threshold x amount. Life and Melt are left
-# out: they build up over time from where they started, so a strength that changes every frame breaks them.
+# Each signal drives one effect with strength = signal above its threshold x amount: how much it does (how far
+# the wave bends, how many dots of static). A band's signal is its level, its hits (each new bass note, snare,
+# hat: audio_signal's per-band onsets) or both: a steady loud bassline reads high as a level but only its
+# notes make hits, so "both" keeps some of the level and puts the notes on top. Separately, effects that move have their own motion clock, whose
+# rate ("Speed follows") is fixed, the signal's intensity, the song's tempo, or both: how fast/often it moves.
+# Life and Melt are left out: they build up over time from where they started, so a strength that changes
+# every frame breaks them.
 
 SIGNALS = ["bass", "lowmid", "mid", "high", "beat", "level"]
 REACT_ORDER = ["pixelate", "mirror", "kaleidoscope", "wave", "glitch", "outline", "scanlines", "static", "flash", "invert"]
 SWITCHED = {"invert", "mirror", "kaleidoscope", "outline"}  # no strength: on while the strength is past half
+BAND_SIGNALS = ("bass", "lowmid", "mid", "high")
+REACT_TO = ["level", "hits", "both"]  # what a band row follows
+BOTH_MIX = (0.65, 0.6)  # "both": this much of the level plus this much of the hits (capped at 1)
 REACT_DEFAULTS = [
-    {"signal": "bass", "effect": "glitch", "amount": 80, "threshold": 35},
-    {"signal": "lowmid", "effect": "none", "amount": 50, "threshold": 35},
-    {"signal": "mid", "effect": "wave", "amount": 50, "threshold": 50},
-    {"signal": "high", "effect": "static", "amount": 40, "threshold": 50},
+    {"signal": "bass", "effect": "glitch", "amount": 80, "threshold": 45, "react": "both"},
+    {"signal": "lowmid", "effect": "none", "amount": 50, "threshold": 35, "react": "level"},
+    {"signal": "mid", "effect": "wave", "amount": 50, "threshold": 50, "react": "both"},
+    {"signal": "high", "effect": "static", "amount": 40, "threshold": 50, "react": "hits"},
     {"signal": "beat", "effect": "invert", "amount": 100, "threshold": 0},
     {"signal": "level", "effect": "scale", "amount": 50, "threshold": 0},
 ]
+# Effects with motion: cycles per second at 1x. A cycle is what "lock to beat" fits to one beat: one wave
+# (a crest back where it was), the scanlines moving 6 rows, one flash, one new glitch/static pattern.
+# 1x matches how they moved before they had their own clocks.
+MOTION = {"wave": 6 / (2 * math.pi), "scanlines": 2.0, "flash": 2.5, "glitch": 10.0, "static": 10.0}
+FOLLOW = ["fixed", "signal", "tempo", "both"]
+LOCKS = [0, 1, 2, 4]  # beats per cycle when following the tempo; 0 = not locked (just faster/slower)
+MOTION_DEFAULTS = {   # also used for rows saved before speed settings existed
+    "wave": {"follow": "tempo", "speed": 1.0, "lock": 2},  # 1 per beat is frantic at 160 BPM; this is the old speed at 120
+    "scanlines": {"follow": "tempo", "speed": 1.0, "lock": 1},
+    "flash": {"follow": "tempo", "speed": 1.0, "lock": 1},
+    "glitch": {"follow": "signal", "speed": 1.0, "lock": 0},
+    "static": {"follow": "signal", "speed": 1.0, "lock": 0},
+}
+SPEED_RANGE = (0.25, 4.0)
+TEMPO_BASE = 120     # BPM at which tempo-following runs at 1x
+LOCK_GAIN = 0.8      # locked clocks correct this share of their phase error per beat
+LEVEL_SMOOTH = 0.15  # seconds: "Its signal" eases the speed so it doesn't jitter
 
 
 def clean_react_map(rows):
-    """One row per signal, in SIGNALS order, with known effects and amounts/thresholds clamped to 0..100."""
+    """One row per signal, in SIGNALS order, with known effects and amounts/thresholds clamped to 0..100.
+    Band rows get what they react to (level / hits / both; missing: the default for that band). Rows whose effect
+    moves also get follow / speed / lock (missing ones: that effect's MOTION_DEFAULTS)."""
     given = {r.get("signal"): r for r in rows or [] if isinstance(r, dict)}
     out = []
     for d in REACT_DEFAULTS:
@@ -213,27 +263,87 @@ def clean_react_map(rows):
         if eff not in REACT_ORDER and eff != "none" and not (eff == "scale" and d["signal"] == "level"):
             eff = "none"
         num = lambda k: max(0, min(100, int(float(r.get(k, d[k]) or 0))))
-        out.append({"signal": d["signal"], "effect": eff, "amount": num("amount"), "threshold": min(90, num("threshold"))})
+        row = {"signal": d["signal"], "effect": eff, "amount": num("amount"), "threshold": min(90, num("threshold"))}
+        if d["signal"] in BAND_SIGNALS:
+            row["react"] = r.get("react") if r.get("react") in REACT_TO else d["react"]
+        if eff in MOTION:
+            md = MOTION_DEFAULTS[eff]
+            try:
+                speed = float(r.get("speed") or md["speed"])
+            except (TypeError, ValueError):
+                speed = md["speed"]
+            try:
+                lock = int(r["lock"]) if r.get("lock") is not None else md["lock"]
+            except (TypeError, ValueError):
+                lock = md["lock"]
+            row.update(follow=r.get("follow") if r.get("follow") in FOLLOW else md["follow"],
+                       speed=round(max(SPEED_RANGE[0], min(SPEED_RANGE[1], speed)), 2),
+                       lock=lock if lock in LOCKS else md["lock"])
+        out.append(row)
     return out
 
 
-def react_strengths(rows, reading):
-    """{effect: strength 0..1} for this music reading. Several signals on one effect: the strongest wins;
-    Loudness set to "scale" turns everything down in quiet parts."""
+def react_plan(rows, reading):
+    """{effect: (strength 0..1, row, signal 0..1)} for this music reading. Several signals on one effect: the
+    strongest wins (and its speed settings); Loudness set to "scale" turns everything down in quiet parts."""
     out, scale = {}, 1.0
     for r in rows:
-        sig = reading["pulse"] if r["signal"] == "beat" else reading.get(r["signal"], 0.0)
+        sig = signal_value(r, reading)
         thr = r["threshold"] / 100
         v = max(0.0, (sig - thr) / (1 - thr)) * r["amount"] / 100
         if r["effect"] == "scale":
             scale = 1 - r["amount"] / 100 + r["amount"] / 100 * sig
-        elif r["effect"] in REACT_ORDER:
-            out[r["effect"]] = max(out.get(r["effect"], 0.0), v)
-    return {k: v * scale for k, v in out.items()}
+        elif r["effect"] in REACT_ORDER and (r["effect"] not in out or v > out[r["effect"]][0]):
+            out[r["effect"]] = (v, r, sig)
+    return {k: (v * scale, r, sig) for k, (v, r, sig) in out.items()}
+
+
+def signal_value(row, reading):
+    """A row's signal 0..1 in this reading: the beat pulse, the loudness, or a band's level / hits / both."""
+    name = row["signal"]
+    if name == "beat":
+        return reading["pulse"]
+    level = reading.get(name, 0.0)
+    if name not in BAND_SIGNALS:
+        return level
+    hit = (reading.get("hits") or {}).get(name, 0.0)
+    react = row.get("react", "level")
+    if react == "hits":
+        return hit
+    if react == "both":
+        return min(1.0, BOTH_MIX[0] * level + BOTH_MIX[1] * hit)
+    return level
+
+
+def react_strengths(rows, reading):
+    """{effect: strength 0..1} for this music reading (see react_plan)."""
+    return {k: v[0] for k, v in react_plan(rows, reading).items()}
+
+
+def motion_rate(row, kind, level, reading, cycles=0.0, dt=0.0):
+    """Cycles per second for an effect's motion clock over the next dt. level: its signal, smoothed (0..1).
+    Tempo-locked: one cycle per `lock` beats, nudged towards the beat (beat_phase) when the tempo is sure."""
+    follow, speed, lock = row.get("follow", "fixed"), row.get("speed", 1.0), row.get("lock", 0)
+    bpm = reading.get("bpm") or TEMPO_BASE
+    if follow == "tempo" and lock:
+        rate = bpm / 60 / lock
+        phase = reading.get("beat_phase")
+        if phase is not None:
+            ahead = (cycles + rate * dt) % 1 * lock  # where a plain step would land, in beats
+            err = (ahead - phase + 0.5) % 1 - 0.5  # beats ahead (+) or behind (-) of the beat
+            rate *= 1 - max(-0.6, min(0.6, LOCK_GAIN * err))
+        return rate
+    rate = MOTION[kind] * speed
+    if follow in ("tempo", "both"):
+        rate *= bpm / TEMPO_BASE
+    if follow in ("signal", "both"):
+        rate *= 2 ** (3 * level - 1.5)  # quiet 0.35x .. half 1x .. loud 2.8x
+    return rate
 
 
 class Reactive:
-    """Applies the music-driven effects to a frame, in REACT_ORDER.
+    """Applies the music-driven effects to a frame, in REACT_ORDER. Effects that move run on their own clock:
+    cycles += rate x dt each frame, so a change of rate changes the speed from there on, never the position.
 
     A switched effect (invert on a beat) changes every dot of the board, which the discs take a while to show: the
     serial data for the busiest bus and then the panels' sweep, well over 100 ms on a three-column board. A beat
@@ -247,15 +357,33 @@ class Reactive:
         self.rng = rng or random.Random()
         self.hold = hold
         self.fx = {k: Effect(k, 0.0, None, 0.5, self.rng) for k in REACT_ORDER}
+        self.level = dict.fromkeys(MOTION, 0.0)
+        self.last = None
         self.on = {k: False for k in SWITCHED}
         self.held = None  # (until, picture) while a switch settles on the discs
 
     def reset(self):
-        """Reacting stopped: the next picture isn't a switch to hold."""
+        """Reacting stopped: the motion clocks pause rather than catch up, and the next picture isn't a switch."""
+        self.last = None
         self.on = {k: False for k in SWITCHED}
         self.held = None
 
-    def apply(self, frame, now, strengths):
+    def advance(self, now, plan, reading):
+        """Move each moving effect's clock on to `now` at its current rate."""
+        dt = 0.0 if self.last is None else max(0.0, min(0.5, now - self.last))
+        self.last = now
+        k = 1 - math.exp(-dt / LEVEL_SMOOTH)
+        for kind, (_, row, sig) in plan.items():
+            if kind in MOTION:
+                e = self.fx[kind]
+                self.level[kind] += (sig - self.level[kind]) * k
+                e.cycles = (e.cycles or 0.0) + motion_rate(row, kind, self.level[kind], reading, e.cycles or 0.0, dt) * dt
+
+    def apply(self, frame, now, strengths, reading=None):
+        """strengths: {effect: strength} (wall-clock motion), or with a reading, react_plan()'s output."""
+        if reading is not None:
+            self.advance(now, strengths, reading)  # the clocks run on through a hold
+            self.fx["wave"].sway = 0.85 + 0.5 * reading.get("groove", 0.0)
         if self.held is not None:
             until, pic = self.held
             if now < until:
@@ -264,6 +392,8 @@ class Reactive:
         switched = False
         for kind in REACT_ORDER:
             s = strengths.get(kind, 0.0)
+            if isinstance(s, tuple):
+                s = s[0]
             if kind in SWITCHED:
                 on = s >= 0.5
                 if on != self.on[kind]:
@@ -275,7 +405,12 @@ class Reactive:
                 continue
             e = self.fx[kind]
             e.strength = min(1.0, s)
-            frame = e.apply(frame, now)
+            if e.cycles is not None:
+                c = frame.copy()
+                getattr(e, "_" + kind)(c, e.cycles / MOTION[kind])  # 1x = the old wall-clock speed
+                frame = c
+            else:
+                frame = e.apply(frame, now)
         if switched and self.hold > 0:
             frame = frame.copy()
             self.held = (now + self.hold, frame)

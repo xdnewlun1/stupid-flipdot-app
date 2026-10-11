@@ -35,7 +35,8 @@ class Layer:
         W, H = parent.w, parent.h
         self.cw = max(1, min(int(spec.get("w") or W), 4 * W))
         self.ch = max(1, min(int(spec.get("h") or H), 4 * H))
-        ctx = type(parent.ctx)(self.cw, self.ch, parent.ctx.store, board=getattr(parent.ctx, "board", None))
+        ctx = type(parent.ctx)(self.cw, self.ch, parent.ctx.store)
+        ctx.board = getattr(parent.ctx, "board", None)  # the same discs: the same settle time
         self.app = create(ctx, {"app": spec["app"], "params": spec.get("params") or {}})
         self.key = Layer.key_of(spec)
         self.canvas = Canvas(self.cw, self.ch)
@@ -165,6 +166,8 @@ class Layers(App):
                 layer.app.stop()
         self.layers = new
         self.interactive = any(l.app.interactive for l in new)
+        # a layer kept in time with the music (Percussion, the visualizer) keeps the whole stack's timing steady
+        self.steady_timing = any(getattr(l.app, "steady_timing", False) for l in new)
         self.rev = next(_revs)
 
     def density_mask(self, d):

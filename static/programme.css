@@ -1,0 +1,85 @@
+/* Playlists (conditions, effects), the shared "Add to playlist" dialog and the Schedule page (rules, timeline). */
+
+:root {
+  /* timeline categories: a validated categorical palette, in fixed order (light surface) */
+  --sch-c0: #2a78d6; --sch-c1: #eb6834; --sch-c2: #1baf7a; --sch-c3: #eda100;
+  --sch-c4: #e87ba4; --sch-c5: #008300; --sch-c6: #6250d6; --sch-c7: #e34948;
+  --sch-off: #000000;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme=light]) {
+    --sch-c0: #3987e5; --sch-c1: #d95926; --sch-c2: #199e70; --sch-c3: #c98500;
+    --sch-c4: #d55181; --sch-c5: #008300; --sch-c6: #9085e9; --sch-c7: #e66767;
+  }
+}
+:root[data-theme=dark] {
+  --sch-c0: #3987e5; --sch-c1: #d95926; --sch-c2: #199e70; --sch-c3: #c98500;
+  --sch-c4: #d55181; --sch-c5: #008300; --sch-c6: #9085e9; --sch-c7: #e66767;
+}
+
+/* ---- playlists ---- */
+.item .name small.condText { color: var(--text-2); }
+.plItemExtras { margin-top: 0; }
+.subhead { margin: var(--s4) 0 0; font-size: var(--fs-md); font-weight: 600; }
+
+/* ---- Add to playlist dialog ---- */
+.atpForm { display: flex; flex-direction: column; gap: var(--s3); }
+.atpForm h2 { display: flex; align-items: center; gap: var(--s2); margin-bottom: 0; }
+.atpForm .dlgErr { margin: 0; }
+.atpForm select, .atpForm input { width: 100%; }
+button.linkLike { background: transparent; border-color: transparent; color: var(--accent); padding-inline: var(--s1); }
+button.linkLike:hover { text-decoration: underline; background: transparent; }
+
+/* ---- schedule: rules ---- */
+.schNow { margin: var(--s3) 0; padding: var(--s2) var(--s3); border: 1px solid var(--line); border-radius: var(--r2); background: var(--surface-2);
+          line-height: 1.6; }
+.schNow:empty { display: none; }
+.schNow button { margin-left: var(--s1); }
+.schNow .warnText { color: var(--danger); }
+.schRule { flex-direction: column; align-items: stretch; gap: var(--s2); }
+.schRule.disabled > :not(.schHead) { opacity: 0.55; }
+.schRule.winning { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.schHead { display: flex; align-items: center; gap: var(--s3); flex-wrap: wrap; }
+.schOn { display: inline-flex; align-items: center; gap: var(--s2); }
+.schLine { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2) var(--s4); }
+.schTime, .schTarget { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--s2); }
+.schTime select, .schTarget select { max-width: 100%; }
+.schBadge { font-size: var(--fs-xs); padding: 2px var(--s2); border-radius: 999px; border: 1px solid var(--line-strong); color: var(--text-2); }
+.schBadge.on { border-color: var(--accent); color: var(--text); background: var(--accent-soft); }
+.schOptions { border-top: 1px solid var(--line); padding-top: var(--s2); }
+
+/* ---- schedule: timeline ---- */
+.schTimeline { display: flex; flex-direction: column; gap: 6px; margin-top: var(--s3); }
+.schDay, .schTicks { display: grid; grid-template-columns: 76px minmax(0, 1fr); align-items: center; gap: var(--s2); }
+.schDayName { font-size: var(--fs-xs); color: var(--text-2); }
+.schTickRow { position: relative; height: 16px; }
+.schTickRow span { position: absolute; transform: translateX(-50%); font-size: var(--fs-xs); color: var(--text-3); font-variant-numeric: tabular-nums; }
+.schTickRow span:first-child { transform: none; }
+.schTickRow span:last-child { transform: translateX(-100%); }
+.schBar { position: relative; height: 30px; border-radius: var(--r1); background: var(--surface-3); overflow: hidden; }
+.schSeg { position: absolute; top: 0; bottom: 0; border-right: 2px solid var(--surface); display: flex; align-items: center; padding-left: 4px; min-width: 0; overflow: hidden; }
+.schSeg span { font-size: 11px; line-height: 1; padding: 3px 5px; border-radius: 4px; background: var(--surface); color: var(--text);
+               white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: calc(100% - 6px); }
+.c0 { background: var(--sch-c0); } .c1 { background: var(--sch-c1); } .c2 { background: var(--sch-c2); } .c3 { background: var(--sch-c3); }
+.c4 { background: var(--sch-c4); } .c5 { background: var(--sch-c5); } .c6 { background: var(--sch-c6); } .c7 { background: var(--sch-c7); }
+.schSeg.off, .sw.off { background: var(--sch-off); box-shadow: inset 0 0 0 1px var(--line-strong); }
+.schSeg.none, .sw.none { background: repeating-linear-gradient(135deg, var(--surface-3) 0 4px, var(--surface-2) 4px 8px); }
+.schQuiet { position: absolute; bottom: 0; height: 5px; background: repeating-linear-gradient(45deg, var(--text-2) 0 2px, transparent 2px 5px); pointer-events: none; }
+.schSun { position: absolute; top: 0; bottom: 0; width: 0; border-left: 2px dotted var(--text); opacity: 0.7; pointer-events: none; }
+.schNowMark { position: absolute; top: -2px; bottom: -2px; width: 2px; margin-left: -1px; background: var(--text); box-shadow: 0 0 0 1px var(--surface); pointer-events: none; }
+.schLegend { display: flex; flex-wrap: wrap; gap: var(--s1) var(--s4); list-style: none; margin: var(--s2) 0 0; padding: 0; font-size: var(--fs-sm); color: var(--text-2); }
+.schLegend li, .schList li { display: inline-flex; align-items: center; gap: var(--s2); }
+.sw { width: 12px; height: 12px; border-radius: 3px; flex: none; display: inline-block; }
+.sw.quiet { background: repeating-linear-gradient(45deg, var(--text-2) 0 2px, transparent 2px 5px); box-shadow: inset 0 0 0 1px var(--line-strong); }
+.sw.sun { width: 0; border-left: 2px dotted var(--text); border-radius: 0; }
+.schListBox { margin-top: var(--s2); }
+.schListBox summary { cursor: pointer; color: var(--text-2); font-size: var(--fs-sm); }
+.schList { list-style: none; margin: var(--s2) 0 0; padding: 0; display: grid; gap: var(--s1); font-size: var(--fs-sm); }
+.schList .when { min-width: 104px; font-variant-numeric: tabular-nums; color: var(--text-2); }
+
+@media (max-width: 640px) {
+  .schDay, .schTicks { grid-template-columns: 52px minmax(0, 1fr); }
+  .schSeg span { display: none; }
+  .schTickRow span:nth-child(even) { display: none; }
+  .schTime, .schTarget { width: 100%; }
+}
