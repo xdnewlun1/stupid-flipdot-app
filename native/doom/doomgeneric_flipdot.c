@@ -12,6 +12,11 @@
  * stdin: 2 bytes per key event: pressed (0/1), Doom key code. EOF quits.
  * Doom's own console output goes to stderr.
  *
+ * With -flipdots W H LOOK (LOOK: outline or wireframe) the 3D view is turned into the board's dots here
+ * (geodots.h) and sent as "FDM3": the same header with width W and height H, then W*H bytes of 0/1 dots. That
+ * saves the Python side a per-dot pass over the picture on every frame and cuts the frame from 32 KB to W*H bytes.
+ * Menus and the automap still go out as FDM2 (gray + geometry), since they're drawn from the gray picture.
+ *
  * Extra arguments: -flipfps N  frames per second to render and send (default 10).
  * After a key goes down or up it also renders and sends every tic (35 a second) for BOOST_MS, so the response
  * reaches the board in a tic or two instead of waiting up to a whole 1/N s; then it carries on every 1/N s.
@@ -42,6 +47,8 @@
 #include <time.h>
 #include <unistd.h>
 
+#include "geodots.h"
+
 #define OUT_W (DOOMGENERIC_RESX / 2)
 #define OUT_H (DOOMGENERIC_RESY / 2)
 #define HEADER 24
@@ -57,6 +64,7 @@ static uint32_t frame_ms = 100, next_due = 0, frames = 0;
 static uint32_t boost_until = 0;  /* send every tic until then (just after a key event)... */
 static int boosting = 0;          /* ...while this is set (the ms clock wraps, so 0 can't mean "off") */
 static unsigned char msg[HEADER + 2 * OUT_W * OUT_H];
+static int dots_w = 0, dots_h = 0, dots_wire = 0;  /* -flipdots: make the board's dots here (0 = send gray + geometry) */
 static unsigned char inbuf[64];
 static int inlen = 0;
 
@@ -160,6 +168,15 @@ void DG_Init()
         int fps = atoi(myargv[i + 1]);
         if (fps >= 1 && fps <= 35) frame_ms = 1000 / fps;
     }
+    i = M_CheckParmWithArgs("-flipdots", 3);
+    if (i > 0) {
+        int w = atoi(myargv[i + 1]), h = atoi(myargv[i + 2]);
+        if (w >= 1 && h >= 1 && w * h <= 2 * OUT_W * OUT_H) {  /* the dots must fit the message buffer */
+            dots_w = w;
+            dots_h = h;
+            dots_wire = strcmp(myargv[i + 3], "wireframe") == 0;
+        }
+    }
 }
 
 void DG_DrawFrame()
@@ -190,28 +207,40 @@ void DG_DrawFrame()
         }
     }
 
-    /* 2x2 box average to 8-bit gray */
-    unsigned char *o = msg + HEADER;
-    for (int y = 0; y < OUT_H; y++) {
-        const uint32_t *r0 = DG_ScreenBuffer + (2 * y) * DOOMGENERIC_RESX;
-        const uint32_t *r1 = r0 + DOOMGENERIC_RESX;
-        for (int x = 0; x < OUT_W; x++) {
-            uint32_t s = 0;
-            for (int k = 0; k < 4; k++) {
-                uint32_t p = k == 0 ? r0[2 * x] : k == 1 ? r0[2 * x + 1] : k == 2 ? r1[2 * x] : r1[2 * x + 1];
-                s += ((p >> 16) & 0xff) * 77 + ((p >> 8) & 0xff) * 150 + (p & 0xff) * 29;
-            }
-            *o++ = s >> 10;
-        }
-    }
-    /* geometry plane: the top-left sample of each 2x2 (types can't be averaged) */
-    for (int y = 0; y < OUT_H; y++)
-        for (int x = 0; x < OUT_W; x++)
-            *o++ = geo[(2 * y) * DOOMGENERIC_RESX + 2 * x];
-    memset(geo, 0, sizeof geo);
-
     player_t *pl = &players[consoleplayer];
     int in_level = gamestate == GS_LEVEL;
+    int view = (in_level && screenblocks <= 10) ? (DOOMGENERIC_RESY - STATUSBAR_H) / 2 : OUT_H;
+    /* the 3D view as the board's dots, straight from the geometry (the picture apps/doom.py made from FDM2 itself) */
+    int dots = dots_w && had_3d && !menuactive && !automapactive;
+    unsigned char *o = msg + HEADER;
+    if (dots) {
+        static unsigned char small[2 * OUT_W * OUT_H];
+        /* as the Python side did: the top-left of each 2x2 (types can't be averaged), rows above the status bar,
+           then nearest-neighbour down to the board */
+        geo_sample(geo, 2 * DOOMGENERIC_RESX, 2, OUT_W, view, small, dots_w, dots_h);
+        geo_dots(small, dots_w, dots_h, dots_wire, o);
+        o += dots_w * dots_h;
+    } else {
+        /* 2x2 box average to 8-bit gray */
+        for (int y = 0; y < OUT_H; y++) {
+            const uint32_t *r0 = DG_ScreenBuffer + (2 * y) * DOOMGENERIC_RESX;
+            const uint32_t *r1 = r0 + DOOMGENERIC_RESX;
+            for (int x = 0; x < OUT_W; x++) {
+                uint32_t s = 0;
+                for (int k = 0; k < 4; k++) {
+                    uint32_t p = k == 0 ? r0[2 * x] : k == 1 ? r0[2 * x + 1] : k == 2 ? r1[2 * x] : r1[2 * x + 1];
+                    s += ((p >> 16) & 0xff) * 77 + ((p >> 8) & 0xff) * 150 + (p & 0xff) * 29;
+                }
+                *o++ = s >> 10;
+            }
+        }
+        /* geometry plane: the top-left sample of each 2x2 (types can't be averaged) */
+        for (int y = 0; y < OUT_H; y++)
+            for (int x = 0; x < OUT_W; x++)
+                *o++ = geo[(2 * y) * DOOMGENERIC_RESX + 2 * x];
+    }
+    memset(geo, 0, sizeof geo);
+
     int ammo = -1, owned = 0;
     if (in_level) {
         ammotype_t at = weaponinfo[pl->readyweapon].ammo;
@@ -219,11 +248,10 @@ void DG_DrawFrame()
         for (int w = 0; w < NUMWEAPONS; w++)
             if (pl->weaponowned[w]) owned |= 1 << w;
     }
-    int view = (in_level && screenblocks <= 10) ? (DOOMGENERIC_RESY - STATUSBAR_H) / 2 : OUT_H;
 
-    memcpy(msg, "FDM2", 4);
-    put16(msg + 4, OUT_W);
-    put16(msg + 6, OUT_H);
+    memcpy(msg, dots ? "FDM3" : "FDM2", 4);
+    put16(msg + 4, dots ? dots_w : OUT_W);
+    put16(msg + 6, dots ? dots_h : OUT_H);
     put16(msg + 8, in_level ? pl->health : 0);
     put16(msg + 10, in_level ? pl->armorpoints : 0);
     put16(msg + 12, ammo);
@@ -235,7 +263,7 @@ void DG_DrawFrame()
     frames++;
     put16(msg + 20, frames & 0xffff);
     put16(msg + 22, frames >> 16);
-    write_all(msg, sizeof msg);
+    write_all(msg, o - msg);
 }
 
 void DG_SleepMs(uint32_t ms)

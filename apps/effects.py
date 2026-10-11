@@ -170,27 +170,24 @@ class Metaballs(App):
             if not 0 < b[0] < c.w: b[2] = -b[2]
             if not 0 < b[1] < c.h: b[3] = -b[3]
         w, h, px = c.w, c.h, c.px
-        balls = [(bx, by, r * r * grow) for bx, by, _, _, r in self.balls]
         outline = self.p["outline"]
-        if edge != 1.0 and outline:
-            hi = 1.35 / edge + (1 - 1 / edge)  # 1.35 at rest, narrower with the mids
-            for y in range(h):
-                row = y * w
-                for x in range(w):
-                    f = 0.0
-                    for bx, by, r2 in balls:
-                        dx, dy = x - bx, (y - by) * 1.6
-                        f += r2 / (dx * dx + dy * dy + 0.5)
-                    px[row + x] = 1 if 1.0 < f < hi else 0
-            return
+        hi = 1.35 / edge + (1 - 1 / edge) if outline else 1.35  # the outline band: 1.35 at rest, narrower with the mids
+        # per ball: its squared x distance to every column once; then each row adds one ball at a time to the
+        # row's field with a list comprehension (C-speed iteration), instead of a Python loop per dot per ball
+        cols = [[(x - bx) ** 2 for x in range(w)] for bx, _, _, _, _ in self.balls]
+        rr = [r * r * grow for _, _, _, _, r in self.balls]
+        out = bytearray()
         for y in range(h):
-            row = y * w
-            for x in range(w):
-                f = 0.0
-                for bx, by, r2 in balls:
-                    dx, dy = x - bx, (y - by) * 1.6
-                    f += r2 / (dx * dx + dy * dy + 0.5)
-                px[row + x] = (1 if 1.0 < f < 1.35 else 0) if outline else (1 if f > 1.0 else 0)
+            dys = [((y - by) * 1.6) ** 2 + 0.5 for _, by, _, _, _ in self.balls]
+            if not outline and sum(r2 / dy for r2, dy in zip(rr, dys)) <= 1.0:
+                out += bytes(w)  # even straight above/below every ball the field stays under the threshold
+                continue
+            r2, dxs, dy = rr[0], cols[0], dys[0]
+            f = [r2 / (dx + dy) for dx in dxs]
+            for r2, dxs, dy in zip(rr[1:], cols[1:], dys[1:]):
+                f = [v + r2 / (dx + dy) for v, dx in zip(f, dxs)]
+            out += bytes((1.0 < v < hi) if outline else (v > 1.0) for v in f)
+        px[:] = out
 
 
 @register
@@ -392,25 +389,31 @@ class Fire(App):
             tall = 1 - 0.45 * m.presence + 0.2 * min(1.5, m.level("bass"))
             flare = int(14 * min(1.5, m.hits("bass")))
             self.interval = max(0.04, 0.06 / max(0.6, min(1.5, m.speed)))
-        for x in range(w):
-            heat[(h - 1) * w + x] = 36 if rnd() < 0.8 else 20
+        heat[(h - 1) * w:] = [36 if rnd() < 0.8 else 20 for _ in range(w)]  # 80 % hot
         decay = 1.4 / (float(self.p["height"]) * tall)
+        # each dot takes the heat of one of the three dots below it (as they were last frame: the rows are done top
+        # down), less a random bit: a row at a time, drawing the random numbers in the same order as ever (so a
+        # seeded fire still burns the same way)
+        last, xs = w - 1, range(w)
         for y in range(h - 1):
-            for x in range(w):
-                src = (y + 1) * w + min(w - 1, max(0, x + int(rnd() * 3) - 1))
-                heat[y * w + x] = max(0, heat[src] - int(rnd() * decay * 2.2))
+            below = heat[(y + 1) * w:(y + 2) * w]
+            heat[y * w:(y + 1) * w] = [max(0, below[min(last, max(0, x + int(rnd() * 3) - 1))] - int(rnd() * decay * 2.2))
+                                       for x in xs]
+        # heat (0..36) to dots through a 256-entry table per Bayer column phase, on the four interleaved columns
         px = c.px
-        if flare:  # a bass note: every flame flares up at once (shown hotter; the fire itself doesn't change)
-            for y in range(h):
-                brow = BAYER4[y % 4]
-                for x in range(w):
-                    v = heat[y * w + x]
-                    px[y * w + x] = 1 if v and (v + flare) * 16 / 36 > brow[x % 4] + 0.5 else 0
-            return
+        # a bass note: every flame flares up at once (shown hotter; the fire itself doesn't change): tables per flare
+        luts_for = self._luts if not flare else self._flares.get(flare) or self._flares.setdefault(
+            flare, [[bytes(1 if v and (v + flare) * 16 / 36 > BAYER4[r][k] + 0.5 else 0 for v in range(256))
+                     for k in range(4)] for r in range(4)])
         for y in range(h):
-            brow = BAYER4[y % 4]
-            for x in range(w):
-                px[y * w + x] = 1 if heat[y * w + x] * 16 / 36 > brow[x % 4] + 0.5 else 0
+            luts = luts_for[y % 4]
+            row = bytes(heat[y * w:(y + 1) * w])
+            px[y * w:(y + 1) * w] = row.translate(luts[0])
+            for k in (1, 2, 3):
+                px[y * w + k:(y + 1) * w:4] = row[k::4].translate(luts[k])
+
+    _luts = [[bytes(1 if v * 16 / 36 > BAYER4[r][k] + 0.5 else 0 for v in range(256)) for k in range(4)] for r in range(4)]
+    _flares = {}  # flare -> the same tables, hotter
 
 
 # ---- random effects -----------------------------------------------------------------

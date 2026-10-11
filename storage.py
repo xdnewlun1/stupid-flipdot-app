@@ -20,7 +20,7 @@ from pathlib import Path
 log = logging.getLogger("storage")
 
 SCHEMA_VERSION = 1
-MIRROR_EVERY = 5  # seconds
+MIRROR_EVERY = 15  # seconds: saves and uploads are copied in at once (sync); this catches files written by hand
 RESTORE_SUFFIX = ".restore"  # an uploaded backup waiting to replace the database at the next start
 BACKUP_PAGES = 256  # pages per online-backup step (1 MB with 4 KB pages); the lock is free between steps
 BACKUP_PAUSE = 0.001  # seconds between steps, for anything waiting on the lock

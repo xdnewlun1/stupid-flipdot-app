@@ -36,6 +36,7 @@ class Layer:
         self.cw = max(1, min(int(spec.get("w") or W), 4 * W))
         self.ch = max(1, min(int(spec.get("h") or H), 4 * H))
         ctx = type(parent.ctx)(self.cw, self.ch, parent.ctx.store)
+        ctx.board = getattr(parent.ctx, "board", None)  # the same discs: the same settle time
         self.app = create(ctx, {"app": spec["app"], "params": spec.get("params") or {}})
         self.key = Layer.key_of(spec)
         self.canvas = Canvas(self.cw, self.ch)

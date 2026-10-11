@@ -191,6 +191,12 @@ export const unsavedFields = () => [...shown].filter(([id, [prop, v]]) => $(id) 
 
 // Wrap an async handler so errors show up (next to the button that failed, or as a toast), and a clicked
 // button stays busy until the work is done, so a double click doesn't do it twice.
+// One call `ms` after the last of a burst (typing in a field that renders a preview on the server).
+export const debounce = (fn, ms = 150) => {
+  let timer = null;
+  return (...a) => { clearTimeout(timer); timer = setTimeout(() => fn(...a), ms); };
+};
+
 export const safe = fn => async (...a) => {
   const btn = a[0]?.currentTarget instanceof HTMLButtonElement ? a[0].currentTarget : null;
   if (btn) {

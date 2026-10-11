@@ -4,10 +4,34 @@ run through Game of Life… for the whole item or a short burst. All cheap enoug
 import math
 import random
 
-from canvas import Canvas
+import fastpath
+from canvas import Canvas, _BITS, _FLIP
+from transitions import pixelate
+
+_FF = bytes([0] + [255] * 255)  # dot -> 0x00/0xFF, for masks used as big integers
+_EDGES = {}  # (w, h) -> masks of the dots that have a neighbour on each side
+
+
+def _edges(w, h):
+    """Big-integer masks (0xFF per dot, as apps/layers.py works) for the dots that are not in the first/last column
+    or row, so shifting a picture by one dot can tell a missing neighbour from the board's edge."""
+    m = _EDGES.get((w, h))
+    if m is None:
+        n = w * h
+        not_first, not_last = bytearray(b"\x01" * n), bytearray(b"\x01" * n)
+        not_first[0::w] = bytes(h)
+        not_last[w - 1::w] = bytes(h)
+        m = _EDGES[w, h] = {
+            "left": int.from_bytes(not_first.translate(_FF), "big"), "right": int.from_bytes(not_last.translate(_FF), "big"),
+            "up": int.from_bytes((bytes(w) + b"\x01" * (n - w)).translate(_FF), "big"),
+            "down": int.from_bytes((b"\x01" * (n - w) + bytes(w)).translate(_FF), "big"),
+            "all": (1 << (8 * n)) - 1,
+        }
+    return m
 
 EFFECTS = {
     "invert": "Invert",
+    "sweep": "Invert sweep",
     "flash": "Flash",
     "glitch": "Glitch",
     "mirror": "Mirror",
@@ -20,10 +44,10 @@ EFFECTS = {
     "life": "Game of Life",
     "melt": "Melt",
 }
-ANIMATED = {"flash", "glitch", "wave", "scanlines", "static", "life", "melt"}
+ANIMATED = {"flash", "sweep", "glitch", "wave", "scanlines", "static", "life", "melt"}
 
 
-def roll(settings, rng, now, item_seconds):
+def roll(settings, rng, now, item_seconds, hold=0.0, cross=0.25):
     """Maybe pick an effect for an item that's starting. Returns an Effect or None."""
     chance = float(settings.get("fx_chance") or 0) / 100
     allowed = [e for e in (settings.get("fx_effects") or list(EFFECTS)) if e in EFFECTS]
@@ -37,14 +61,16 @@ def roll(settings, rng, now, item_seconds):
         lead = max(0.0, item_seconds - length) if item_seconds else 0.0
         start = now + rng.uniform(0, lead) if lead else now
         end = start + length
-    return Effect(kind, start, end, float(settings.get("fx_strength") or 50) / 100, rng)
+    return Effect(kind, start, end, float(settings.get("fx_strength") or 50) / 100, rng, hold, cross)
 
 
 class Effect:
-    def __init__(self, kind, start, end, strength, rng):
+    def __init__(self, kind, start, end, strength, rng, hold=0.0, cross=0.25):
         self.kind, self.start, self.end = kind, start, end
         self.strength = max(0.05, min(1.0, strength))
         self.rng = rng or random.Random()
+        self.hold = hold  # how long the discs take to show a whole new picture (Board.settle_time()): Flash's floor
+        self.cross = cross  # how long the panels' own flip wave takes to cross the board (Board.cross_time()): Sweep's pace
         self.state = {}
         self.cycles = None  # reacting to music: the effect's own motion clock in cycles (see Reactive), else wall time
         self.sway = 1.0     # reacting to music: the wave sways further in groovy (syncopated, off-beat) music
@@ -74,8 +100,32 @@ class Effect:
         if self.cycles is not None:  # one flash per cycle (on the beat when locked), longer when stronger
             if self.cycles % 1 < 0.25 + 0.5 * self.strength:
                 c.invert()
-        elif int(t * (3 + 6 * self.strength)) % 2 == 0:
+            return
+        rate = 3 + 6 * self.strength  # toggles a second...
+        if self.hold:
+            rate = min(rate, 1 / self.hold)  # ...but each picture stays until the discs have shown it
+        if int(t * rate) % 2 == 0:
             c.invert()
+
+    def sweep_length(self):
+        """How long one sweep takes: the band's front crosses the board at the panels' wave speed and its back follows
+        (the band is `strength` of the board wide: 1 = the whole picture inverted at the peak, 0.5 = a half-board bar)."""
+        return self.cross * (1 + max(0.1, self.strength))
+
+    def _sweep(self, c, t):
+        """An inverted band crossing the picture left to right, the way a change sweeps the panels; the picture keeps
+        moving under it. On its own (a random effect) it crosses again after a pause."""
+        w, h, px = c.w, c.h, c.px
+        length = self.sweep_length()
+        t %= length + self.cross / 2
+        front = w * t / self.cross
+        back = front - w * max(0.1, self.strength)
+        x0, x1 = max(0, round(back)), min(w, round(front))
+        if x1 <= x0:
+            return
+        for y in range(h):
+            s = y * w
+            px[s + x0:s + x1] = px[s + x0:s + x1].translate(_FLIP)
 
     def _held(self, make):
         """A random pattern: new every frame, or with a motion clock, new each whole cycle and held between."""
@@ -99,7 +149,7 @@ class Effect:
                 row = px[y * w:(y + 1) * w]
                 px[y * w:(y + 1) * w] = row[-shift:] + row[:-shift] if shift else row
             if inv < 0.06 * s:
-                px[y * w:(y + 1) * w] = bytearray(1 - v for v in px[y * w:(y + 1) * w])
+                px[y * w:(y + 1) * w] = px[y * w:(y + 1) * w].translate(_FLIP)
 
     def _mirror(self, c, t):
         w = c.w
@@ -134,27 +184,18 @@ class Effect:
                 c.px[y * w:(y + 1) * w] = bytes(w)
 
     def _pixelate(self, c, t):
-        w, h, px = c.w, c.h, c.px
-        b = 2 + round(4 * self.strength)
-        src = bytes(px)
-        for by in range(0, h, b):
-            for bx in range(0, w, b):
-                cells = [src[y * w + x] for y in range(by, min(by + b, h)) for x in range(bx, min(bx + b, w))]
-                v = 1 if sum(cells) * 2 >= len(cells) else 0
-                for y in range(by, min(by + b, h)):
-                    px[y * w + bx:y * w + min(bx + b, w)] = bytes([v]) * (min(bx + b, w) - bx)
+        c.px[:] = pixelate(c.px, c.w, c.h, 2 + round(4 * self.strength))
 
     def _outline(self, c, t):
+        """Keep the white dots that have a black neighbour on the board (the board's edge doesn't count): the
+        picture as one big integer, shifted a dot each way, as apps/layers.py composites."""
         w, h = c.w, c.h
-        src = bytes(c.px)
-        out = bytearray(w * h)
-        for y in range(h):
-            for x in range(w):
-                v = src[y * w + x]
-                if v and ((x and not src[y * w + x - 1]) or (x < w - 1 and not src[y * w + x + 1])
-                          or (y and not src[(y - 1) * w + x]) or (y < h - 1 and not src[(y + 1) * w + x])):
-                    out[y * w + x] = 1
-        c.px[:] = out
+        m = _edges(w, h)
+        s = int.from_bytes(c.px.translate(_FF), "big")
+        left, right = s >> 8, (s << 8) & m["all"]  # the dot to the left of / right of each dot
+        up, down = s >> (8 * w), (s << (8 * w)) & m["all"]
+        missing = (m["left"] & ~left) | (m["right"] & ~right) | (m["up"] & ~up) | (m["down"] & ~down)
+        c.px[:] = (s & missing).to_bytes(w * h, "big").translate(_BITS)
 
     def _static(self, c, t):
         size = len(c.px)
@@ -175,15 +216,7 @@ class Effect:
         target = int(t * 10)
         cells = st["cells"]
         while st["gen"] < target:
-            nxt = bytearray(w * h)
-            for y in range(h):
-                up, dn, row = ((y - 1) % h) * w, ((y + 1) % h) * w, y * w
-                for x in range(w):
-                    l, r = (x - 1) % w, (x + 1) % w
-                    k = (cells[up + l] + cells[up + x] + cells[up + r] + cells[row + l] + cells[row + r]
-                         + cells[dn + l] + cells[dn + x] + cells[dn + r])
-                    nxt[row + x] = 1 if k == 3 or (k == 2 and cells[row + x]) else 0
-            cells = st["cells"] = nxt
+            cells = st["cells"] = fastpath.life_step(cells, w, h)
             st["gen"] += 1
         c.px[:] = cells
 
@@ -195,9 +228,7 @@ class Effect:
         for x in range(w):
             drop = min(h, int((t * rate * speeds[x]) ** 1.3))
             if drop:
-                for y in range(h - 1, -1, -1):
-                    sy = y - drop
-                    px[y * w + x] = src[sy * w + x] if sy >= 0 else 0
+                px[x::w] = bytes(drop) + src[x:(h - drop) * w:w]  # the column, shifted down, in one slice
 
 
 # ---- reacting to music ---------------------------------------------------------------------
@@ -210,8 +241,9 @@ class Effect:
 # every frame breaks them.
 
 SIGNALS = ["bass", "lowmid", "mid", "high", "beat", "level"]
-REACT_ORDER = ["pixelate", "mirror", "kaleidoscope", "wave", "glitch", "outline", "scanlines", "static", "flash", "invert"]
+REACT_ORDER = ["pixelate", "mirror", "kaleidoscope", "wave", "glitch", "outline", "scanlines", "static", "flash", "sweep", "invert"]
 SWITCHED = {"invert", "mirror", "kaleidoscope", "outline"}  # no strength: on while the strength is past half
+TRIGGERED = {"sweep"}  # starts as its signal rises past half and runs to the end (the amount sets the band's width)
 BAND_SIGNALS = ("bass", "lowmid", "mid", "high")
 REACT_TO = ["level", "hits", "both"]  # what a band row follows
 BOTH_MIX = (0.65, 0.6)  # "both": this much of the level plus this much of the hits (capped at 1)
@@ -334,13 +366,38 @@ def motion_rate(row, kind, level, reading, cycles=0.0, dt=0.0):
 
 class Reactive:
     """Applies the music-driven effects to a frame, in REACT_ORDER. Effects that move run on their own clock:
-    cycles += rate x dt each frame, so a change of rate changes the speed from there on, never the position."""
+    cycles += rate x dt each frame, so a change of rate changes the speed from there on, never the position.
 
-    def __init__(self, rng=None):
+    A switched effect (invert on a beat) changes every dot of the board, which the discs take a while to show: the
+    serial data for the busiest bus and then the panels' sweep, well over 100 ms on a three-column board. A beat
+    pulse is past half for about 100 ms, and meanwhile the GIF and the other effects keep changing the picture, so
+    the board was sent the inverted picture, two more inverted pictures and the plain one before the first had
+    landed: a patchwork of panels in different states instead of a flash. So after a switch the picture is held,
+    exactly as sent, for `hold` seconds (Board.settle_time()): the board gets the inverted picture, shows it whole,
+    gets the plain one, shows that, and only then the GIF carries on.
+
+    The sweep is the other way to invert on a beat with fast content: nothing is held, the inverted band just
+    crosses the picture at the speed the panels' own wave would (`cross`, Board.cross_time()) while the GIF and
+    the other effects carry on under it. It starts as the beat rises past half and runs to the end whatever the
+    pulse does after, then waits for the next beat."""
+
+    def __init__(self, rng=None, hold=0.0, cross=0.25):
         self.rng = rng or random.Random()
+        self.hold = hold
+        self.cross = cross
         self.fx = {k: Effect(k, 0.0, None, 0.5, self.rng) for k in REACT_ORDER}
         self.level = dict.fromkeys(MOTION, 0.0)
         self.last = None
+        self.on = {k: False for k in SWITCHED | TRIGGERED}  # triggered: whether its signal was past half last frame
+        self.running = {k: False for k in TRIGGERED}
+        self.held = None  # (until, picture) while a switch settles on the discs
+
+    def reset(self):
+        """Reacting stopped: the motion clocks pause rather than catch up, and the next picture isn't a switch."""
+        self.last = None
+        self.on = {k: False for k in SWITCHED | TRIGGERED}
+        self.running = {k: False for k in TRIGGERED}
+        self.held = None
 
     def advance(self, now, plan, reading):
         """Move each moving effect's clock on to `now` at its current rate."""
@@ -356,13 +413,39 @@ class Reactive:
     def apply(self, frame, now, strengths, reading=None):
         """strengths: {effect: strength} (wall-clock motion), or with a reading, react_plan()'s output."""
         if reading is not None:
-            self.advance(now, strengths, reading)
+            self.advance(now, strengths, reading)  # the clocks run on through a hold
             self.fx["wave"].sway = 0.85 + 0.5 * reading.get("groove", 0.0)
+        if self.held is not None:
+            until, pic = self.held
+            if now < until:
+                return pic
+            self.held = None
+        switched = False
         for kind in REACT_ORDER:
             s = strengths.get(kind, 0.0)
+            sig = s[2] if isinstance(s, tuple) else s  # the raw signal (the beat pulse), before amount and threshold
             if isinstance(s, tuple):
                 s = s[0]
-            if s < (0.5 if kind in SWITCHED else 0.08):
+            if kind in TRIGGERED:
+                e = self.fx[kind]
+                e.cross = self.cross
+                past, self.on[kind] = self.on[kind], sig >= 0.5
+                if self.running[kind] and now - e.start >= e.sweep_length() - 1e-9:
+                    self.running[kind] = False
+                if not self.running[kind] and self.on[kind] and not past and s > 0:
+                    e.start, e.strength = now, min(1.0, s)
+                    self.running[kind] = True
+                if self.running[kind]:
+                    frame = e.apply(frame, now)
+                continue
+            if kind in SWITCHED:
+                on = s >= 0.5
+                if on != self.on[kind]:
+                    self.on[kind] = on
+                    switched = True
+                if not on:
+                    continue
+            elif s < 0.08:
                 continue
             e = self.fx[kind]
             e.strength = min(1.0, s)
@@ -372,6 +455,9 @@ class Reactive:
                 frame = c
             else:
                 frame = e.apply(frame, now)
+        if switched and self.hold > 0:
+            frame = frame.copy()
+            self.held = (now + self.hold, frame)
         return frame
 
 

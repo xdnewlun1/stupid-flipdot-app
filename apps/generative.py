@@ -3,6 +3,8 @@
 import math
 import random
 
+import fastpath
+
 from .base import App, P, register
 from .react import reactive
 from .restart import RESTART_PARAMS, RestartFx
@@ -40,17 +42,7 @@ class Life(App):
         self.seeded_at = None
 
     def step(self):
-        w, h, cur = self.w, self.h, self.cells
-        nxt = bytearray(w * h)
-        for y in range(h):
-            up, down = ((y - 1) % h) * w, ((y + 1) % h) * w
-            row = y * w
-            for x in range(w):
-                l, r = (x - 1) % w, (x + 1) % w
-                n = (cur[up + l] + cur[up + x] + cur[up + r] + cur[row + l] + cur[row + r]
-                     + cur[down + l] + cur[down + x] + cur[down + r])
-                nxt[row + x] = 1 if n == 3 or (n == 2 and cur[row + x]) else 0
-        self.cells = nxt
+        self.cells = fastpath.life_step(self.cells, self.w, self.h)
 
     def burst(self, size):
         """Music: a random blob of live cells somewhere (a new beat to grow from)."""
@@ -163,15 +155,25 @@ class Plasma(App):
             shift = self.shift
         cx, cy = self.w / 2 + 20 * math.sin(t * 0.3), self.h / 2 + 10 * math.cos(t * 0.4)
         bands = self.p["style"] == "bands"
-        for y in range(self.h):
-            for x in range(self.w):
-                v = (math.sin(x * k / 7 + t) + math.sin(y * k / 5 + t * 1.3)
-                     + math.sin((x + y) * k / 9 + t * 0.7) + math.sin(math.hypot(x - cx, y - cy) * k / 5 - t - warp))
-                if bands:
-                    on = int((v + 4) * 2 + shift) % 2
-                else:
-                    on = (v + 4 + 2 * math.sin(shift * math.pi)) / 8 * 16 > BAYER4[y % 4][x % 4] + 0.5
-                c.px[y * self.w + x] = 1 if on else 0
+        w, h, sin, hypot = self.w, self.h, math.sin, math.hypot
+        # three of the four waves depend on x, y or x+y alone: tables per column, row and diagonal; only the
+        # ripple from the moving centre is worked out per dot
+        ax = [sin(x * k / 7 + t) for x in range(w)]
+        ay = [sin(y * k / 5 + t * 1.3) for y in range(h)]
+        ad = [sin(d * k / 9 + t * 0.7) for d in range(w + h)]
+        kr, xs, tw = k / 5, range(w), t + warp
+        roll = 4 * sin(shift * math.pi)  # dither: the palette rolled by the mids, folded into the thresholds
+        out = bytearray()
+        for y in range(h):
+            dy, ry, base = y - cy, ay[y], ad[y:y + w]
+            if bands:
+                out += bytes(int((a + d + ry + sin(hypot(x - cx, dy) * kr - tw) + 4) * 2 + shift) % 2
+                             for a, d, x in zip(ax, base, xs))
+            else:
+                th = [b + 0.5 - roll for b in BAYER4[y % 4]] * (w // 4 + 1)
+                out += bytes((a + d + ry + sin(hypot(x - cx, dy) * kr - tw) + 4) * 2 > bt
+                             for a, d, x, bt in zip(ax, base, xs, th))
+        c.px[:] = out
 
 
 @register

@@ -5,6 +5,12 @@ import math
 from fonts import FONTS, NORMAL
 
 
+_BITS = bytes([0] + [1] * 255)  # any non-zero byte -> 1
+_FLIP = bytes([1, 0] + [0] * 254)  # 0 -> 1, anything else -> 0
+_ROW = bytes([0] * 49 + [1] + [0] * 206)  # "1" -> 1, any other character -> 0
+_CHARS = bytes([48, 49] + [49] * 254)  # dot -> "0"/"1"
+
+
 class Canvas:
     def __init__(self, w, h, fill=0):
         self.w, self.h = w, h
@@ -13,7 +19,7 @@ class Canvas:
     @classmethod
     def from_rows(cls, rows):
         c = cls(len(rows[0]), len(rows))
-        c.px = bytearray(1 if ch == "1" else 0 for r in rows for ch in r)
+        c.px = bytearray("".join(rows).encode("ascii", "replace").translate(_ROW))
         return c
 
     @classmethod
@@ -24,8 +30,8 @@ class Canvas:
         return c
 
     def rows(self):
-        w = self.w
-        return ["".join("1" if v else "0" for v in self.px[y * w:(y + 1) * w]) for y in range(self.h)]
+        w, s = self.w, self.px.translate(_CHARS).decode()
+        return [s[y * w:(y + 1) * w] for y in range(self.h)]
 
     def copy(self):
         c = Canvas(self.w, self.h)
@@ -48,14 +54,28 @@ class Canvas:
         self.px[:] = bytearray([1 if v else 0]) * (self.w * self.h)
 
     def invert(self):
-        self.px = bytearray(1 - v for v in self.px)
+        self.px[:] = self.px.translate(_FLIP)
 
     def blit(self, other, x0, y0, transparent=True):
-        for y in range(other.h):
-            for x in range(other.w):
-                v = other.px[y * other.w + x]
-                if v or not transparent:
-                    self.set(x0 + x, y0 + y, v)
+        """Draw `other` with its top-left at (x0, y0), clipped to this canvas. Transparent: only its white dots land
+        (an OR of each row); opaque: its black dots too (a copy of each row)."""
+        x0, y0 = int(x0), int(y0)
+        sx0, sy0 = max(0, -x0), max(0, -y0)  # first source column/row that lands inside
+        sx1, sy1 = min(other.w, self.w - x0), min(other.h, self.h - y0)
+        n = sx1 - sx0
+        if n <= 0 or sy1 <= sy0:
+            return
+        W, ow, src, dst = self.w, other.w, other.px, self.px
+        if transparent:
+            for y in range(sy0, sy1):
+                s, d = y * ow + sx0, (y0 + y) * W + x0 + sx0
+                row = src[s:s + n].translate(_BITS)
+                if any(row):
+                    dst[d:d + n] = (int.from_bytes(dst[d:d + n], "big") | int.from_bytes(row, "big")).to_bytes(n, "big")
+        else:
+            for y in range(sy0, sy1):
+                s, d = y * ow + sx0, (y0 + y) * W + x0 + sx0
+                dst[d:d + n] = src[s:s + n].translate(_BITS)
 
     # ---- shapes ------------------------------------------------------------
 
@@ -79,9 +99,13 @@ class Canvas:
     def rect(self, x, y, w, h, v=1, fill=False):
         x, y, w, h = int(x), int(y), int(w), int(h)
         if fill:
-            for yy in range(y, y + h):
-                for xx in range(x, x + w):
-                    self.set(xx, yy, v)
+            x1, y1 = min(x + w, self.w), min(y + h, self.h)
+            x, y = max(x, 0), max(y, 0)
+            if x1 <= x or y1 <= y:
+                return
+            row, W = bytes([1 if v else 0]) * (x1 - x), self.w
+            for yy in range(y, y1):
+                self.px[yy * W + x:yy * W + x1] = row
         else:
             self.line(x, y, x + w - 1, y, v)
             self.line(x, y + h - 1, x + w - 1, y + h - 1, v)

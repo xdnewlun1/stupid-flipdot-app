@@ -7,6 +7,7 @@
 import argparse
 import atexit
 import base64
+import gzip
 import io
 import json
 import logging
@@ -22,6 +23,7 @@ import tempfile
 import threading
 import time
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, quote, urlparse
@@ -253,32 +255,50 @@ def save_settings(new):
     store.save_settings(merged)
     if care and merged.get("quiet_hours") != old.get("quiet_hours"):
         care.apply()
-    if merged.get("mqtt") != old.get("mqtt"):
-        start_mqtt()
-    else:
-        ha_sync()
-    source_changed = merged.get("visualizer") != old.get("visualizer")
-    nodelay = lambda cfg: {k: v for k, v in (cfg or {}).items() if k != "delay_ms"}
-    if source_changed or (nodelay(merged.get("snapcast")) != nodelay(old.get("snapcast"))
-                          or merged.get("music_assistant", {}).get("url") != old.get("music_assistant", {}).get("url")):
-        start_snapcast()
-    elif merged.get("snapcast", {}).get("delay_ms") != old.get("snapcast", {}).get("delay_ms") and snapcast_link.get_link():
-        snapcast_link.get_link().set_delay(merged["snapcast"].get("delay_ms"))  # live, no reconnect: tune it by ear
-    if merged.get("sendspin") != old.get("sendspin") or source_changed:
-        start_sendspin()
-        link = sendspin_link.get_link()
-        if link and merged["sendspin"].get("unpaired") != old.get("sendspin", {}).get("unpaired"):
-            link.set_unpaired_access(bool(merged["sendspin"].get("unpaired")))
-    if merged.get("gamepad") != old.get("gamepad"):
-        start_gamepad()
-    if merged.get("notifications") != old.get("notifications"):
-        nt = (merged["notifications"].get("ntfy") or {})
-        if nt.get("token") == SECRET_MASK:  # the masked token came back unchanged
-            nt["token"] = ((old.get("notifications") or {}).get("ntfy") or {}).get("token", "")
-            store.save_settings(merged)
-        if nt != ((old.get("notifications") or {}).get("ntfy") or {}):
-            start_ntfy()
-        runner._dnd_at = 0  # look at do-not-disturb again now
+    # restarting snapclient, the gamepad reader or the MQTT client takes up to a few seconds: the page gets its
+    # answer now and one worker applies the changes in order (so two quick saves can't race each other)
+    _effects.submit(_apply_settings, old, merged)
+
+
+_effects = ThreadPoolExecutor(max_workers=1, thread_name_prefix="settings")
+
+
+def _apply_settings(old, merged):
+    try:
+        if merged.get("mqtt") != old.get("mqtt"):
+            start_mqtt()
+        else:
+            ha_sync()
+        source_changed = merged.get("visualizer") != old.get("visualizer")
+        sc_old, sc_new = old.get("snapcast") or {}, merged.get("snapcast") or {}
+        live = ("delay_ms", "name")  # changed without reconnecting
+        conn = lambda cfg: {k: v for k, v in cfg.items() if k not in live}
+        link = snapcast_link.get_link()
+        if source_changed or conn(sc_new) != conn(sc_old) or (
+                merged.get("music_assistant", {}).get("url") != old.get("music_assistant", {}).get("url")):
+            start_snapcast()
+        elif link:
+            if sc_new.get("delay_ms") != sc_old.get("delay_ms"):
+                link.set_delay(sc_new.get("delay_ms"))  # live: tune it by ear
+            if sc_new.get("name") != sc_old.get("name"):
+                link.set_name(sc_new.get("name") or "Flipdot board")  # over the control port, no restart
+        if merged.get("sendspin") != old.get("sendspin") or source_changed:
+            start_sendspin()
+            link = sendspin_link.get_link()
+            if link and merged["sendspin"].get("unpaired") != old.get("sendspin", {}).get("unpaired"):
+                link.set_unpaired_access(bool(merged["sendspin"].get("unpaired")))
+        if merged.get("gamepad") != old.get("gamepad"):
+            start_gamepad()
+        if merged.get("notifications") != old.get("notifications"):
+            nt = (merged["notifications"].get("ntfy") or {})
+            if nt.get("token") == SECRET_MASK:  # the masked token came back unchanged
+                nt["token"] = ((old.get("notifications") or {}).get("ntfy") or {}).get("token", "")
+                store.save_settings(merged)
+            if nt != ((old.get("notifications") or {}).get("ntfy") or {}):
+                start_ntfy()
+            runner._dnd_at = 0  # look at do-not-disturb again now
+    except Exception:
+        logging.exception("applying settings failed")
 
 
 def start_ntfy():
@@ -1936,6 +1956,33 @@ plugins_api.install(sys.modules[__name__])  # Settings → Plugins: Python plugi
 
 # ---- HTTP plumbing ----------------------------------------------------------------
 
+class StaticFile:
+    """A page, script or stylesheet held in memory (gzipped too), so a page open is a few 304s rather than
+    reading 17 files off the SD card and sending 400 KB every time."""
+
+    def __init__(self, f, st):
+        self.key = (st.st_mtime_ns, st.st_size)
+        self.body = f.read_bytes()
+        self.etag = '"%x-%x"' % self.key
+        ctype = mimetypes.guess_type(f.name)[0] or "application/octet-stream"
+        text = ctype.startswith("text/") or ctype.endswith(("javascript", "json", "svg+xml"))
+        self.ctype = ctype + "; charset=utf-8" if text else ctype
+        self.gz = gzip.compress(self.body, 6) if text and len(self.body) > 1024 else None
+
+
+_static_files = {}
+_static_lock = threading.Lock()
+
+
+def static_file(f):
+    st = f.stat()
+    with _static_lock:
+        entry = _static_files.get(f)
+        if entry is None or entry.key != (st.st_mtime_ns, st.st_size):  # edited on disk: pick up the new one
+            entry = _static_files[f] = StaticFile(f, st)
+        return entry
+
+
 class Handler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
 
@@ -2128,10 +2175,14 @@ class Handler(BaseHTTPRequestHandler):
         f = (STATIC / page).resolve()
         if not f.is_file() or STATIC.resolve() not in f.parents:
             return self._json({"error": "not found"}, 404)
-        ctype = mimetypes.guess_type(f.name)[0] or "application/octet-stream"
-        if ctype.startswith("text/") or ctype.endswith("javascript"):
-            ctype += "; charset=utf-8"
-        self._send(200, f.read_bytes(), ctype, {"Cache-Control": "no-cache"})
+        entry = static_file(f)
+        headers = {"Cache-Control": "no-cache", "ETag": entry.etag, "Vary": "Accept-Encoding"}
+        if entry.etag in self.headers.get("If-None-Match", ""):
+            return self._send(304, b"", entry.ctype, headers)  # the browser's copy is current: no bytes to send
+        body = entry.body
+        if entry.gz is not None and "gzip" in self.headers.get("Accept-Encoding", ""):
+            body, headers["Content-Encoding"] = entry.gz, "gzip"
+        self._send(200, body, entry.ctype, headers)
 
     def log_message(self, fmt, *args):
         logging.debug(fmt, *args)
@@ -2201,7 +2252,7 @@ def main():
     from apps import pack_daily
     pack_daily.start_scheduler(store, board.width, board.height)  # the morning postcard, once its app is set up
     atexit.register(camera.get().stop)
-    runner.listeners.append(lambda: threading.Thread(target=publish_status, daemon=True).start())
+    runner.listeners.append(lambda: mqtt_client and threading.Thread(target=publish_status, daemon=True).start())
     hub = Hub(board, runner, ws_message)
     board.listeners.append(hub.notify)
     runner.listeners.append(hub.notify)

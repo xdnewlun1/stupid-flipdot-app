@@ -7,6 +7,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import audio_signal  # noqa: E402
 from apps import slidefx  # noqa: E402
+from canvas import Canvas  # noqa: E402
 from apps.slideshow import Player  # noqa: E402
 
 FRAMES = [("a", 0.1), ("b", 0.1), ("c", 0.2)]  # 0.4 s per loop
@@ -159,6 +160,43 @@ def test_display_spectrum_keeps_quiet_bins_low():
     sig = lambda now: {"live": True, "loudness": 0.7, "spectrum": [0.8] * 8 + [0.2] * 8}  # 36 dB quieter treble
     r = _run(sig, 15, start=6000)[-1]  # long enough to forget the earlier tests' louder bass
     assert min(r["display_spectrum"][:8]) > 0.9 and max(r["display_spectrum"][8:]) < 0.1
+
+
+def _picture(seed):
+    c = Canvas(84, 42)
+    c.px[:] = bytes((i * seed + i // 7) % 3 == 0 for i in range(84 * 42))
+    return c
+
+
+def test_switched_effect_holds_the_picture_until_the_discs_have_shown_it():
+    r = slidefx.Reactive(hold=0.15)
+    a, b = _picture(5), _picture(11)
+    inverted = r.apply(a, 0.0, {"invert": 1.0})  # a beat: the inverted picture goes out
+    assert inverted.px == a.copy().px.translate(bytes([1, 0] + [0] * 254))
+    held = r.apply(b, 0.05, {"invert": 0.4})  # the pulse already fell, the GIF moved on: the board keeps the picture
+    assert held.px == inverted.px
+    assert r.apply(b, 0.14, {"invert": 1.0, "glitch": 1.0}).px == inverted.px
+    plain = r.apply(b, 0.2, {"invert": 0.0})  # settled: back to the plain picture, held in turn
+    assert plain.px == b.px
+    assert r.apply(a, 0.3, {"invert": 0.0}).px == b.px
+    assert r.apply(a, 0.36, {"invert": 0.0}).px == a.px  # and the GIF carries on
+    r.reset()
+    assert r.apply(b, 0.4, {}).px == b.px  # no switch happened: nothing to hold
+
+
+def test_without_a_hold_the_switch_follows_the_pulse_at_once():
+    r = slidefx.Reactive(hold=0.0)
+    a = _picture(5)
+    assert r.apply(a, 0.0, {"invert": 1.0}).px != a.px
+    assert r.apply(a, 0.01, {"invert": 0.0}).px == a.px
+
+
+def test_flash_never_toggles_faster_than_the_discs_can_show():
+    a = _picture(3)
+    quick = slidefx.Effect("flash", 0.0, None, 1.0, None)  # 9 toggles a second
+    assert quick.apply(a, 0.0).px != a.px and quick.apply(a, 0.12).px == a.px
+    held = slidefx.Effect("flash", 0.0, None, 1.0, None, hold=0.2)  # at most one every 200 ms
+    assert held.apply(a, 0.0).px != a.px and held.apply(a, 0.12).px != a.px and held.apply(a, 0.2).px == a.px
 
 
 # ---- tempo and the effects' motion clocks ------------------------------------------------------------
@@ -318,3 +356,47 @@ def test_old_saved_rows_still_load():
         out = rx.apply(frame, k / 25, slidefx.react_plan(slidefx.clean_react_map(old), reading), reading)
     assert (out.w, out.h) == (84, 42) and rx.fx["wave"].cycles > 0
     slidefx.Reactive().apply(frame, 1.0, slidefx.react_strengths(slidefx.clean_react_map(old), reading))
+
+
+def _band(out, src, w=84, h=42):
+    """Which columns of `out` are `src` inverted (and the rest unchanged): (first, last + 1), or None for none."""
+    flipped = [all(out.px[y * w + x] != src.px[y * w + x] for y in range(h)) for x in range(w)]
+    same = [all(out.px[y * w + x] == src.px[y * w + x] for y in range(h)) for x in range(w)]
+    assert all(f or s for f, s in zip(flipped, same))
+    xs = [x for x in range(w) if flipped[x]]
+    return (xs[0], xs[-1] + 1) if xs else None
+
+
+def test_sweep_crosses_the_picture_while_it_keeps_moving():
+    row = {"signal": "beat", "effect": "sweep", "amount": 100, "threshold": 0}
+    r = slidefx.Reactive(cross=0.3)
+    a, b = _picture(5), _picture(11)
+    plan = lambda pulse: {"sweep": (pulse, row, pulse)}
+    assert _band(r.apply(a, 0.0, plan(1.0)), a) is None  # the beat: the band's front is at the left edge
+    assert _band(r.apply(b, 0.1, plan(0.3)), b) == (0, 28)  # a third of the way, over the next GIF frame
+    assert _band(r.apply(a, 0.3, plan(0.1)), a) == (0, 84)  # the front reaches the right: all inverted
+    assert _band(r.apply(b, 0.45, plan(0.0)), b) == (42, 84)  # the back follows
+    assert _band(r.apply(a, 0.6, plan(0.0)), a) is None  # done
+    assert _band(r.apply(a, 0.7, plan(1.0)), a) is None and _band(r.apply(b, 0.85, plan(0.5)), b) == (0, 42)  # the next beat
+
+
+def test_sweep_width_is_the_amount_and_it_does_not_retrigger_until_the_pulse_drops():
+    row = {"signal": "beat", "effect": "sweep", "amount": 50, "threshold": 0}
+    r = slidefx.Reactive(cross=0.2)
+    a = _picture(7)
+    plan = lambda pulse: {"sweep": (pulse / 2, row, pulse)}
+    r.apply(a, 0.0, plan(1.0))
+    assert _band(r.apply(a, 0.2, plan(1.0)), a) == (42, 84)  # a half-board band, front at the right edge
+    assert _band(r.apply(a, 0.3, plan(1.0)), a) is None  # over (0.2 x 1.5); the pulse never dropped: no new sweep
+    assert _band(r.apply(a, 0.4, plan(1.0)), a) is None
+    r.apply(a, 0.5, plan(0.2))
+    r.apply(a, 0.6, plan(1.0))  # a rise: a new sweep
+    assert _band(r.apply(a, 0.7, plan(1.0)), a) == (0, 42)
+
+
+def test_sweep_as_a_random_effect_crosses_again_after_a_pause():
+    a = _picture(3)
+    e = slidefx.Effect("sweep", 0.0, None, 1.0, None, cross=0.2)
+    assert _band(e.apply(a, 0.1), a) == (0, 42)
+    assert _band(e.apply(a, 0.4), a) is None  # 0.4 = the sweep (0.4) done, pausing
+    assert _band(e.apply(a, 0.6), a) == (0, 42)  # 0.5: round again

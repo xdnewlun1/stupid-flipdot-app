@@ -109,19 +109,27 @@ def safe_name(name):
     return (stem or "game") + ".nes"
 
 
+_rom_info = {}  # path -> (size, mtime_ns, header info): the Apps page asks often, ROMs change rarely
+
+
 def list_roms(store):
     out = []
     d = rom_dir(store)
     if d.is_dir():
         for f in sorted(d.iterdir(), key=lambda f: f.name.lower()):
             if f.is_file() and f.suffix.lower() == ".nes":
-                try:
-                    info = parse_ines(f.read_bytes())
-                except (OSError, ValueError) as e:
-                    info = {"mapper": None, "problem": str(e)}
-                info.setdefault("problem", mapper_problem(info["mapper"]))
+                st = f.stat()
+                hit = _rom_info.get(f)
+                if hit is None or hit[0] != (st.st_size, st.st_mtime_ns):
+                    try:
+                        info = parse_ines(f.read_bytes())
+                    except (OSError, ValueError) as e:
+                        info = {"mapper": None, "problem": str(e)}
+                    info.setdefault("problem", mapper_problem(info["mapper"]))
+                    hit = _rom_info[f] = ((st.st_size, st.st_mtime_ns), info)
+                info = hit[1]
                 saved = (Path(store.dir) / SAVE_DIR / (f.stem + ".state"))
-                out.append({"name": f.name, "title": f.stem, "size": f.stat().st_size, "saved": saved.is_file(),
+                out.append({"name": f.name, "title": f.stem, "size": st.st_size, "saved": saved.is_file(),
                             "mapper_name": MAPPERS.get(info["mapper"]), **info})
     return out
 

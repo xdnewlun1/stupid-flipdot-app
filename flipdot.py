@@ -4,7 +4,13 @@ Each 28x7 panel is updated with one frame:
     0x80, 0x83, <address>, <28 column bytes>, 0x8F
 Each column byte holds the 7 dots in that column; bit 0 is the top dot.
 0x83 means "write and refresh immediately". With `sync_refresh: true` in config.yaml panels are
-written with 0x84 ("write, don't refresh yet") and then one 0x80 0x82 0x8F per bus flips them all at once.
+written with 0x84 ("write, don't refresh yet") and then one 0x80 0x82 0x8F per bus flips them all at once;
+`auto` does that only for a change to at least half of a bus's panels (a whole new picture), and writes a small
+change (a clock digit) with 0x83 so the rest of the bus isn't refreshed for it.
+
+A change to at least half the board starts on every bus at the same moment: a bus still busy with the previous
+picture holds the others back for it (up to one picture's worth of serial time), so the three columns of panels
+flip together instead of one column showing the new picture while another still shows the old one.
 
 A panel doesn't flip all its columns at once: it sweeps across them left to right. With every bus starting
 together, the right edge of one panel flips well after the left edge of the panel next to it. With `sweep_ms:`
@@ -138,11 +144,12 @@ class Board:
         self.transport = str(config.get("transport", "tcp")).lower()
         self.invert = bool(config.get("invert", False))
         self.baud = int(config.get("baud") or 0)  # RS485 speed, to pace sends (0 = don't pace)
-        self.sync_refresh = bool(config.get("sync_refresh", False))
+        self.sync_refresh = self._sync_mode(config.get("sync_refresh", False))  # True, False or "auto"
         self.sweep = max(0.0, float(config.get("sweep_ms") or 0)) / 1000  # see the module docstring
         self.sweep_mode = self._sweep_mode(config.get("sweep_mode"))
         self._wave_start = 0.0  # when the latest change was made: the sweep wave is timed from it
         self._wave = False  # whether that change gets the sweep wave (False: every column flips together)
+        self._start_at = 0.0  # when the latest board-wide change goes out, on every bus at once
         self._changed_at = -1e9  # when the picture last changed
         self.interactive = False  # a game is on the board (set by the runner): no wave, every column at once
         # steady timing (set by the runner for the music visualizer): every change takes the same time to reach the
@@ -212,6 +219,18 @@ class Board:
         mode = str(mode or "auto").lower()
         return mode if mode in ("auto", "always") else "auto"
 
+    @staticmethod
+    def _sync_mode(mode):
+        if isinstance(mode, str):
+            mode = mode.strip().lower()
+            return "auto" if mode == "auto" else mode in ("true", "yes", "on", "1")
+        return bool(mode)
+
+    def _sync(self, n, total):
+        """Whether a send of n of a bus's `total` panels writes them first and flips them together: as configured,
+        or in auto mode when it's a big change (at least half the bus)."""
+        return self.sync_refresh if self.sync_refresh in (True, False) else n * 2 >= total
+
     def _wave_length(self):
         """From a change until its wave has crossed the board (data in, then every column's sweep)."""
         return self._lead + self._cols * self.sweep
@@ -223,7 +242,7 @@ class Board:
         if sweep_ms is not None:
             self.sweep = max(0.0, min(1000.0, float(sweep_ms))) / 1000
         if sync_refresh is not None:
-            self.sync_refresh = bool(sync_refresh)
+            self.sync_refresh = self._sync_mode(sync_refresh)
         with self._lock:
             self._dirty = set(range(len(self.panels)))
             self._sent = {}
@@ -235,6 +254,17 @@ class Board:
         """The shortest time between pictures that steady timing can keep: the busiest bus sending all its panels."""
         most = max(self._bus_of.count(k) for k in set(self._bus_of))
         return (most * (self.pw + 4) + len(REFRESH)) * 10 / (self.baud or 57600)
+
+    def settle_time(self):
+        """About how long a change to the whole board takes to land on the discs: the coalescing wait, the busiest
+        bus's serial time and the panels' sweep. An app that switches the whole picture (the slideshow's beat invert)
+        holds each picture at least this long, so the discs show it whole before the next one comes."""
+        return COALESCE + self.steady_interval() + (self.sweep or 0.08)  # 0.08: a typical panel, when not measured
+
+    def cross_time(self):
+        """How long the sweep wave takes to cross the board (the data, then each column's sweep after the last): the
+        pace an app gives a change it sweeps across the picture itself (the slideshow's Invert sweep effect)."""
+        return max(0.15, self._lead + self._cols * (self.sweep or 0.08))
 
     def timing(self):
         return {"sweep_ms": round(self.sweep * 1000, 1), "sweep_mode": self.sweep_mode, "sync_refresh": self.sync_refresh,
@@ -278,6 +308,10 @@ class Board:
                 self._wave = not self.interactive and not self.steady and (self.sweep_mode == "always"
                                                        or now - self._changed_at >= self._wave_length())
                 self._changed_at = self._wave_start = now
+                if len(dirty) * 2 >= len(self.panels) and not self._wave and not self.steady:
+                    # a board-wide change: every bus starts it when the slowest one is free (steady timing has
+                    # its own presentation time, and a wave staggers the columns on purpose)
+                    self._start_at = max([now] + [max(b.free_at, b.last_flush + COALESCE) for b in self._buses.values()])
             wake = set()
             for i in dirty:
                 if i not in self._dirty:
@@ -530,16 +564,20 @@ class Board:
         self._sent[i] = frame
         if old is None:
             return
-        flip = p.rotate == 180
-        for cx in range(self.pw):
+        # one big XOR tells whether anything flipped; then only the changed columns, and only their set bits
+        if int.from_bytes(old[3:-1], "big") == int.from_bytes(frame[3:-1], "big"):
+            return
+        flip, pw, ph, W, flips = p.rotate == 180, self.pw, self.ph, self.width, self.flips
+        row0, col0 = p.row * ph, p.col * pw
+        for cx in range(pw):
             d = old[3 + cx] ^ frame[3 + cx]
-            if not d:
-                continue
-            for cy in range(self.ph):
-                if d >> cy & 1:
-                    sx, sy = (self.pw - 1 - cx, self.ph - 1 - cy) if flip else (cx, cy)
-                    self.flips[(p.row * self.ph + sy) * self.width + p.col * self.pw + sx] += 1
-                    self.flips_changed = True
+            while d:
+                low = d & -d
+                cy = low.bit_length() - 1
+                d ^= low
+                sx, sy = (pw - 1 - cx, ph - 1 - cy) if flip else (cx, cy)
+                flips[(row0 + sy) * W + col0 + sx] += 1
+        self.flips_changed = True
 
     def _take_budget(self, i, frame):
         """Quiet hours: spend flip tokens on this frame. Returns 0 if it may go now, else the tokens it needs."""
@@ -603,11 +641,17 @@ class Board:
                 bus.next_full = now + 1.0  # look again soon
                 return
             bus.resend = True
-        # coalesce bursts, and don't hand the line more than it can carry (later changes merge into one send)
-        wait = max(bus.last_flush + COALESCE, bus.free_at) - time.monotonic()
-        if wait > 0:
-            time.sleep(wait)
-        if self.sweep and self._wave and not self.sync_refresh:
+        while True:
+            # coalesce bursts, don't hand the line more than it can carry, and start a board-wide change together
+            # with the other buses (later changes merge into one send, and a newer change brings its own timing)
+            wait = max(bus.last_flush + COALESCE, bus.free_at, self._start_at) - time.monotonic()
+            if wait <= 0 or not bus.wake.wait(wait):
+                break
+            bus.wake.clear()
+        total = self._bus_of.count(bus.key)
+        with self._lock:
+            pending = sum(1 for i in self._dirty if self._bus_of[i] == bus.key)
+        if self.sweep and self._wave and not self._sync(pending, total):
             # no separate refresh: hold this column's data back until its turn in the wave (the picture is
             # taken after the wait, so it's the newest)
             self._wait_turn(bus, self._wave_start + bus.col * self.sweep)
@@ -626,13 +670,14 @@ class Board:
             wave, staggered = self._wave_start, self._wave
         if not order:
             return
-        sweep, sync = (self.sweep if staggered else 0.0), self.sync_refresh
+        sweep, sync = (self.sweep if staggered else 0.0), self._sync(len(order), total)
         bus.last_flush = time.monotonic()
         cmd = CMD_WRITE if sync else CMD_WRITE_REFRESH
         batch, deferred, needed = [], [], 0
         for i in order:
             frame = self._frame_for(panels[i], px, cmd)
-            if frame == self._sent.get(i) and not steady and not resend:
+            sent = self._sent.get(i)
+            if sent is not None and sent[3:] == frame[3:] and not steady and not resend:  # the same dots, any command
                 self._since.pop(i, None)
                 continue
             short = self._take_budget(i, frame)  # an unchanged frame costs nothing

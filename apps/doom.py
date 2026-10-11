@@ -1,8 +1,10 @@
 """The real Doom (doomgeneric + Freedoom or the shareware WAD) on the board.
 
-The engine runs as a child process (native/doom, built by scripts/setup-doom.sh). It writes
-small 8-bit gray frames plus the player's health/ammo to its stdout and reads key events on its
-stdin; this app keeps only the newest frame and turns it into dots with Pillow.
+The engine runs as a child process (native/doom, built by scripts/setup-doom.sh). For the outline and
+wireframe looks it turns its own geometry into the board's dots (native/doom/geodots.h) and writes those,
+plus the player's health/ammo, to its stdout; menus, the automap and the shaded look come as small 8-bit
+gray frames this app turns into dots with Pillow. Key events go the other way on its stdin. Only the newest
+frame is kept.
 """
 
 import collections
@@ -28,6 +30,8 @@ BINARY = Path(os.environ.get("FLIPDOT_DOOM_BIN") or BUILD / "doomgeneric_flipdot
 SETUP_HINT = "run scripts/setup-doom.sh"
 
 HEADER = struct.Struct("<4sHHhhhBBHHI")  # see native/doom/doomgeneric_flipdot.c
+# planes after the header: FDM1 gray; FDM2 gray + geometry (an older build); FDM3 the board's dots, made by the engine
+PLANES = {b"FDM1": 1, b"FDM2": 2, b"FDM3": 1}
 STRIP = 6  # rows at the bottom for health/ammo
 
 # Doom key codes (doomkeys.h)
@@ -50,7 +54,9 @@ def draw_geometry(geo, w, h, look="outline"):
     """Turn a board-sized geometry plane (w*h bytes) into dots: walls dithered by distance (near =
     dense, far = sparse) or left empty ("wireframe"), floors/ceilings/sky dark, an outline wherever
     surfaces meet or one wall stands in front of another, monsters/items solid with a dark ring
-    and the weapon as an outline. Pure Python, ~3k pixels: a few ms on a Pi."""
+    and the weapon as an outline. Pure Python, ~3k pixels: a few ms on a Pi, so the engine normally does this
+    itself (native/doom/geodots.h, the same algorithm); this is the fallback for a build without it, and the
+    reference tests/test_doom_geo.py checks the C version against."""
     n = w * h
     typ = [v >> 5 for v in geo]
     dep = [v & 31 for v in geo]
@@ -191,6 +197,11 @@ class Doom(App):
         level = max(1, min(9, int(float(self.p["level"] or 1))))
         args = [str(BINARY), "-iwad", str(wad), "-warp", "1", str(level), "-skill", str(self.p["skill"]),
                 "-flipfps", str(self.fps), "-nogui"]  # -nogui: errors go to stderr, no zenity pop-up
+        if self.p["look"] != "shaded":
+            # the engine makes the outline/wireframe dots itself (FDM3 frames, native/doom/geodots.h): no per-dot
+            # Python pass per frame, and a tenth of the pipe traffic. An older build ignores this and sends FDM2.
+            vh = self.h - STRIP if self.p["hud"] else self.h
+            args += ["-flipdots", str(self.w), str(vh), "wireframe" if self.p["look"] == "wireframe" else "outline"]
         try:
             self.proc = subprocess.Popen(args, cwd=str(BINARY.parent), stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                          stderr=subprocess.PIPE, bufsize=0)
@@ -225,10 +236,10 @@ class Doom(App):
                 if head is None:
                     break
                 h = HEADER.unpack(head)
-                if h[0] not in (b"FDM1", b"FDM2"):
+                planes = PLANES.get(h[0])
+                if planes is None:
                     raise ValueError("bad frame header")
-                # FDM2 adds a geometry plane after the gray one (an older build sends FDM1)
-                buf = read(h[1] * h[2] * (2 if h[0] == b"FDM2" else 1))
+                buf = read(h[1] * h[2] * planes)
                 if buf is None:
                     break
                 with self.frame_lock:
@@ -374,10 +385,15 @@ class Doom(App):
     def _draw(self, c, frame, now):
         from PIL import Image, ImageOps
         h, buf = frame
-        _, fw, fh, health, armor, ammo, weapon, flags, owned, view_rows, _n = h
-        gray, geo = buf[:fw * fh], buf[fw * fh:]
+        kind, fw, fh, health, armor, ammo, weapon, flags, owned, view_rows, _n = h
         in_level = flags & 1
         hud = bool(self.p["hud"]) and in_level
+        if kind == b"FDM3":  # the engine sent the 3D view as dots already (see _start)
+            c.px[:min(fw * fh, len(c.px))] = buf[:len(c.px)]
+            if hud:
+                self._hud(c, health, armor, ammo, flags, now)
+            return
+        gray, geo = buf[:fw * fh], buf[fw * fh:]
         img = Image.frombuffer("L", (fw, fh), gray, "raw", "L", 0, 1)
         if in_level and view_rows < fh:
             img = img.crop((0, 0, fw, view_rows))

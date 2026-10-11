@@ -2,6 +2,7 @@
 
 Web UI + HTTP API for an 84×42 AlfaZeta flipdot board (18 panels of 28×7, driven over the
 RS485-to-Ethernet box at 192.168.11.100, ports 5000–5002, panel addresses 0–5 — see `config.yaml`).
+How it's built, how pictures get to the discs, and the performance and timing work: [ARCHITECTURE.md](ARCHITECTURE.md).
 
 Needs Python 3.10+ and Pillow (`sudo dnf install python3-pillow` or `pip install pillow`). Nothing else.
 
@@ -184,7 +185,9 @@ waits `cooldown` seconds (default 60) before it can fire again.
 A panel mounted upside down can be fixed with `rotate: "180"` in its `config.yaml` entry.
 Each bus (ip:port) is sent to on its own thread, so one that is unreachable doesn't hold up the others. Set `baud:` in
 `config.yaml` to the converter's RS485 speed and sends are paced to it, so fast animations show the newest picture
-instead of queuing up lag; `sync_refresh: true` writes every panel first and then flips them all at once.
+instead of queuing up lag; `sync_refresh: true` writes every panel first and then flips them all at once, and
+`auto` does that for a whole new picture only. A change to half the board or more starts on every bus at the same
+moment, so the columns of panels flip together.
 Panels flip their columns left to right, so on a big change a panel's right edge lands after the left edge of the
 panel beside it. `sweep_ms:` (how long one panel takes to sweep) starts each column of panels that much after the
 one to its left, so the change crosses the board as one wave. Moving content (video, games, transitions) would
@@ -562,11 +565,14 @@ Snapcast, the same signal the visualizer uses) drive effects on top of the pictu
 
 - Each part of the music drives one effect, with an amount and a sensitivity. Defaults: **bass** (kick
   drum, low notes) → glitch, **mid** → wave (it sways further in groovy, syncopated music), **high**
-  (hi-hats) → static, **beat** → a one-frame invert,
+  (hi-hats) → static, **beat** → an invert (held just long enough for the discs to show it whole, then
+  back; or **Invert sweep**: an inverted band crosses the picture left to right at the speed the panels'
+  own wave would, while the GIF keeps playing under it; its amount is the band's width, 100% = the whole
+  picture inverted at the peak),
   **loudness** → tones all of them down in quiet parts. Life and Melt aren't offered: they build up over
   time and don't suit a strength that changes every frame. Several effects can run at once; they're
   applied in a fixed order (pixelate, mirror, kaleidoscope, wave, glitch, outline, scanlines, static,
-  flash, invert), after the item's random effect and the transition between items.
+  flash, invert sweep, invert), after the item's random effect and the transition between items.
 - **Follows** (bass, low-mid, mid, high rows): **level** (how loud that part is), **notes and hits** (each
   new bass note, snare, clap or hi-hat, found per band from the rise in its spectrum, so a moving bassline
   under a steady loud bass, ghost notes and off-beat hats all register), or **level and hits** (some of
@@ -810,7 +816,7 @@ sudo apt install build-essential git curl unzip
 
 The script fetches [doomgeneric](https://github.com/ozkl/doomgeneric) at a pinned commit into
 `native/doom/build/` and builds it with our platform file `native/doom/doomgeneric_flipdot.c` (it
-writes small gray frames + player stats to stdout and reads key events from stdin). It downloads
+writes the board's dots (or small gray frames) + player stats to stdout and reads key events from stdin). It downloads
 [Freedoom: Phase 1](https://freedoom.github.io/) into `data/doom/`, so it's kept in `storage.db`;
 pick the shareware WAD in the app's settings if you installed it. Neither the engine source nor
 any WAD is in this repo.

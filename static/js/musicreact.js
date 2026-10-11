@@ -3,8 +3,9 @@
 // built from them: "music" (the React to music switch with its status) and "react_map" (the effects-on-top table).
 import { api, el, paramTypes, safe } from "./common.js";
 
-const FX = [["invert", "Invert"], ["flash", "Flash"], ["glitch", "Glitch"], ["mirror", "Mirror"], ["kaleidoscope", "Kaleidoscope"],
-  ["wave", "Wave"], ["scanlines", "Scanlines"], ["pixelate", "Pixelate"], ["outline", "Outline"], ["static", "Static"]];
+const FX = [["invert", "Invert"], ["sweep", "Invert sweep"], ["flash", "Flash"], ["glitch", "Glitch"], ["mirror", "Mirror"],
+  ["kaleidoscope", "Kaleidoscope"], ["wave", "Wave"], ["scanlines", "Scanlines"], ["pixelate", "Pixelate"], ["outline", "Outline"],
+  ["static", "Static"]];
 const SIGNALS = {
   bass: ["Bass", "kick drum, low notes"], lowmid: ["Low-mid", "bass guitar, warmth"], mid: ["Mid", "vocals, guitars, keys"],
   high: ["High", "hi-hats, cymbals"], beat: ["Beat", "each beat as it hits"], level: ["Loudness", "the overall volume"],

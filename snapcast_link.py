@@ -284,6 +284,11 @@ class SnapcastLink(SendspinLink):
             if max(f.loudness for _, f in frames) / 65535 > SILENCE:
                 self.audible_at = now
 
+    def set_name(self, name):
+        """Rename the board in Music Assistant without reconnecting (a Settings change)."""
+        self.name = name
+        threading.Thread(target=self._set_name, daemon=True, name="snapcast-name").start()
+
     def _set_name(self):
         """Name the board in Music Assistant via the Snapserver control port (JSON-RPC over TCP)."""
         time.sleep(1.0)  # let the server process the client's Hello first
