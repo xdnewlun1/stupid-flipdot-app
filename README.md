@@ -672,7 +672,10 @@ failed request (up to 15 min) and keeps the last good data on the board while of
   when one is installed (or any character transition you pick). The protobuf decoder (`gtfs_rt.py`) and the
   GTFS index (`gtfs_static.py`) need no extra packages.
 - **Planes overhead** (`planes`): aircraft near the Settings location on a radar (heading lines, the closest one
-  blinking, with its callsign, route, altitude, speed and distance) or a map with plane icons. Positions move on
+  blinking, with its callsign, route, altitude, speed and distance) or a map with plane icons. For the most
+  accurate centre, type your exact coordinates (`41.1234, -73.4567`, as a maps app copies them) into the app's
+  Location field or the Settings location search: coordinates are used as they are, with no place lookup, so the
+  radar is centred on your house rather than the town. Positions move on
   between updates from each plane's speed and track. Sources: your own dump1090/readsb/tar1090 `aircraft.json`
   (best), adsb.lol, or the OpenSky Network anonymously (at most every 15 s, and the app stops before the 400
   requests a day anonymous users get, and waits when OpenSky asks it to). Routes come from adsbdb.com, cached

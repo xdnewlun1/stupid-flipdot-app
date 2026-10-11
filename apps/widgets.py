@@ -89,7 +89,29 @@ def draw_icon(c, x, y, kind, s=20):
                 c.line(x + ax * s, y + ay * s, x + bx * s, y + by * s)
 
 
+_COORDS = re.compile(r"^\s*(-?\d{1,2}(?:\.\d+)?)\s*°?\s*([NSns])?\s*[,;/ ]\s*(-?\d{1,3}(?:\.\d+)?)\s*°?\s*([EWew])?\s*$")
+
+
+def parse_coords(text):
+    """'41.1234, -73.4567' (or '41.1234 N 73.4567 W', or pasted from a maps app) -> (lat, lon), or None."""
+    m = _COORDS.match(str(text or ""))
+    if not m:
+        return None
+    lat, lon = float(m.group(1)), float(m.group(3))
+    if m.group(2) and m.group(2).upper() == "S":
+        lat = -abs(lat)
+    if m.group(4) and m.group(4).upper() == "W":
+        lon = -abs(lon)
+    if not (-90 <= lat <= 90 and -180 <= lon <= 180):
+        return None
+    return lat, lon
+
+
 def geocode(name):
+    """Places matching a name (Open-Meteo), or exactly the point typed as 'lat, lon' (no lookup)."""
+    coords = parse_coords(name)
+    if coords:
+        return [{"name": f"{coords[0]:.4f}, {coords[1]:.4f}", "lat": coords[0], "lon": coords[1]}]
     q = urllib.parse.quote(name)
     r = http_get(f"https://geocoding-api.open-meteo.com/v1/search?name={q}&count=5", ttl=86400)
     return [

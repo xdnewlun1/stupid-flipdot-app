@@ -388,6 +388,24 @@ def test_opensky_daily_budget(tmp_path, monkeypatch):
     pack_live._opensky.update(used=0)
 
 
+def test_exact_coordinates_centre_the_radar_without_a_lookup(tmp_path, monkeypatch):
+    from apps import widgets
+    monkeypatch.setattr(widgets, "http_get", lambda *a, **k: (_ for _ in ()).throw(AssertionError("looked up")))
+    for text, want in [("41.1234, -73.4567", (41.1234, -73.4567)), ("41.1234,-73.4567", (41.1234, -73.4567)),
+                       ("41.1234 -73.4567", (41.1234, -73.4567)), ("41.1234° N, 73.4567° W", (41.1234, -73.4567)),
+                       ("33.9 S 151.2 E", (-33.9, 151.2)), (" -12.5 ; 130.8 ", (-12.5, 130.8))]:
+        assert widgets.parse_coords(text) == want, text
+    for text in ["Paris", "91, 10", "10, 181", "41.1234", "", None, "12 Oak Street"]:
+        assert widgets.parse_coords(text) is None, text
+    assert widgets.geocode("41.1234, -73.4567") == [{"name": "41.1234, -73.4567", "lat": 41.1234, "lon": -73.4567}]
+    calls = []
+    monkeypatch.setattr(pack_live, "http_get", lambda url, **k: calls.append(url) or {"ac": []})
+    app = create(_Ctx(_Store(tmp_path)), {"app": "planes", "params": {"source": "adsblol", "location": "41.1234, -73.4567"}})
+    app.fetch()
+    assert app.loc == {"name": "41.1234, -73.4567", "lat": 41.1234, "lon": -73.4567}
+    assert calls and "/v2/point/41.1234/-73.4567/" in calls[0]  # adsb.lol asked for exactly that point
+
+
 def test_backoff_grows_after_errors(tmp_path):
     app = create(_Ctx(_Store(tmp_path)), {"app": "planes", "params": {"source": "adsblol"}})
     app._fails = 3

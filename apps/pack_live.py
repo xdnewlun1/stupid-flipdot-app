@@ -547,7 +547,7 @@ class Planes(LiveWidget):
             ["receiver", "My ADS-B receiver (aircraft.json URL)"], ["adsblol", "adsb.lol (free, no key)"],
             ["opensky", "OpenSky Network (anonymous, 400 requests a day)"]]),
         P("url", "text", "http://localhost:8080/data/aircraft.json", "aircraft.json URL", show_if=_rx),
-        P("location", "text", "", "Location (blank = Settings default)"),
+        P("location", "text", "", "Location: a place, or exact coordinates 'lat, lon' (blank = Settings default)"),
         P("radius_km", "number", 30, "Radius (km)", min=2, max=250),
         P("max_alt_ft", "number", 0, "Ignore planes above (ft, 0 = no limit)", min=0, max=60000, step=1000),
         P("view", "select", "radar", options=[["radar", "Radar and closest plane"], ["map", "Map with plane icons"]]),
