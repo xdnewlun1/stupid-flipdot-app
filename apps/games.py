@@ -85,6 +85,9 @@ class Game(App):
             fn = cls.__dict__.get(name)
             if fn is not None and not getattr(fn, "_score_hook", False):
                 setattr(cls, name, hook(fn))
+        # React to music (effects on top) on every game; the Music itself is attached by apps.create()
+        from .react import GAME_REACT_PARAMS, REACT_NAMES
+        cls.params = [*[p for p in cls.params if p["name"] not in REACT_NAMES], *GAME_REACT_PARAMS]
 
     def __init__(self, ctx, **params):
         super().__init__(ctx, **params)

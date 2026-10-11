@@ -144,11 +144,12 @@ class Music:
       bpm, phase, groove   tempo (0 = unknown), beat phase 0..1 (None unless sure), off-beat share
     """
 
-    def __init__(self, app, given=None):
+    def __init__(self, app, given=None, source=None):
+        """source: the params to read instead of app.p (the games' global setting)."""
         self.app = app
-        p = app.p
+        p = app.p if source is None else source
         self.enabled = bool(p.get("react"))
-        self.mode = react_mode(app.p if given is None else given)
+        self.mode = react_mode(p if given is None else given)
         self.motion = self.enabled and self.mode in ("motion", "both")
         try:
             self.amount = max(0.0, min(2.0, float(p.get("react_amount", 100)) / 100))
@@ -314,3 +315,58 @@ def reactive(cls):
 def react_params(params):
     """The React to music options from a params dict (for apps that pass them on to the apps they run)."""
     return {k: params[k] for k in REACT_NAMES if k in params}
+
+
+# ---- games ----------------------------------------------------------------------------------------------------
+# Games get the effects on top only (never the motion: the game plays exactly as it does without music). Every
+# game has its own "React to music" option; a game that doesn't set it follows Settings → Music → "Music effects
+# on games", so games started from /play or the gamepad menu get the effects too.
+
+GAME_REACT_PARAMS = [
+    P("react", "music", False, "React to music"),
+    P("react_amount", "number", 100, "Music amount (%)", min=0, max=200, step=10, show_if=_on),
+    P("react_fallback", "select", "none", "Without live music",
+      options=[["none", "Do nothing"], ["beat", "Use a generated beat"]], show_if=_on),
+    P("react_fx", "react_map", overlay_defaults(), "Effects", show_if=_on, motion=slidefx.MOTION_DEFAULTS),
+]
+GAMES_MUSIC_DEFAULTS = {"enabled": False, "amount": 100, "fallback": "none", "fx": None}
+
+
+def games_music_settings(store):
+    """Settings → Music → Music effects on games, with defaults filled in."""
+    cfg = (getattr(store, "settings", None) or {}).get("games", {}).get("music") or {}
+    out = dict(GAMES_MUSIC_DEFAULTS, **{k: v for k, v in cfg.items() if k in GAMES_MUSIC_DEFAULTS})
+    if not out["fx"]:
+        out["fx"] = overlay_defaults()
+    return out
+
+
+def game_music(app):
+    """The Music for a game: its own options when it has React to music on, else the global setting (or off)."""
+    if app.p.get("react"):
+        return Music(app, {"react_mode": "effects"})
+    cfg = games_music_settings(getattr(app.ctx, "store", None))
+    if not cfg["enabled"]:
+        return Music(app, None, source={"react": False})
+    source = {"react": True, "react_amount": cfg["amount"], "react_fallback": cfg["fallback"], "react_fx": cfg["fx"]}
+    return Music(app, {"react_mode": "effects"}, source=source)
+
+
+def attach_game_music(app):
+    """Give an interactive app (a game, Doom, NES, the party games) music effects on top of its frames, unless it
+    already has its own self.music. Wraps its render on the instance."""
+    if getattr(app, "music", None) is not None:
+        return app
+    m = app.music = game_music(app)
+    if not m.enabled:
+        return app
+    render = app.render
+
+    def wrapped(c, now):
+        m.update(now)
+        out = render(c, now)
+        m.finish(c, now)
+        return out
+
+    app.render = wrapped
+    return app

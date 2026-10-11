@@ -118,8 +118,17 @@ function renderLobby(s) {
       h("button", { class: "primary", id: "pJoin", onclick: () => act("join") }),
       h("button", { id: "pLeave", onclick: () => act("leave") }, "Leave"),
       h("button", { id: "pStart", onclick: () => act("start") }, "Start now")),
+    h("div", { class: "prow", id: "pAdjust", role: "group", "aria-label": "Rounds" },
+      h("span", { class: "pmuted" }, "Rounds"),
+      h("button", { "aria-label": "Fewer rounds", onclick: () => act("adjust", { delta: -1 }) }, "−"),
+      h("output", { id: "pRounds", "aria-live": "polite" }),
+      h("button", { "aria-label": "More rounds", onclick: () => act("adjust", { delta: 1 }) }, "+"),
+      h("span", { class: "pmuted" }, "Games get harder as they go.")),
     h("p", { class: "pnote", role: "status" }),
   ]);
+  const adj = panel.querySelector("#pAdjust");
+  adj.hidden = s.adjust !== "rounds";
+  panel.querySelector("#pRounds").textContent = s.rounds ?? "";
   const joined = s.seats || [];
   panel.querySelector("#pLobbyTitle").textContent = s.joined ? `You're in as player ${seat}.` : "Join the game";
   panel.querySelector("#pLobbyWho").textContent = joined.length

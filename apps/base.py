@@ -88,6 +88,9 @@ def create(ctx, spec):
         raise ValueError(f"unknown app {spec.get('app')!r}")
     app = cls(ctx, **(spec.get("params") or {}))
     app.spec = {"app": app_id, "params": spec.get("params") or {}}
+    if cls.interactive and not getattr(cls, "reactive", False) and any(p["name"] == "react_fx" for p in cls.params):
+        from .react import attach_game_music
+        attach_game_music(app)  # music effects on top of games (their own option, or the global setting)
     return app
 
 

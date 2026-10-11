@@ -515,19 +515,9 @@
       </div>
     </div>
     <div id="ssBody">
-      <div id="ssDrop" class="drop" role="button" tabindex="0">Drop images, GIFs or a .zip here, or click to choose files</div>
-      <input type="file" id="ssFile" accept="image/*,.zip,application/zip" multiple hidden>
-      <div class="row">
-        <label class="muted"><input type="checkbox" id="ssSkipCovers" checked> <span>Skip cover images in zips (such as <code>clip.png</code> next to <code>clip.gif</code>)</span></label>
-        <button id="ssRemoveCovers" title="Remove still images that are just covers for the GIFs already in this slideshow">Remove cover images</button>
-      </div>
-      <p class="muted" id="ssStatus" role="status"></p>
-      <div class="vdBar" id="ssProgress" role="progressbar" aria-label="Upload progress" aria-valuemin="0" aria-valuemax="100" hidden><span></span></div>
-      <div id="ssItems" class="ssItems"></div>
-
       <details class="disclosure" id="ssOptions">
         <summary>Display options</summary>
-        <p class="muted">Changes save as you make them and apply to the slideshow on the board right away. The thumbnails above show each picture with these options.</p>
+        <p class="muted">Changes save as you make them and apply to the slideshow on the board right away. The thumbnails below show each picture with these options.</p>
         <div class="form">
           <label for="ssImageSecs">Seconds per image</label><input id="ssImageSecs" type="number" min="1" max="3600" step="1">
           <label for="ssGifLoops">Times to play each GIF</label><input id="ssGifLoops" type="number" min="1" max="100">
@@ -602,6 +592,16 @@
           </div>
         </div>
       </details>
+      <div id="ssDrop" class="drop" role="button" tabindex="0">Drop images, GIFs or a .zip here, or click to choose files</div>
+      <input type="file" id="ssFile" accept="image/*,.zip,application/zip" multiple hidden>
+      <div class="row">
+        <label class="muted"><input type="checkbox" id="ssSkipCovers" checked> <span>Skip cover images in zips (such as <code>clip.png</code> next to <code>clip.gif</code>)</span></label>
+        <button id="ssRemoveCovers" title="Remove still images that are just covers for the GIFs already in this slideshow">Remove cover images</button>
+      </div>
+      <p class="muted" id="ssStatus" role="status"></p>
+      <div class="vdBar" id="ssProgress" role="progressbar" aria-label="Upload progress" aria-valuemin="0" aria-valuemax="100" hidden><span></span></div>
+      <div id="ssItems" class="ssItems"></div>
+
     </div>
   </section>
 
@@ -964,6 +964,23 @@
           <option value="snapcast">Snapcast</option>
           <option value="off">Off (generated beat)</option>
         </select>
+      </div>
+
+      <h2 class="spaced">Music effects on games <span class="savedNote" id="gmSaved" role="status"></span></h2>
+      <p class="lede">Lay the music over every game: Snake, Doom, NES games, Flipdot Party and the rest get the slideshows'
+        effects on top of their picture (a glitch on the bass, a flash on the beat) while the game plays exactly as usual.
+        This is the default for games started from the play page, the gamepad menu or a playlist; each game's own
+        <b>React to music</b> option in the Apps panel overrides it. Paused during quiet hours.</p>
+      <div class="form">
+        <label for="gmEnabled">Music effects on games</label><input id="gmEnabled" type="checkbox">
+        <label for="gmAmount">Amount</label>
+        <div class="row tight"><input id="gmAmount" type="range" min="0" max="200" step="10"><output id="gmAmountVal" for="gmAmount" class="rangeVal"></output></div>
+        <label for="gmFallback">Without live music</label>
+        <select id="gmFallback"><option value="none">Do nothing</option><option value="beat">Use a generated beat (120 BPM)</option></select>
+      </div>
+      <div id="gmBody">
+        <p class="reactStatus" id="gmStatus" role="status"></p>
+        <div class="reactRows" id="gmRows" role="group" aria-label="What each part of the music does to games"></div>
       </div>
 
       <div id="scBlock" hidden>

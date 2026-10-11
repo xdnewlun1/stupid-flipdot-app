@@ -22,6 +22,7 @@ from canvas import wrap_text
 from fonts import NORMAL, SMALL
 
 from .base import App, P, register
+from .react import GAME_REACT_PARAMS
 from .doom import quiet_now
 
 log = logging.getLogger("nes")
@@ -258,6 +259,7 @@ class NES(App):
         P("fps", "number", 10, "Board updates per second", min=2, max=20, step=1),
         P("quiet", "select", "refuse", "During quiet hours", options=[
             ["refuse", "Don't run"], ["slow", "Run at 3 updates per second"]]),
+        *GAME_REACT_PARAMS,
     ]
 
     @classmethod

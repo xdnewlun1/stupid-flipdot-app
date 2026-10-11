@@ -173,6 +173,9 @@ class PartyGame(Game):
             self.rev += 1
         elif key == "start" and self.can_start():
             self.begin(t)
+        elif key in ("left", "right"):
+            self.lobby_adjust(1 if key == "right" else -1)
+            self.rev += 1
 
     def join(self, seat):
         """A phone's Join button: the same as pressing A in the lobby."""
@@ -202,22 +205,33 @@ class PartyGame(Game):
     def is_cpu(self, seat):
         return seat in self.cpus
 
+    def lobby_extra(self, now):
+        """A line of options shown in the lobby under the seats (e.g. "< 6 ROUNDS >"), or None."""
+        return None
+
+    def lobby_adjust(self, delta):
+        """Left/right in the lobby."""
+
     def draw_lobby(self, c, now):
         title = self.title.upper()
         font = NORMAL if NORMAL.width(title) <= c.w else SMALL
-        c.text_center(1, title, font)
+        extra = self.lobby_extra(now)
+        up = 2 if extra else 0  # make room for the options line
+        c.text_center(1 - up // 2, title, font)
         cw = c.w // 4
         for i, seat in enumerate(SEATS):
             x = i * cw
-            c.text(x + (cw - SMALL.width(f"P{seat}")) // 2, 11, f"P{seat}", SMALL)
-            bx, by, bw, bh = x + 3, 18, cw - 6, 11
+            c.text(x + (cw - SMALL.width(f"P{seat}")) // 2, 11 - up, f"P{seat}", SMALL)
+            bx, by, bw, bh = x + 3, 18 - up, cw - 6, 11 - up
             if seat in self.joined:
                 fill_rect(c, bx, by, bw, bh, 1)
-                c.text(bx + (bw - SMALL.width("IN")) // 2, by + 3, "IN", SMALL, v=0)
+                c.text(bx + (bw - SMALL.width("IN")) // 2, by + (bh - 5) // 2, "IN", SMALL, v=0)
             else:
                 c.rect(bx, by, bw, bh)
                 if int(now * 2) % 2:
-                    c.text(bx + (bw - SMALL.width("A")) // 2, by + 3, "A", SMALL)
+                    c.text(bx + (bw - SMALL.width("A")) // 2, by + (bh - 5) // 2, "A", SMALL)
+        if extra:
+            c.text_center(27, extra, SMALL)
         if self.last_join is not None and self.can_start():
             left = max(0, math.ceil(LOBBY_WAIT - (now - self.last_join)))
             c.text_center(35, f"START IN {left}", SMALL)
@@ -347,6 +361,9 @@ class PartyGame(Game):
             self.join(seat)
             if self.can_start():
                 self.begin(self.clock())
+        elif action == "adjust" and self.state == "title":
+            self.lobby_adjust(1 if int(data.get("delta", 1) or 1) > 0 else -1)
+            self.rev += 1
         else:
             raise ValueError(f"unknown action {action!r}")
 
@@ -373,12 +390,15 @@ class PartyGame(Game):
 
 class Mini:
     """One mini-game. key() gets presses (down only) with their arrival time; tick() sets self.done; ranking()
-    returns groups of seats, best first (a group is a tie)."""
+    returns groups of seats, best first (a group is a tie). self.stage is 0.0 in the first round of a match and
+    1.0 by the sixth or the last: lvl(a, b) ramps a value between the two, so later rounds ask for more (longer
+    sequences, more to remember, decoys, less time) without the first ones being hard."""
 
     title = ""
     hint = ""
     length = 30
     min_players = 1
+    kind = "action"  # action, brain or luck: rounds alternate kinds so a match stays varied
 
     def __init__(self, game, now):
         self.g = game
@@ -387,8 +407,16 @@ class Mini:
         self.rnd = game.rnd
         self.done = False
         self.w, self.h = game.w, game.h
+        self.stage = game.stage() if callable(getattr(game, "stage", None)) else 0.0
         self.cpu_at = {s: now + self.rnd.uniform(0.3, 0.8) for s in self.seats if game.is_cpu(s)}
         self.setup(now)
+
+    def lvl(self, a, b):
+        """a in the first round .. b at full difficulty."""
+        return a + (b - a) * self.stage
+
+    def ilvl(self, a, b):
+        return int(round(self.lvl(a, b)))
 
     def setup(self, now): ...
     def key(self, t, key, seat): ...
@@ -423,19 +451,34 @@ class MashRace(Mini):
     NEED = 40
 
     def setup(self, now):
+        self.need = self.ilvl(self.NEED, self.NEED + 20)
         self.count = {s: 0 for s in self.seats}
         self.finished = {}
+        self.switching = self.stage >= 0.5  # later rounds: the button to mash changes; the wrong one costs
+        self.button = "a"
+        self.switched_at = now
+        self.switch_at = now + self.rnd.uniform(2.5, 4.0)
+        if self.switching:
+            self.hint = "MASH THE BUTTON IT SHOWS"
 
     def key(self, t, key, seat):
-        if key == "a" and seat not in self.finished:
+        if seat in self.finished or key not in ("a", "b"):
+            return
+        if key == self.button:
             self.count[seat] += 1
-            if self.count[seat] >= self.NEED:
+            if self.count[seat] >= self.need:
                 self.finished[seat] = t
+        elif self.switching:
+            self.count[seat] = max(0, self.count[seat] - 1)
 
     def tick(self, now):
+        if self.switching and now >= self.switch_at:
+            self.button = "b" if self.button == "a" else "a"
+            self.switched_at = now
+            self.switch_at = now + self.rnd.uniform(*((2.5, 4.0) if self.stage < 0.8 else (1.6, 3.0)))
         for s, at in self.cpu_at.items():
             if now >= at and s not in self.finished:
-                self.key(now, "a", s)
+                self.key(now, self.button if self.rnd.random() > 0.08 else "b", s)
                 self.cpu_at[s] = now + self.rnd.uniform(0.11, 0.2)
         first = min(self.finished.values()) if self.finished else None
         if (len(self.finished) == len(self.seats) or now - self.t0 >= self.length
@@ -446,7 +489,7 @@ class MashRace(Mini):
         for s in self.seats:
             x, y, w, h = quadrant(self.w, self.h, s)
             area = (w - 4) * (h - 9)
-            n = min(area, area * self.count[s] // self.NEED)
+            n = min(area, area * self.count[s] // self.need)
             for i in range(n):  # fills column by column, left to right
                 c.set(x + 2 + i // (h - 9), y + 7 + i % (h - 9))
             c.rect(x + 1, y + 6, w - 2, h - 7)
@@ -454,6 +497,14 @@ class MashRace(Mini):
             if s in self.finished:
                 place = sorted(self.finished.values()).index(self.finished[s]) + 1
                 box_text(c, x + w - 9, y, f"#{place}")
+        if self.switching:  # the button to mash, on every seat's label line (blinks for a moment after it changes)
+            fresh = self.switch_at - now > (self.switch_at - self.switched_at) - 0.6
+            for s in self.seats:
+                x, y, w, h = quadrant(self.w, self.h, s)
+                bx = x + w // 2 - 3
+                fill_rect(c, bx - 1, y - 1, 7, 7, 1)
+                if not (fresh and int(now * 8) % 2):
+                    c.text(bx + 1, y, self.button.upper(), SMALL, v=0)
 
     def ranking(self):
         return self.groups(self.seats, lambda s: (0, self.finished[s]) if s in self.finished else (1, -self.count[s]))
@@ -464,27 +515,51 @@ class Reaction(Mini):
     hint = "PRESS A WHEN IT FLASHES. NOT BEFORE!"
     length = 30
     FLASHES = 3
+    BUTTONS = ("a", "b", "x", "y")
 
     def setup(self, now):
         self.score = {s: 0 for s in self.seats}
         self.best = {s: 9.0 for s in self.seats}
         self.n = 0
+        self.flashes = self.ilvl(self.FLASHES, self.FLASHES + 2)
+        self.buttons = self.stage >= 0.35   # the flash names the button to press
+        self.decoys = self.stage >= 0.6     # some flashes say NO: a press then costs a point
+        if self.buttons:
+            self.hint = "PRESS THE BUTTON IT FLASHES. NOT BEFORE" + (", NOT ON NO!" if self.decoys else "!")
         self.next_flash(now)
 
     def next_flash(self, now):
         self.n += 1
         self.go_at = now + self.rnd.uniform(1.5, 4.0)
+        self.need = self.rnd.choice(self.BUTTONS) if self.buttons else "a"
+        self.decoy_at = None
+        if self.decoys and self.rnd.random() < self.lvl(0.0, 0.5) + 0.2:
+            self.decoy_at = self.go_at  # a NO! flash first, the real one a moment later
+            self.go_at += self.rnd.uniform(1.3, 2.4)
         self.early = set()
         self.winner = None
         self.won_at = None
-        self.cpu_react = {s: self.go_at + self.rnd.uniform(0.22, 0.45) if self.rnd.random() > 0.06
-                          else self.go_at - self.rnd.uniform(0.2, 1.0) for s in self.seats if self.g.is_cpu(s)}
+        self.cpu_react = {}
+        for s in self.seats:
+            if not self.g.is_cpu(s):
+                continue
+            r = self.rnd.random()
+            if r < 0.06:
+                at = (self.decoy_at or self.go_at) - self.rnd.uniform(0.2, 1.0)
+            elif self.decoy_at is not None and r < 0.2:
+                at = self.decoy_at + self.rnd.uniform(0.25, 0.5)  # fooled by the decoy
+            else:
+                at = self.go_at + self.rnd.uniform(0.22, 0.45)
+            self.cpu_react[s] = at
+
+    def decoy_on(self, now):
+        return self.decoy_at is not None and self.decoy_at <= now < self.decoy_at + 0.8
 
     def key(self, t, key, seat):
-        if key != "a" or seat in self.early or self.winner is not None:
+        if key not in (self.BUTTONS if self.buttons else ("a",)) or seat in self.early or self.winner is not None:
             return
-        if t < self.go_at:
-            self.early.add(seat)  # too soon: a point off, and out of this flash
+        if t < self.go_at or key != self.need:
+            self.early.add(seat)  # too soon or the wrong button: a point off, and out of this flash
             self.score[seat] -= 1
         else:
             self.winner, self.won_at = seat, t
@@ -494,21 +569,25 @@ class Reaction(Mini):
     def tick(self, now):
         for s, at in list(self.cpu_react.items()):
             if now >= at:
-                self.key(at, "a", s)
+                self.key(at, self.need if self.rnd.random() > 0.08 or not self.buttons else "a", s)
                 del self.cpu_react[s]
         ended = (self.winner is not None and now - self.won_at >= 1.4) or now - self.go_at >= 3.0 \
             or (len(self.early) == len(self.seats))
         if ended:
-            if self.n >= self.FLASHES or now - self.t0 >= self.length:
+            if self.n >= self.flashes or now - self.t0 >= self.length:
                 self.done = True
             else:
                 self.next_flash(now)
 
     def draw(self, c, now):
+        if self.decoy_on(now) and self.winner is None:
+            c.clear(1)
+            c.text_center(14, "NO!", NORMAL, v=0, scale=2)
+            return
         flash = now >= self.go_at and self.winner is None and len(self.early) < len(self.seats)
         if flash:
             c.clear(1)
-            c.text_center(14, "GO!", NORMAL, v=0, scale=2)
+            c.text_center(14, self.need.upper() if self.buttons else "GO!", NORMAL, v=0, scale=2)
             return
         for s in self.seats:
             x, y, w, h = quadrant(self.w, self.h, s)
@@ -522,7 +601,7 @@ class Reaction(Mini):
                 c.rect(x, y, w, h)
             elif self.winner is None:
                 c.text(x + 3, y + 10, "WAIT" + "." * (int(now * 3) % 4), SMALL)
-        box_text(c, (self.w - SMALL.width(f"{self.n}/{self.FLASHES}")) // 2, 18, f"{self.n}/{self.FLASHES}")
+        box_text(c, (self.w - SMALL.width(f"{self.n}/{self.flashes}")) // 2, 18, f"{self.n}/{self.flashes}")
 
     def ranking(self):
         return self.groups(self.seats, lambda s: (-self.score[s], self.best[s]))
@@ -549,9 +628,15 @@ class Memory(Mini):
     hint = "REPEAT THE ARROWS"
     length = 40
     MAX = 8
+    kind = "brain"
 
     def setup(self, now):
-        self.seq = [self.rnd.choice(ARROWS) for _ in range(3)]
+        self.symbols = ARROWS + (("a", "b") if self.stage >= 0.5 else ())
+        if len(self.symbols) > 4:
+            self.hint = "REPEAT THE ARROWS AND BUTTONS"
+        self.step = self.lvl(0.65, 0.45)  # seconds per symbol while it shows
+        self.max = self.ilvl(self.MAX, self.MAX + 3)
+        self.seq = [self.rnd.choice(self.symbols) for _ in range(self.ilvl(3, 5))]
         self.level = {s: 0 for s in self.seats}  # sequences completed
         self.out = set()
         self.show(now)
@@ -562,10 +647,10 @@ class Memory(Mini):
         self.cpu_next = {s: None for s in self.seats if self.g.is_cpu(s)}
 
     def show_time(self):
-        return 0.8 + len(self.seq) * 0.65
+        return 0.8 + len(self.seq) * self.step
 
     def key(self, t, key, seat):
-        if self.phase != "input" or seat in self.out or seat not in self.pos or key not in ARROWS:
+        if self.phase != "input" or seat in self.out or seat not in self.pos or key not in self.symbols:
             return
         if self.pos[seat] >= len(self.seq):
             return
@@ -590,7 +675,7 @@ class Memory(Mini):
                 elif now >= self.cpu_next[s]:
                     right = self.seq[self.pos[s]]
                     slip = self.rnd.random() < 0.025 * len(self.seq)
-                    self.key(now, self.rnd.choice([a for a in ARROWS if a != right]) if slip else right, s)
+                    self.key(now, self.rnd.choice([a for a in self.symbols if a != right]) if slip else right, s)
                     self.cpu_next[s] = None
             alive = [s for s in self.pos if s not in self.out]
             limit = 2.5 + 0.8 * len(self.seq)
@@ -599,23 +684,26 @@ class Memory(Mini):
                     if self.pos[s] < len(self.seq):
                         self.out.add(s)  # too slow
                 alive = [s for s in alive if s not in self.out]
-                if len(alive) <= (0 if len(self.seats) == 1 else 1) or len(self.seq) >= self.MAX \
+                if len(alive) <= (0 if len(self.seats) == 1 else 1) or len(self.seq) >= self.max \
                         or now - self.t0 >= self.length:
                     self.done = True
                 else:
                     self.phase, self.phase_at = "next", now
         elif self.phase == "next" and now - self.phase_at >= 0.8:
-            self.seq.append(self.rnd.choice(ARROWS))
+            self.seq.append(self.rnd.choice(self.symbols))
             self.show(now)
 
     def draw(self, c, now):
         if self.phase == "show":
             t = now - self.phase_at - 0.8
-            i = int(t / 0.65) if t >= 0 else -1
+            i = int(t / self.step) if t >= 0 else -1
             c.text(1, 0, "WATCH", SMALL)
             c.text(c.w - SMALL.width(f"{len(self.seq)}") - 1, 0, f"{len(self.seq)}", SMALL)
-            if 0 <= i < len(self.seq) and t - i * 0.65 < 0.5:
-                arrow(c, c.w // 2, c.h // 2, self.seq[i], 12)
+            if 0 <= i < len(self.seq) and t - i * self.step < self.step * 0.75:
+                if self.seq[i] in ARROWS:
+                    arrow(c, c.w // 2, c.h // 2, self.seq[i], 12)
+                else:
+                    c.text_center(7, self.seq[i].upper(), NORMAL, scale=4)
             return
         for s in self.seats:
             x, y, w, h = quadrant(self.w, self.h, s)
@@ -658,13 +746,13 @@ class Dodge(Mini):
         dt = min(0.1, max(0.0, now - self.last))
         self.last = now
         age = now - self.t0
-        speed = 13 + 1.1 * age
+        speed = self.lvl(13, 20) + 1.1 * age
         for b in self.blocks:
             b[1] += speed * dt
         self.blocks = [b for b in self.blocks if b[1] < self.h + 2]
         if now >= self.spawn_at:
-            self.blocks.append([self.rnd.random(), -2.0, self.rnd.uniform(0.18, 0.32)])
-            self.spawn_at = now + max(0.3, 0.9 - age * 0.025)
+            self.blocks.append([self.rnd.random(), -2.0, self.rnd.uniform(0.18, self.lvl(0.32, 0.4))])
+            self.spawn_at = now + max(0.3, self.lvl(0.9, 0.6) - age * 0.025)
         for s in self.seats:
             if s in self.out:
                 continue
@@ -780,13 +868,17 @@ class TugOfWar(Mini):
 class StopCounter(Mini):
     title = "STOP THE CLOCK"
     hint = "PRESS A AT THE TARGET TIME"
-    length = 14
+    length = 18
+    kind = "brain"
 
     def setup(self, now):
-        self.target = self.rnd.choice([3.0, 3.5, 4.0, 4.5, 5.0, 5.5, 6.0, 6.5, 7.0])
+        hi = self.ilvl(8, 16)  # half seconds: 3.0..4.0 s at first, up to 3.0..8.0 s
+        self.target = self.rnd.choice([3.0 + 0.5 * i for i in range(hi - 6 + 1)])
+        self.visible = self.lvl(2.0, 0.8)  # how long the running clock shows before it hides
         self.start = now + 1.5
         self.stops = {}
-        self.cpu_stop = {s: self.start + self.target + self.rnd.gauss(0, 0.25) for s in self.seats if self.g.is_cpu(s)}
+        self.cpu_stop = {s: self.start + self.target + self.rnd.gauss(0, self.lvl(0.25, 0.4))
+                         for s in self.seats if self.g.is_cpu(s)}
 
     def key(self, t, key, seat):
         if key == "a" and seat not in self.stops and t >= self.start:
@@ -812,7 +904,7 @@ class StopCounter(Mini):
                 c.text(x + 2, y + 1, self.g.name(s), SMALL)
                 c.text(x + 2, y + 8, f"{v:.2f}" if v is not None else "--", SMALL)
         else:
-            shown = f"{t:.2f}" if t < 1.5 else "?.??"
+            shown = f"{t:.2f}" if t < self.visible else "?.??"
             c.text_center(13, shown, NORMAL, scale=2)
             c.text_center(31, " ".join(self.g.name(s) for s in self.seats if s in self.stops), SMALL)
 
@@ -825,10 +917,11 @@ class HotPotato(Mini):
     hint = "PRESS A TO PASS IT ON. DON'T HOLD IT WHEN IT BLOWS"
     length = 30
     min_players = 2
+    kind = "luck"
 
     def setup(self, now):
         self.holder = self.rnd.choice(self.seats)
-        self.fuse = now + self.rnd.uniform(8, 18)
+        self.fuse = now + self.rnd.uniform(self.lvl(8, 5), self.lvl(18, 11))
         self.held_for = {s: 0.0 for s in self.seats}
         self.flight = None  # (from, to, start, arrive)
         self.boom = None
@@ -916,18 +1009,21 @@ class QuickCount(Mini):
     title = "QUICK COUNT"
     hint = "HOW MANY DOTS? UP/DOWN, THEN A"
     length = 22
+    kind = "brain"
 
     def setup(self, now):
-        self.n = self.rnd.randint(12, 34)
-        spots = set()
-        while len(spots) < self.n:
-            spots.add((self.rnd.randrange(8, self.w - 8, 3), self.rnd.randrange(6, self.h - 4, 3)))
-        self.dots = sorted(spots)
+        lo, hi = self.ilvl(4, 7), self.ilvl(9, 13)
+        self.n = self.rnd.randint(lo, hi)
+        # big dots on a loose grid, never touching, so they can be counted at a glance
+        cells = [(x, y) for x in range(6, self.w - 8, 7) for y in range(7, self.h - 6, 7)]
+        self.rnd.shuffle(cells)
+        self.dots = sorted((x + self.rnd.randint(0, 2), y + self.rnd.randint(0, 2)) for x, y in cells[:self.n])
         self.show_at = now + 1.2
-        self.answer_at = self.show_at + 1.6
-        self.guess = {s: 20 for s in self.seats}
+        self.answer_at = self.show_at + self.lvl(3.0, 2.0)
+        self.first = (lo + hi) // 2
+        self.guess = {s: self.first for s in self.seats}
         self.locked = {}
-        self.cpu_lock = {s: (self.answer_at + self.rnd.uniform(2.5, 6), self.n + self.rnd.randint(-5, 5))
+        self.cpu_lock = {s: (self.answer_at + self.rnd.uniform(2.0, 5), self.n + self.rnd.choice([0, 0, 0, 1, -1, 1, -1, 2, -2]))
                          for s in self.seats if self.g.is_cpu(s)}
 
     def key(self, t, key, seat):
@@ -953,12 +1049,15 @@ class QuickCount(Mini):
             return
         if now < self.answer_at or self.done:
             for x, y in self.dots:
-                fill_rect(c, x, y, 2, 2)
+                fill_rect(c, x, y, 3, 3)
             if self.done:
                 box_text(c, (self.w - SMALL.width(f"{self.n} DOTS")) // 2, 1, f"{self.n} DOTS")
                 for s in self.seats:
                     x, y, w, h = quadrant(self.w, self.h, s)
                     box_text(c, x + 2, y + h - 7 if y else y + 9, f"{self.g.name(s)} {self.guess[s]}")
+            else:
+                left = self.answer_at - now
+                fill_rect(c, 0, self.h - 1, int(self.w * left / max(0.1, self.answer_at - self.show_at)), 1)
             return
         for s in self.seats:
             x, y, w, h = quadrant(self.w, self.h, s)
@@ -973,6 +1072,13 @@ class QuickCount(Mini):
 
 
 MINIGAMES = [MashRace, Reaction, Memory, Dodge, TugOfWar, StopCounter, HotPotato, QuickCount]
+from . import party_minis  # noqa: E402  (its games build on Mini above)
+
+MINIGAMES += party_minis.MINIGAMES
+ROUND_CHOICES = [3, 5, 6, 8, 10, 12, 15, 20]
+RAMP_ROUNDS = 6  # the difficulty reaches its top by this round (or the last one, in a shorter match)
+GAME_SETS = [["all", "Every game"], ["brain", "Brain games: memory, counting, sums, spotting"],
+             ["action", "Action games: mashing, dodging, reactions"]]
 
 
 def placement_points(groups, n):
@@ -989,16 +1095,43 @@ def placement_points(groups, n):
 class FlipdotParty(PartyGame):
     id = "party"
     title = "Flipdot Party"
-    description = ("Quick mini-games for up to 4 players on the controllers and phones: mash race, reaction, memory, "
-                   "dodge, tug of war, stop the clock, hot potato and quick count. Points after every round, a "
-                   "champion at the end. Join by pressing A.")
+    description = (f"{len(MINIGAMES)} quick mini-games for up to 4 players on the controllers and phones: mash race, "
+                   "reaction, memory, dodge, tug of war, stop the clock, hot potato, quick count, sums, Simon says, "
+                   "odd one out, shell game, moles and more. Pick the number of rounds in the lobby; the games "
+                   "get harder round by round. Points after every round, a champion at the end. Join by pressing A.")
     params = [
-        P("rounds", "number", 6, "Rounds", min=2, max=16),
+        P("rounds", "number", 6, "Rounds (to start with)", min=2, max=30),
+        P("games", "select", "all", "Games", options=GAME_SETS),
         P("cpu", "select", "pair", "CPU players", options=CPU_MODES),
     ]
     INTRO_S = 3.5
     RESULT_S = 3.0
     SCORES_S = 4.0
+
+    def lobby_reset(self, now):
+        super().lobby_reset(now)
+        if not hasattr(self, "rounds"):  # the setting to start with; the lobby's choice then sticks between matches
+            try:
+                self.rounds = max(2, min(30, int(self.p.get("rounds") or 6)))
+            except (TypeError, ValueError):
+                self.rounds = 6
+
+    def lobby_extra(self, now):
+        return f"< {self.rounds} ROUNDS >"
+
+    def lobby_adjust(self, delta):
+        """Left/right in the lobby step through ROUND_CHOICES (from wherever the setting left it)."""
+        if delta > 0:
+            nxt = [n for n in ROUND_CHOICES if n > self.rounds]
+            self.rounds = nxt[0] if nxt else self.rounds
+        else:
+            prv = [n for n in ROUND_CHOICES if n < self.rounds]
+            self.rounds = prv[-1] if prv else self.rounds
+
+    def stage(self):
+        """0.0 in round 1, 1.0 from round RAMP_ROUNDS (or the last round of a shorter match) on."""
+        top = max(1, min(RAMP_ROUNDS, self.rounds) - 1)
+        return max(0.0, min(1.0, (getattr(self, "round", 1) - 1) / top))
 
     def start_game(self, now):
         self.round = 0
@@ -1006,19 +1139,34 @@ class FlipdotParty(PartyGame):
         self.bag = []
         self.next_round(now)
 
-    def pick(self):
+    def choices(self):
         n = len(self.seats)
+        want = self.p.get("games", "all")
+        kinds = {"all": ("action", "brain", "luck"), "brain": ("brain", "luck"), "action": ("action", "luck")}.get(want)
+        out = [m for m in MINIGAMES if m.min_players <= n and m.kind in (kinds or ("action", "brain", "luck"))]
+        return out or [m for m in MINIGAMES if m.min_players <= n]
+
+    def pick(self):
+        """The next game: every game once before any repeats, never the same twice in a row, and a different
+        kind from the last round when the bag has one."""
+        last = type(self.mini) if self.mini is not None else getattr(self, "mini_cls", None)
         if not self.bag:
-            self.bag = [m for m in MINIGAMES if m.min_players <= n]
+            self.bag = self.choices()
             self.rnd.shuffle(self.bag)
-            if self.mini is not None and len(self.bag) > 1 and self.bag[0] is type(self.mini):
-                self.bag.append(self.bag.pop(0))  # never the same game twice in a row
+        for cls in self.bag:
+            if cls is not last and (last is None or cls.kind != last.kind):
+                self.bag.remove(cls)
+                return cls
+        for cls in self.bag:
+            if cls is not last:
+                self.bag.remove(cls)
+                return cls
         return self.bag.pop(0)
 
     def next_round(self, now):
         self.round += 1
         self.mini_cls = self.pick()
-        self.mini = None
+        self.mini = self.mini_cls(self, now + self.INTRO_S)  # its clock starts when the intro ends
         self.phase, self.phase_at = "intro", now
         self.round_pts = {}
         self.rev += 1
@@ -1034,7 +1182,6 @@ class FlipdotParty(PartyGame):
 
     def tick(self, now):
         if self.phase == "intro" and now - self.phase_at >= self.INTRO_S:
-            self.mini = self.mini_cls(self, now)
             self.phase, self.phase_at = "play", now
             self.rev += 1
         elif self.phase == "play":
@@ -1048,22 +1195,30 @@ class FlipdotParty(PartyGame):
         elif self.phase == "result" and now - self.phase_at >= self.RESULT_S:
             self.phase, self.phase_at = "scores", now
         elif self.phase == "scores" and now - self.phase_at >= self.SCORES_S:
-            if self.round >= int(self.p["rounds"] or 6):
+            if self.round >= self.rounds:
                 self.finish(now, standings=False)
             else:
                 self.next_round(now)
 
     def draw(self, c, now):
         if self.phase == "intro":
-            c.text_center(0, f"ROUND {self.round}/{int(self.p['rounds'] or 6)}", SMALL)
+            c.text_center(0, f"ROUND {self.round}/{self.rounds}", SMALL)
             title = self.mini_cls.title
             c.text_center(9, title, NORMAL if NORMAL.width(title) <= c.w else SMALL)
             from canvas import wrap_text
-            for i, line in enumerate(wrap_text(self.mini_cls.hint, SMALL, c.w - 2)[:2]):
+            for i, line in enumerate(wrap_text(self.mini.hint, SMALL, c.w - 2)[:2]):
                 c.text_center(20 + i * 6, line, SMALL)
             left = self.INTRO_S - (now - self.phase_at)
             if left < 1.5:
                 c.text_center(34, "GO!" if left < 0.5 else "READY", SMALL)
+            else:
+                # the difficulty so far: a little meter in the corner
+                lit = round(self.stage() * 5)
+                for i in range(5):
+                    if i < lit:
+                        fill_rect(c, c.w - 12 + i * 2, 40 - i, 1, i + 1)
+                    else:
+                        c.set(c.w - 12 + i * 2, 40)
         elif self.phase == "play":
             self.mini.draw(c, now)
         elif self.phase == "result":
@@ -1080,11 +1235,14 @@ class FlipdotParty(PartyGame):
 
     def status_text(self):
         name = self.mini_cls.title.title() if getattr(self, "mini_cls", None) else ""
-        return f"round {getattr(self, 'round', 0)}/{int(self.p['rounds'] or 6)}, {name}"
+        return f"round {getattr(self, 'round', 0)}/{self.rounds}, {name}"
 
     def phone_state(self, seat):
         out = super().phone_state(seat)
+        out["rounds"] = self.rounds
+        if self.state == "title":
+            out["adjust"] = "rounds"
         if self.state == "playing" and getattr(self, "mini_cls", None):
-            out.update(round=self.round, rounds=int(self.p["rounds"] or 6), game=self.mini_cls.title,
-                       hint=self.mini_cls.hint, phase=self.phase)
+            out.update(round=self.round, game=self.mini_cls.title, hint=self.mini.hint, phase=self.phase,
+                       kind=self.mini_cls.kind)
         return out

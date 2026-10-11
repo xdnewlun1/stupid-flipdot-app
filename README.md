@@ -81,6 +81,15 @@ the budget twice.
 
 Tests: `tests/test_scores_sand_paint.py`.
 
+## Music effects on games
+
+Every game (the arcade and puzzle packs, Doom, NES games, the party games) has a **React to music** option in the
+Apps panel: the slideshows' effects table runs over its frames (a glitch on the bass, a flash on each beat, static on
+the highs) while the game itself plays exactly as usual; the music never drives the game's motion. **Settings → Music →
+Music effects on games** turns the same thing on for every game that doesn't set its own option, so games started
+from `/play`, the gamepad menu or a playlist get it too (`settings.games.music`: enabled, amount, fallback, fx rows;
+`apps/react.py` `game_music`). Paused during quiet hours. Tests: `tests/test_games_react.py`.
+
 ## Party games (up to 4 players)
 
 Five games in the **Party** group of the game pickers and the gamepad menu, for the GameCube pads and phones on
@@ -90,9 +99,16 @@ timestamped as they arrive (`input_now`), so reaction and rhythm timing don't de
 celebration of whole-board flips spaced so each one gets the sweep wave (none in quiet hours), then the usual
 high-score initials.
 
-- **Flipdot Party** (`party`): a set number of rounds, each a 20-40 s mini-game: mash race, reaction (an early
-  press costs a point), memory, dodge, tug of war (teams), stop the clock, hot potato (passes land on the music's
-  beat) and quick count. 3/2/1/0 points by place, scores between rounds. CPU players: one when you play alone
+- **Flipdot Party** (`party`): rounds of 15-40 s mini-games, 22 of them (`apps/pack_party.py`,
+  `apps/party_minis.py`): mash race, reaction (an early press costs a point), memory, dodge, tug of war (teams),
+  stop the clock, hot potato (passes land on the music's beat), quick count, quick sums, odd one out, what changed,
+  longest bar, in order, opposite, Simon says, button combo, grid recall, shell game, sort it, moles, bank it and
+  fill the glass. **Rounds** are picked in the lobby (left/right on a pad, the stepper on the phone; the Rounds
+  setting is only the starting value) and the games **get harder round by round** (full difficulty by round 6):
+  longer sequences, more to remember, subtler differences, decoys ("NO!" flashes, hollow moles, "SIMON SAID"),
+  hidden clocks and numbers, less time. The intro shows a little difficulty meter. Rounds alternate between
+  action, brain and luck games (the Games setting can keep to brain or action games) and never repeat a game until
+  every one has been played. 3/2/1/0 points by place, scores between rounds. CPU players: one when you play alone
   (default), every empty seat, or none.
 - **Buzzer Quiz** (`quiz`): buzz with any button; the buzzer's quarter of the board slams, then answer with A, B,
   X, Y (or the A-D buttons on the phone). Right scores 100/200/300 by difficulty, wrong costs half and locks you

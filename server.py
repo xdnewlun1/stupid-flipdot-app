@@ -229,6 +229,9 @@ def masked_settings():
     if mq.get("password"):
         mq["password"] = SECRET_MASK
     mq["connected"] = bool(mqtt_client and mqtt_client.connected)
+    from apps import slidefx
+    gm = s.setdefault("games", {}).setdefault("music", {})
+    gm["fx"] = slidefx.clean_react_map(gm.get("fx"))  # the effect rows, defaults filled in
     mq["error"] = mqtt_client.error if mqtt_client else None
     nt = s.setdefault("notifications", {}).setdefault("ntfy", {})
     if nt.get("token"):

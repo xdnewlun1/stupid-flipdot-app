@@ -1,6 +1,7 @@
 // Settings page: location & display, fonts, AI drawing, Music Assistant, MQTT and webhook docs, gamepads, board hardware and maintenance (boardcare.js), backup.
 import { $, api, autosave, bus, confirmDialog, el, fillField as fill, fontCache, fontSelect, forgetFields, loadFonts, renderDots, rowsToGrid, safe, toast, undoable, unsavedFields, uploadFile } from "./common.js";
 import { loadBoardCare } from "./boardcare.js";
+import { reactTable, setStatus } from "./musicreact.js";
 import { offerRestart, refreshOps } from "./ops.js";
 
 let settings = {};
@@ -23,6 +24,7 @@ export async function loadSettings() {
   fill("scName", sc.name || "Flipdot board");
   fill("scDelay", sc.delay_ms ?? 150);
   showAudioSource();
+  loadGamesMusic();
   const ma = settings.music_assistant || {};
   fill("maUrl", ma.url || "");
   fill("maToken", ma.token || "");
@@ -65,7 +67,7 @@ const FIELDS = {
   visualizer: ["vaSource"], snapcast: ["scHost", "scPort", "scCtrl", "scName", "scDelay"],
   music_assistant: ["maUrl", "maToken"], ai: ["aiKey", "aiModel"],
   mqtt: ["mqEnabled", "mqHost", "mqPort", "mqUser", "mqPass", "mqPrefix", "mqDiscovery", "mqDiscPrefix"],
-  gamepad: ["gpEnabled", "gpDeadzone", "gpMenu"], quiet_hours: ["qhEnabled", "qhStart", "qhEnd", "qhMax", "qhSlow"],
+  gamepad: ["gpEnabled", "gpDeadzone", "gpMenu"], games: ["gmEnabled", "gmAmount", "gmFallback"], quiet_hours: ["qhEnabled", "qhStart", "qhEnd", "qhMax", "qhSlow"],
   board_health: ["wearAuto", "wearTime"],
 };
 export const savedSection = section => forgetFields(Object.keys(section).flatMap(k => FIELDS[k] || []));
@@ -102,7 +104,48 @@ const SECTIONS = [
     } }) },
   { note: "gpSaved", ids: ["gpEnabled", "gpDeadzone", "gpMenu"],
     build: () => ({ gamepad: { enabled: $("gpEnabled").checked, deadzone: +$("gpDeadzone").value, menu_button: $("gpMenu").value } }) },
+  { note: "gmSaved", ids: ["gmEnabled", "gmAmount", "gmFallback"], build: () => ({ games: { music: gamesMusic() } }) },
 ];
+
+// ---- Music effects on games (Settings → Music): the slideshows' effects table, saved as settings.games.music ----
+let gmTable = null;
+function gamesMusic() {
+  return { enabled: $("gmEnabled").checked, amount: +$("gmAmount").value, fallback: $("gmFallback").value, fx: gmTable?.rows || null };
+}
+function loadGamesMusic() {
+  const gm = settings.games?.music || {};
+  fill("gmEnabled", !!gm.enabled, "checked");
+  fill("gmAmount", gm.amount ?? 100);
+  $("gmAmountVal").textContent = `${$("gmAmount").value}%`;
+  fill("gmFallback", gm.fallback || "none");
+  if (!gmTable) {
+    gmTable = reactTable({ box: $("gmRows"), onChange: () => autosave("gmSaved", () => save({ games: { music: gamesMusic() } })).catch(() => {}) });
+    $("gmAmount").addEventListener("input", () => { $("gmAmountVal").textContent = `${$("gmAmount").value}%`; });
+    $("gmEnabled").addEventListener("change", () => { $("gmBody").hidden = !$("gmEnabled").checked; });
+  }
+  if (!document.activeElement?.closest("#gmRows")) gmTable.fill(Array.isArray(gm.fx) ? gm.fx : []);
+  $("gmBody").hidden = !$("gmEnabled").checked;
+  pollGamesMusic();
+}
+// the status line and the table's meters, while the Music group is open with the effects on
+let gmTimer = null, gmBusy = false;
+async function pollGamesMusic() {
+  clearTimeout(gmTimer);
+  const open = !document.hidden && !$("gmBody").hidden && !document.querySelector('.setGroup[data-set="music"]')?.hidden;
+  if (!open) return;
+  if (!gmBusy) {
+    gmBusy = true;
+    try {
+      const j = await api(`/api/audio/levels${$("gmFallback").value === "beat" ? "?fallback=beat" : ""}`);
+      setStatus($("gmStatus"), j);
+      gmTable?.setMeters(j);
+    } catch { /* next time */ } finally { gmBusy = false; }
+  }
+  gmTimer = setTimeout(pollGamesMusic, 400);
+}
+document.addEventListener("visibilitychange", () => { if (!document.hidden) pollGamesMusic(); });
+document.querySelectorAll('[data-set]').forEach(b => b.addEventListener("click", () => setTimeout(pollGamesMusic, 0)));
+$("gmEnabled").addEventListener("change", () => setTimeout(pollGamesMusic, 0));
 for (const sec of SECTIONS) {
   let timer = null;
   const go = () => {

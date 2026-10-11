@@ -18,6 +18,7 @@ from canvas import wrap_text
 from fonts import NORMAL, SMALL
 
 from .base import App, P, register
+from .react import GAME_REACT_PARAMS
 
 log = logging.getLogger("doom")
 
@@ -145,6 +146,7 @@ class Doom(App):
         P("hud", "checkbox", True, "Show health and ammo at the bottom"),
         P("quiet", "select", "refuse", "During quiet hours", options=[
             ["refuse", "Don't run"], ["slow", "Run at 3 updates per second"]]),
+        *GAME_REACT_PARAMS,
     ]
 
     def __init__(self, ctx, **params):

@@ -15,7 +15,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import aidraw  # noqa: E402
 import apps  # noqa: E402
-from apps import base, pack_party, party_drums, party_pictionary, party_quiz, party_rhythm, scores  # noqa: E402
+from apps import base, pack_party, party_drums, party_minis, party_pictionary, party_quiz, party_rhythm, scores  # noqa: E402
 from canvas import Canvas  # noqa: E402
 from runner import Context  # noqa: E402
 
@@ -88,6 +88,62 @@ class Lobby(unittest.TestCase):
         frame(app, t)
         self.assertEqual(app.state, "playing")
         self.assertEqual(app.seats, [2])
+
+    def test_rounds_are_picked_in_the_lobby(self):
+        app, t = make("party", cpu="none", rounds=6)
+        frame(app, t)
+        self.assertEqual(app.rounds, 6)
+        press(app, "right", 3)  # anyone in the lobby can adjust, joined or not
+        frame(app, t)
+        self.assertEqual(app.rounds, 8)
+        app.phone("adjust", {"delta": -1}, 1)
+        app.phone("adjust", {"delta": -1}, 1)
+        self.assertEqual(app.rounds, 5)
+        self.assertEqual(app.phone_state(1)["adjust"], "rounds")
+        self.assertEqual(app.phone_state(1)["rounds"], 5)
+        for _ in range(12):
+            app.phone("adjust", {"delta": -1}, 1)
+        self.assertEqual(app.rounds, pack_party.ROUND_CHOICES[0])
+        c = frame(app, t)
+        self.assertIn("3 ROUNDS", app.lobby_extra(t[0]))
+        self.assertGreater(lit(c), 0)
+        start(app, t, (1,))
+        self.assertEqual(app.state, "playing")
+        self.assertNotIn("adjust", app.phone_state(1))
+        app.lobby_reset(t[0])
+        self.assertEqual(app.rounds, 3)  # the lobby's choice sticks for the next match
+
+    def test_difficulty_ramps_over_the_rounds(self):
+        app, t = make("party", rounds=6)
+        app.round = 1
+        self.assertEqual(app.stage(), 0.0)
+        app.round = 6
+        self.assertEqual(app.stage(), 1.0)
+        app.round = 3
+        self.assertAlmostEqual(app.stage(), 0.4)
+        app.rounds = 20
+        app.round = 6
+        self.assertEqual(app.stage(), 1.0)  # full by round 6 in a long match too
+        app.rounds = 3
+        app.round = 3
+        self.assertEqual(app.stage(), 1.0)  # a short match reaches the top in its last round
+
+    def test_picks_alternate_kinds_and_never_repeat_early(self):
+        app, t = make("party", cpu="none", rounds=20)
+        app.seats = [1, 2]
+        app.rnd = random.Random(2)
+        app.mini, app.bag = None, []
+        picked = []
+        for _ in range(len(pack_party.MINIGAMES)):
+            app.mini_cls = app.pick()
+            picked.append(app.mini_cls)
+        self.assertEqual(len(set(picked)), len(pack_party.MINIGAMES))  # every game once
+        same = sum(1 for a, b in zip(picked, picked[1:]) if a.kind == b.kind)
+        self.assertLessEqual(same, 4)  # only when the bag runs low
+        app.p["games"] = "brain"
+        self.assertTrue(all(m.kind != "action" for m in app.choices()))
+        app.p["games"] = "action"
+        self.assertTrue(all(m.kind != "brain" for m in app.choices()))
 
     def test_starts_on_its_own_after_the_last_join(self):
         app, t = make("party")
@@ -255,14 +311,156 @@ class MiniGames(unittest.TestCase):
         app, t = self.party((1, 2))
         m = pack_party.QuickCount(app, t[0])
         at = m.answer_at + 0.1
-        m.key(at, "a", 1)  # locks in 20
-        for _ in range(abs(m.n - 20)):
-            m.key(at, "up" if m.n > 20 else "down", 2)
+        m.key(at, "a", 1)  # locks in the starting guess
+        for _ in range(abs(m.n - m.first)):
+            m.key(at, "up" if m.n > m.first else "down", 2)
         m.key(at + 1, "a", 2)
         m.tick(at + 1)
         self.assertTrue(m.done)
         self.assertEqual(m.guess[2], m.n)
-        self.assertEqual(m.ranking()[0], [2] if m.n != 20 else [1, 2])
+        self.assertEqual(m.ranking()[0], [2] if m.n != m.first else [1, 2])
+        self.assertLessEqual(m.n, 9)  # round one: few dots, shown for 3 s
+        self.assertAlmostEqual(m.answer_at - m.show_at, 3.0)
+
+
+class NewMiniGames(unittest.TestCase):
+    """The WarioWare-style rounds in apps/party_minis.py."""
+
+    def party(self, seats=(1, 2), cpus=(), stage=0.0, seed=5):
+        app, t = make("party", cpu="none")
+        app.joined = [s for s in seats if s not in cpus]
+        app.cpus = list(cpus)
+        app.seats = sorted(seats)
+        app.totals = {s: 0 for s in seats}
+        app.state = "playing"
+        app.rnd = random.Random(seed)
+        app.stage = lambda: stage
+        return app, t
+
+    def play(self, m, until, step=0.04):
+        now = m.t0
+        while now < until and not m.done:
+            m.tick(now)
+            m.draw(Canvas(84, 42), now)
+            now += step
+        return now
+
+    def test_prompts_score_right_answers_first_gets_two(self):
+        app, t = self.party((1, 2, 3))
+        m = party_minis.QuickSum(app, t[0])
+        self.assertEqual(sum(1 for k in m.opts if m.opts[k] == m.v), 1)
+        m.key(t[0] + 0.5, m.answer, 2)
+        m.key(t[0] + 0.6, m.answer, 1)
+        wrong = next(k for k in party_minis.BUTTONS if k != m.answer)
+        m.key(t[0] + 0.7, wrong, 3)
+        m.key(t[0] + 0.8, m.answer, 3)  # one answer each
+        self.assertEqual(m.score, {1: 1, 2: 2, 3: 0})
+        m.tick(t[0] + 0.9)
+        self.assertEqual(m.phase, "reveal")
+        self.assertEqual(m.ranking(), [[2], [1], [3]])
+
+    def test_every_prompt_game_runs_through_with_cpus_at_both_stages(self):
+        for cls in party_minis.MINIGAMES:
+            for stage in (0.0, 1.0):
+                app, t = self.party((1, 2, 3, 4), cpus=(2, 3, 4), stage=stage, seed=3)
+                m = cls(app, t[0])
+                end = self.play(m, t[0] + 60)
+                self.assertTrue(m.done, (cls.__name__, stage))
+                self.assertLess(end - t[0], cls.length + 3, (cls.__name__, stage))
+                groups = m.ranking()
+                self.assertEqual(sorted(s for g in groups for s in g), [1, 2, 3, 4], cls.__name__)
+
+    def test_harder_later(self):
+        a, t = self.party(stage=0.0)
+        b, _ = self.party(stage=1.0)
+        self.assertLess(len(party_minis.Combo(a, t[0]).seq), len(party_minis.Combo(b, t[0]).seq))
+        self.assertLess(len(party_minis.Shells(a, t[0]).swaps), len(party_minis.Shells(b, t[0]).swaps))
+        self.assertLess(len(party_minis.GridRecall(a, t[0]).lit), len(party_minis.GridRecall(b, t[0]).lit))
+        self.assertIsNone(party_minis.InOrder(a, t[0]).hide_at)
+        self.assertIsNotNone(party_minis.InOrder(b, t[0]).hide_at)
+        self.assertEqual(pack_party.Memory(a, t[0]).symbols, pack_party.ARROWS)
+        self.assertIn("a", pack_party.Memory(b, t[0]).symbols)
+        self.assertLess(len(pack_party.Memory(a, t[0]).seq), len(pack_party.Memory(b, t[0]).seq))
+        self.assertFalse(pack_party.Reaction(a, t[0]).buttons)
+        self.assertTrue(pack_party.Reaction(b, t[0]).decoys)
+        self.assertFalse(pack_party.MashRace(a, t[0]).switching)
+        self.assertTrue(pack_party.MashRace(b, t[0]).switching)
+        self.assertGreater(pack_party.QuickCount(a, t[0]).answer_at - pack_party.QuickCount(a, t[0]).show_at,
+                           pack_party.QuickCount(b, t[0]).answer_at - pack_party.QuickCount(b, t[0]).show_at)
+
+    def test_simon_says_tricks(self):
+        app, t = self.party((1, 2))
+        m = party_minis.SimonSays(app, t[0])
+        m.trick, m.answer = True, "x"
+        m.key(t[0] + 0.5, "x", 1)  # fell for it
+        self.assertEqual(m.answers[1], ("x", False))
+        m.tick(t[0] + m.ANSWER_S + 0.1)  # time's up: the quiet seat was right
+        self.assertEqual(m.score, {1: 0, 2: 1})
+        m.next_prompt(t[0] + 10)
+        m.trick, m.answer = False, "b"
+        m.key(t[0] + 10.5, "b", 2)
+        self.assertEqual(m.score, {1: 0, 2: 2})
+
+    def test_in_order_and_combo_take_several_presses(self):
+        app, t = self.party((1, 2))
+        m = party_minis.InOrder(app, t[0])
+        for k in m.order[:3]:
+            m.key(t[0] + 1, k, 1)
+            self.assertNotIn(1, m.answers)
+        m.key(t[0] + 1, m.order[3], 1)
+        self.assertEqual(m.answers[1], (m.order[3], True))
+        m.key(t[0] + 1, m.order[1], 2)  # wrong first press: out
+        self.assertEqual(m.answers[2], (m.order[1], False))
+        c = party_minis.Combo(app, t[0])
+        for k in c.seq:
+            c.key(t[0] + 1, k, 1)
+        self.assertEqual(c.score[1], 2)
+
+    def test_shell_game_tracks_the_ball(self):
+        app, t = self.party((1,), stage=1.0)
+        m = party_minis.Shells(app, t[0])
+        xs, raised = m.positions(m.ask_at)
+        slot = min(range(3), key=lambda i: abs(xs[m.ball] - m.SLOT_X[i]))
+        self.assertEqual(m.keys[slot], m.answer)  # the animation ends where the answer says
+        self.assertTrue(m.positions(m.t0 + 0.5)[1])  # the ball shows at first
+
+    def test_moles_and_decoys(self):
+        app, t = self.party((1, 2), stage=1.0)
+        m = party_minis.Moles(app, t[0])
+        m.pop(t[0] + 1)
+        d, up, down, decoy = m.mole
+        m.mole = (d, up, down, False)
+        m.key(up + 0.2, d, 1)
+        self.assertEqual(m.score[1], 1)
+        m.pop(t[0] + 3)
+        d, up, down, _ = m.mole
+        m.mole = (d, up, down, True)
+        m.key(up + 0.2, d, 2)  # whacked a decoy
+        self.assertEqual(m.score[2], -1)
+
+    def test_bank_it(self):
+        app, t = self.party((1, 2))
+        m = party_minis.BankIt(app, t[0])
+        m.bust_at = m.run_at + 5
+        m.key(m.run_at + 2, "a", 1)
+        self.assertEqual(m.took[1], 6)
+        m.tick(m.run_at + 5.1)
+        self.assertIsNotNone(m.bust)
+        self.assertEqual(m.ranking(), [[1], [2]])
+
+    def test_fill_the_glass_follows_the_held_button(self):
+        app, t = self.party((1, 2))
+        m = party_minis.FillGlass(app, t[0])
+        now = m.go_at
+        app.held.add((1, "a"))
+        while m.level[1] < m.target:
+            m.tick(now)
+            now += 0.04
+        app.held.discard((1, "a"))
+        m.tick(now + 0.04)
+        self.assertIn(1, m.locked)
+        self.assertLess(abs(m.level[1] - m.target), 0.5)
+        self.assertEqual(m.ranking()[0], [1])
 
 
 class Simulated(unittest.TestCase):
@@ -296,6 +494,10 @@ class Simulated(unittest.TestCase):
 
     def test_party(self):
         app, states = self.run_game("party", rounds=3, frames=6000)
+        self.assertIn("title", states)  # at least one whole match played through
+
+    def test_party_long_match_every_game(self):
+        app, states = self.run_game("party", rounds=20, frames=40000, cpu="fill", seats=(1,))
         self.assertIn("title", states)  # at least one whole match played through
 
     def test_party_with_cpus(self):

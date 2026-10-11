@@ -76,6 +76,8 @@ DEFAULT_SETTINGS = {
     "board_health": {"auto_exercise": False, "exercise_time": "12:00"},
     "ai": {"api_key": "", "model": "claude-opus-5-5"},
     "gamepad": {"enabled": True, "deadzone": 0.35, "mapping": {}, "menu_button": "hold_start"},  # menu_button: hold_start | off
+    # music effects on top of every game (apps/react.py game_music); fx None = the slideshows' default table
+    "games": {"music": {"enabled": False, "amount": 100, "fallback": "none", "fx": None}},
 }
 
 
