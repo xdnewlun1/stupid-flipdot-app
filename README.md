@@ -549,11 +549,14 @@ Snapcast, the same signal the visualizer uses) drive effects on top of the pictu
 
 - Each part of the music drives one effect, with an amount and a sensitivity. Defaults: **bass** (kick
   drum, low notes) → glitch, **mid** → wave (it sways further in groovy, syncopated music), **high**
-  (hi-hats) → static, **beat** → a one-frame invert,
+  (hi-hats) → static, **beat** → an invert (held just long enough for the discs to show it whole, then
+  back; or **Invert sweep**: an inverted band crosses the picture left to right at the speed the panels'
+  own wave would, while the GIF keeps playing under it; its amount is the band's width, 100% = the whole
+  picture inverted at the peak),
   **loudness** → tones all of them down in quiet parts. Life and Melt aren't offered: they build up over
   time and don't suit a strength that changes every frame. Several effects can run at once; they're
   applied in a fixed order (pixelate, mirror, kaleidoscope, wave, glitch, outline, scanlines, static,
-  flash, invert), after the item's random effect and the transition between items.
+  flash, invert sweep, invert), after the item's random effect and the transition between items.
 - **Follows** (bass, low-mid, mid, high rows): **level** (how loud that part is), **notes and hits** (each
   new bass note, snare, clap or hi-hat, found per band from the rise in its spectrum, so a moving bassline
   under a steady loud bass, ghost notes and off-beat hats all register), or **level and hits** (some of
