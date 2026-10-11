@@ -84,11 +84,22 @@ class Hub:
         self.cond = threading.Condition()
         self.seq = 0
         self.clients = 0
+        self._status = (-1, b"")  # (seq it was built for, status JSON): built once per change, shared by every client
+        self._status_lock = threading.Lock()
 
     def notify(self):
         with self.cond:
             self.seq += 1
             self.cond.notify_all()
+
+    def status(self):
+        """The current status message. runner.status() takes the runner's lock, so with several browsers open it's
+        built once per change by the first sender to get here and reused by the rest, not once per browser per frame."""
+        seq = self.seq
+        with self._status_lock:
+            if self._status[0] != seq:
+                self._status = (seq, json.dumps({"type": "status", "runner": self.runner.status()}).encode())
+            return self._status[1]
 
     def serve(self, sock, rfile):
         """Run one client connection (blocks until it closes)."""
@@ -116,9 +127,9 @@ class Hub:
                     if version != last_version:
                         send(0x2, struct.pack("!IHH", version & 0xFFFFFFFF, self.board.width, self.board.height) + bits)
                         last_version = version
-                    status = json.dumps({"type": "status", "runner": self.runner.status()})
+                    status = self.status()
                     if status != last_status:
-                        send(0x1, status.encode())
+                        send(0x1, status)
                         last_status = status
                     last_send = time.time()
                     if last_send - last_ping > PING_EVERY:

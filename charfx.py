@@ -14,14 +14,14 @@ CHAR_PARAMS = [
 
 
 def crop(c, x, y, w, h):
+    """The w x h box of c at (x, y) as a Canvas (black beyond c's edge), a row slice at a time."""
     out = Canvas(w, h)
-    for yy in range(h):
-        sy = y + yy
-        if 0 <= sy < c.h:
-            for xx in range(w):
-                sx = x + xx
-                if 0 <= sx < c.w:
-                    out.px[yy * w + xx] = c.px[sy * c.w + sx]
+    sx0, sx1 = max(0, x), min(c.w, x + w)
+    if sx0 >= sx1:
+        return out
+    for yy in range(max(0, -y), min(h, c.h - y)):
+        s = (y + yy) * c.w
+        out.px[yy * w + sx0 - x:yy * w + sx1 - x] = c.px[s + sx0:s + sx1]
     return out
 
 

@@ -33,7 +33,7 @@ $(OBJDIR):
 $(OBJDIR)/%.o: $(DG)/%.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
-$(OBJDIR)/doomgeneric_flipdot.o: doomgeneric_flipdot.c
+$(OBJDIR)/doomgeneric_flipdot.o: doomgeneric_flipdot.c geodots.h
 	$(CC) $(CFLAGS) -Wall -c $< -o $@
 
 clean:

@@ -24,6 +24,7 @@ class Context:
     height: int
     store: object
     wake: object = None  # call to render again now (e.g. a frame arrived from an emulator); None inside layers
+    board: object = None  # the flipdot.Board, for its timing (settle_time()); None in tests and inside layers
 
 
 class Runner:
@@ -31,7 +32,7 @@ class Runner:
         self.board = board
         self.store = store
         self.wake = threading.Event()
-        self.ctx = Context(board.width, board.height, store, self.wake.set)
+        self.ctx = Context(board.width, board.height, store, self.wake.set, board)
         self.mode = "manual"  # manual | app | playlist | schedule
         self.app = None
         self.playlist = None

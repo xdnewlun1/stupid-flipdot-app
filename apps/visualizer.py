@@ -16,6 +16,7 @@ import time
 import zlib
 
 import audio_signal
+import fastpath
 from canvas import Canvas
 from transitions import Transition, _distance_field, smoothstep
 
@@ -703,9 +704,8 @@ class LazyMorph:
             self.fields[self.turn] = _distance_field((old, new)[self.turn])
             self.turn ^= 1
         a, b = self.fields
-        q = 1 - p
         out = Canvas(self.w, self.h)
-        out.px = bytearray(1 if q * da + p * db > 0 else 0 for da, db in zip(a, b))
+        out.px = bytearray(fastpath.morph_blend(a, b, p))
         return out
 
 

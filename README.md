@@ -82,7 +82,9 @@ waits `cooldown` seconds (default 60) before it can fire again.
 A panel mounted upside down can be fixed with `rotate: "180"` in its `config.yaml` entry.
 Each bus (ip:port) is sent to on its own thread, so one that is unreachable doesn't hold up the others. Set `baud:` in
 `config.yaml` to the converter's RS485 speed and sends are paced to it, so fast animations show the newest picture
-instead of queuing up lag; `sync_refresh: true` writes every panel first and then flips them all at once.
+instead of queuing up lag; `sync_refresh: true` writes every panel first and then flips them all at once, and
+`auto` does that for a whole new picture only. A change to half the board or more starts on every bus at the same
+moment, so the columns of panels flip together.
 Panels flip their columns left to right, so on a big change a panel's right edge lands after the left edge of the
 panel beside it. `sweep_ms:` (how long one panel takes to sweep) starts each column of panels that much after the
 one to its left, so the change crosses the board as one wave. Moving content (video, games, transitions) would
@@ -375,7 +377,7 @@ sudo apt install build-essential git curl unzip
 
 The script fetches [doomgeneric](https://github.com/ozkl/doomgeneric) at a pinned commit into
 `native/doom/build/` and builds it with our platform file `native/doom/doomgeneric_flipdot.c` (it
-writes small gray frames + player stats to stdout and reads key events from stdin). It downloads
+writes the board's dots (or small gray frames) + player stats to stdout and reads key events from stdin). It downloads
 [Freedoom: Phase 1](https://freedoom.github.io/) into `data/doom/`, so it's kept in `storage.db`;
 pick the shareware WAD in the app's settings if you installed it. Neither the engine source nor
 any WAD is in this repo.

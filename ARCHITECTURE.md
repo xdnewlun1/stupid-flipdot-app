@@ -45,6 +45,7 @@ The server is one Python process with many threads, plus a few child processes f
 | one per WebSocket | `ws.Hub` sender | pushes the packed picture and status to that browser |
 | audio | `snapcast_link` reader + log reader, or Sendspin's asyncio loop | reads and analyses the live audio |
 | background | timelapse recorder, board care, gamepad, MQTT, automations, widget fetches, video conversion and decode-ahead, storage mirror | mostly asleep or waiting on I/O |
+| settings | one worker applying Settings changes (`server._apply_settings`) | restarts snapclient, the gamepad reader or MQTT in order; the HTTP reply doesn't wait for them |
 | child process | `nes_flipdot`, `doomgeneric_flipdot` | the emulators, talking over stdin/stdout pipes |
 | child process | `snapclient`, `ffmpeg` | audio decoding; video conversion |
 
@@ -97,7 +98,10 @@ A `Canvas` is a `bytearray` with **one byte per dot** (0 or 1), row-major. It dr
 circles, text in the bitmap fonts (`fonts.py`, proportional by trimming empty columns) and
 seven-segment digits. The same layout is used everywhere a whole picture moves around: the board's
 framebuffer, layers, transitions and the video decoder, so pictures are copied with slices rather than
-dot by dot. `charfx.py` animates single characters of a clock or text (odometer roll, flap...).
+dot by dot. Filled rectangles, `blit` (a row-slice copy, or a big-integer OR per row when transparent),
+`invert`, `rows()` and `from_rows()` work on whole rows with slices and `bytes.translate`, so a GIF frame or a
+seven-segment clock costs microseconds rather than a per-dot Python loop. `charfx.py` animates single
+characters of a clock or text (odometer roll, flap...).
 
 ### The runner (`runner.py`)
 
@@ -126,6 +130,12 @@ Two kinds, both mixing an old picture into a new one over `duration` seconds (ea
   cache of fields keyed by picture (GIF frames repeat); *migrate/scatter* pair the white dots of both
   pictures along a Hilbert curve; *life* runs Game of Life settling into the new picture.
 
+None of these loop over dots in Python any more. A reveal keeps a mask that grows as its time passes (one
+pass over the dots for the whole transition, not one per frame) and composites old and new as big
+integers; slides and pushes are two row-slice blits; flip and melt move whole columns with extended
+slices; zoom and pixelate are Pillow affine/reduce calls; ghost is one XOR; the distance fields, the morph
+blend and Life generations are C (`fastpath.py`, below), with their Python twins as the fallback.
+
 The outgoing app keeps animating under the transition, so both sides move. The music visualizer's Mix
 has its own `LazyMorph` (see [Music](#music-the-visualizer-and-steady-timing)).
 
@@ -138,6 +148,15 @@ and *cut* are AND with a box, *halo* dilates the layer by shifting the integer i
 Density (Bayer-dithered) and scrolling are applied on the same bitmaps. A layer only re-renders when
 its own interval is due; the stack's interval is the soonest of its layers.
 
+### The native helper (`fastpath.py`, `native/fast/fast.c`)
+
+Three per-dot algorithms have no slice, `translate`, big-integer or Pillow formulation: the chamfer
+distance field, the morph blend of two fields, and a Game of Life generation. `fastpath.py` holds each in
+Python and loads the same three from `native/fast/fast.c` through `ctypes`, building the shared library
+with the system C compiler the first time (well under a second on the Pi; `native/fast/build/`, ignored by
+git). Without a compiler the Python versions run; `FLIPDOT_NO_NATIVE=1` forces them. `tests/test_fast.py`
+checks C against Python, and every slice/big-integer rewrite against the per-dot loop it replaced.
+
 ## The board driver (`flipdot.py`)
 
 ### Protocol
@@ -145,7 +164,8 @@ its own interval is due; the stack's interval is the soonest of its layers.
 Each 28×7 panel takes one frame: `0x80, cmd, address, 28 column bytes, 0x8F`, where each column byte
 holds the 7 dots of a column (bit 0 at the top). `0x83` writes and flips at once. With
 `sync_refresh: true`, panels are written with `0x84` (write, don't flip yet) and one `0x80 0x82 0x8F`
-then flips every panel on that bus together. A panel mounted upside down has `rotate: 180`.
+then flips every panel on that bus together; `auto` does that when a send covers at least half the bus (a
+whole new picture) and writes a small change with `0x83`. A panel mounted upside down has `rotate: 180`.
 
 ### Framebuffer and change detection
 
@@ -181,18 +201,28 @@ driver chooses per change how the buses are timed:
 | Mode | When | What the buses do |
 |---|---|---|
 | **Sweep wave** | a change that stands on its own (`sweep_mode: auto`: the previous wave has finished) | each column of panels starts `sweep_ms` after the one to its left, so a big change crosses the board as one wave; with `sync_refresh` only the 3-byte refresh is staggered |
-| **Together** | moving content (changes closer together than a wave), or any game (`board.interactive`) | every bus sends at once: no tearing between columns, no extra delay for the first move after standing still |
+| **Together** | moving content (changes closer together than a wave), or any game (`board.interactive`) | every bus sends at once: no tearing between columns, no extra delay for the first move after standing still. A change to half the board or more starts on every bus at the moment the slowest one is free (`_start_at`), so a bus still sending the previous picture doesn't leave its column a picture behind |
 | **Steady** | the music visualizer and Sync test (`board.steady`) | no wave; a bus with any change resends **all** its panels in a fixed order (unchanged ones get identical data, so no extra flips) and the picture goes out at a fixed `present_at` time; every change takes the same time to reach the discs |
 | **Flip budget** | quiet hours (`max_flips_per_sec`) | a shared token bucket; panels over budget wait and pick up the newest picture later |
 
 `POST /api/board/timing` changes `sweep_ms`, `sweep_mode` and `sync_refresh` live, for tuning by eye.
 
+`Board.settle_time()` is about how long a whole new picture takes to land (coalescing, the busiest bus's
+serial time, the sweep: ~140 ms here). The slideshow's music reaction uses it: a switched effect (the beat
+invert) changes every dot, and a beat pulse is past half for only ~100 ms, so the board used to get the
+inverted picture, two more (the GIF and the other effects moving on) and the plain one before the first had
+landed, a patchwork of panels in different states. Now a switch holds the picture, exactly as sent, for the
+settle time, so the board shows the inverted picture whole, then the plain one, then the GIF carries on;
+Flash never toggles faster than that either.
+
 ## Live views
 
 - **WebSocket** (`ws.py`, stdlib RFC 6455): each browser gets a sender thread that wakes on any board
   or status change, throttled to 40 messages a second: a binary message (`u32 version, u16 w, u16 h`,
-  then the dots packed MSB first) and a JSON status when it changed. Browsers send input, drawing dots,
-  drawing-layer pictures and live-stream frames the other way. Pages fall back to polling `/api/board`.
+  then the dots packed MSB first) and a JSON status when it changed. The status JSON is built once per
+  change (`Hub.status`) and shared, since `runner.status()` takes the runner's lock: three open tabs cost
+  one call, not three. Browsers send input, drawing dots, drawing-layer pictures and live-stream frames
+  the other way. Pages fall back to polling `/api/board`.
 - **Timelapse** (`timelapse.py`): a ring buffer of packed pictures (at most 10 a second, 30 minutes,
   4 MB), rendered to an animated GIF with Pillow on request.
 
@@ -215,8 +245,11 @@ driver chooses per change how the buses are timed:
 programs the apps start as child processes:
 
 - **stdout**: a header plus the picture (NES: palette colours, a layer plane, sprites and palette RAM;
-  Doom: 160×100 grey plus a geometry plane of surface type and distance), at the app's
-  "Board updates per second".
+  Doom: for the outline and wireframe looks the engine turns its geometry plane of surface type and
+  distance into the **board's dots itself** (`native/doom/geodots.h`, an `FDM3` frame of 84×36 bytes), and
+  sends 160×100 grey plus the geometry plane (`FDM2`, 32 KB) only for menus, the automap and the shaded
+  look), at the app's "Board updates per second". `tests/test_doom_geo.py` checks the C outline against
+  the Python original (`apps/doom.draw_geometry`, kept as the fallback for an older build) dot for dot.
 - **stdin**: 3-byte (NES) or 2-byte (Doom) key events.
 - **Latency**: after any button goes down or up, the emulator also sends every 2nd frame (NES) or every
   tic (Doom) for about 150 ms, then carries on at the normal rate from there, so a press shows up within
@@ -282,7 +315,10 @@ side a frame instead, so steady timing holds.
   **panel setup** (`panelsetup.py`: identify panels, validate a mapping, rewrite `config.yaml`'s
   `panels:` block, applied without a restart).
 - **Web UI** (`static/`): plain ES modules, no build step. `index.html` is the main app, `play.html` the
-  phone controller, `guest.html` the guest wall form.
+  phone controller, `guest.html` the guest wall form. The server keeps the files in memory, gzipped, with an
+  `ETag` (`server.StaticFile`): opening a page is a handful of 304s, not 400 KB read off the SD card. The big
+  board canvas only repaints when it's on screen (Now playing, Draw); a Settings save refills just the saved
+  section from the POST's reply instead of reloading the page's data.
 
 ## Performance
 
@@ -303,6 +339,22 @@ is roughly 2.5-3× slower for single-threaded Python.
 | Morph transition frame | 11 ms | 8.7 ms (identical output) |
 | Audio analysis frame (FFT) | 0.39 ms | 0.21 ms (identical output) |
 
+A second round moved the remaining per-dot Python out of the frame paths (desktop again; identical output
+unless noted):
+
+| Step | Before | Now |
+|---|---|---|
+| Distance field (morph, visualizer Mix) | 1.18 ms | 0.019 ms (C) |
+| Visualizer Mix morph frame, both fields | 2.7 ms | 0.044 ms |
+| Game of Life generation (app, transition, slideshow effect) | 0.62 ms | 0.017 ms (C) |
+| Reveal transitions (dissolve, wipes...) per frame | 0.08-0.15 ms | 0.010-0.014 ms |
+| Push / slide / zoom / pixelate transition frame | 0.25-0.64 ms | 0.004-0.017 ms (zoom via Pillow: same picture to a dot) |
+| Slideshow effects outline / pixelate / melt | 0.32 / 0.48 / 0.15 ms | 0.013 / 0.020 / 0.026 ms |
+| Plasma / Metaballs / Fire frame | 1.67 / 1.33 / 0.97 ms | 0.58 / 0.55 / 0.68 ms (Plasma: a float tie or two) |
+| Canvas blit of a whole GIF frame | 0.41 ms | 0.036 ms (0.006 opaque) |
+| Filled rectangle (seven-segment digits) | 0.27 ms | 0.004 ms |
+| Doom outline look, per frame | ~1 ms, GIL held | in the engine (C); 3 KB frames instead of 32 KB |
+
 Most apps render in 0.1-2.5 ms. Game input latency (press to board picture, 10 updates a second):
 NES (a stand-in emulator with the real send timing) 111-158 ms → 32-90 ms mean, depending on how fast
 the game reacts; Doom (the real engine) 117 → 39 ms mean, 205 → 61 ms worst.
@@ -314,13 +366,16 @@ the game reacts; Doom (the real engine) 117 → 39 ms mean, 205 → 61 ms worst.
 - Steady pictures must be rendered within 25 ms of the frame starting (`runner.STEADY_BUDGET`); a
   visualizer frame is a few ms even with a morph running.
 - The Snapcast analysis is 0.2 ms a frame on the desktop, so well under 1 ms on the Pi 5 (estimated), 50 a second.
+- What's left per frame in Python is a few hundred µs at most (the visualizer's tunnel, vortex and moire
+  styles, scatter/migrate pairs, the Fire heat loop); everything else is slices, `translate`, big integers,
+  Pillow or C.
 
 ### Tuning (`config.yaml`)
 
 | Setting | Effect |
 |---|---|
 | `baud: 57600` | pace sends to the RS485 line (0 = don't pace) |
-| `sync_refresh: true` | write all panels, then flip them together (no tearing; tightest steady timing) |
+| `sync_refresh: auto` | write all panels, then flip them together, for a whole new picture (`true`: always; no tearing, tightest steady timing) |
 | `sweep_ms: 85` | the panels' left-to-right flip time, for the sweep wave (0 = off) |
 | `sweep_mode: auto` | wave only for standalone changes; `always` for every change |
 

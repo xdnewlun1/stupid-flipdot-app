@@ -20,7 +20,7 @@ from pathlib import Path
 log = logging.getLogger("storage")
 
 SCHEMA_VERSION = 1
-MIRROR_EVERY = 5  # seconds
+MIRROR_EVERY = 15  # seconds: saves and uploads are copied in at once (sync); this catches files written by hand
 RESTORE_SUFFIX = ".restore"  # an uploaded backup waiting to replace the database at the next start
 
 

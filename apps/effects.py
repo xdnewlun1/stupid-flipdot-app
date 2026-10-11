@@ -118,16 +118,23 @@ class Metaballs(App):
             if not 0 < b[0] < c.w: b[2] = -b[2]
             if not 0 < b[1] < c.h: b[3] = -b[3]
         w, h, px = c.w, c.h, c.px
-        balls = [(bx, by, r * r) for bx, by, _, _, r in self.balls]
         outline = self.p["outline"]
+        # per ball: its squared x distance to every column once; then each row adds one ball at a time to the
+        # row's field with a list comprehension (C-speed iteration), instead of a Python loop per dot per ball
+        cols = [[(x - bx) ** 2 for x in range(w)] for bx, _, _, _, _ in self.balls]
+        rr = [r * r for _, _, _, _, r in self.balls]
+        out = bytearray()
         for y in range(h):
-            row = y * w
-            for x in range(w):
-                f = 0.0
-                for bx, by, r2 in balls:
-                    dx, dy = x - bx, (y - by) * 1.6
-                    f += r2 / (dx * dx + dy * dy + 0.5)
-                px[row + x] = (1 if 1.0 < f < 1.35 else 0) if outline else (1 if f > 1.0 else 0)
+            dys = [((y - by) * 1.6) ** 2 + 0.5 for _, by, _, _, _ in self.balls]
+            if not outline and sum(r2 / dy for r2, dy in zip(rr, dys)) <= 1.0:
+                out += bytes(w)  # even straight above/below every ball the field stays under the threshold
+                continue
+            r2, dxs, dy = rr[0], cols[0], dys[0]
+            f = [r2 / (dx + dy) for dx in dxs]
+            for r2, dxs, dy in zip(rr[1:], cols[1:], dys[1:]):
+                f = [v + r2 / (dx + dy) for v, dx in zip(f, dxs)]
+            out += bytes((1.0 < v < 1.35) if outline else (v > 1.0) for v in f)
+        px[:] = out
 
 
 @register
@@ -274,19 +281,29 @@ class Fire(App):
         self.heat = [0] * (self.w * self.h)
 
     def render(self, c, now):
-        w, h, heat, rnd = c.w, c.h, self.heat, self.rng.random
-        for x in range(w):
-            heat[(h - 1) * w + x] = 36 if rnd() < 0.8 else 20
+        w, h, heat, rng = c.w, c.h, self.heat, self.rng
+        rb = rng.randbytes(w)
+        heat[(h - 1) * w:] = [36 if b < 205 else 20 for b in rb]  # 80 % hot
         decay = 1.4 / float(self.p["height"])
-        for y in range(h - 1):
-            for x in range(w):
-                src = (y + 1) * w + min(w - 1, max(0, x + int(rnd() * 3) - 1))
-                heat[y * w + x] = max(0, heat[src] - int(rnd() * decay * 2.2))
+        # each dot takes the heat of one of the three dots below it, less a random bit: two random bytes per dot
+        # (randbytes is C) instead of two random() calls, and the row above as a list for the lookups
+        last = w - 1
+        for y in range(h - 2, -1, -1):
+            below = heat[(y + 1) * w:(y + 2) * w]
+            drift, loss = rng.randbytes(w), rng.randbytes(w)
+            heat[y * w:(y + 1) * w] = [
+                max(0, below[min(last, max(0, x + d % 3 - 1))] - int(l * decay * 2.2 / 256))
+                for x, d, l in zip(range(w), drift, loss)]
+        # heat (0..36) to dots through a 256-entry table per Bayer column phase, on the four interleaved columns
         px = c.px
         for y in range(h):
-            brow = BAYER4[y % 4]
-            for x in range(w):
-                px[y * w + x] = 1 if heat[y * w + x] * 16 / 36 > brow[x % 4] + 0.5 else 0
+            luts = self._luts[y % 4]
+            row = bytes(heat[y * w:(y + 1) * w])
+            px[y * w:(y + 1) * w] = row.translate(luts[0])
+            for k in (1, 2, 3):
+                px[y * w + k:(y + 1) * w:4] = row[k::4].translate(luts[k])
+
+    _luts = [[bytes(1 if v * 16 / 36 > BAYER4[r][k] + 0.5 else 0 for v in range(256)) for k in range(4)] for r in range(4)]
 
 
 # ---- random effects -----------------------------------------------------------------

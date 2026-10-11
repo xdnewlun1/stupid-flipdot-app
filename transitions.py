@@ -13,9 +13,17 @@ from array import array
 
 from PIL import Image
 
-from canvas import Canvas
+import fastpath
+from canvas import Canvas, _BITS, _FLIP
 
 BAYER4 = [[0, 8, 2, 10], [12, 4, 14, 6], [3, 11, 1, 9], [15, 7, 13, 5]]
+_FF = bytes([0] + [255] * 255)  # dot -> 0x00/0xFF, for masks used as big integers
+_NONZERO = bytes([0] + [1] * 255)
+
+
+def _ones(n):
+    """Big-integer mask with 0xFF in every byte (whole-picture bitwise work, as apps/layers.py does)."""
+    return (1 << (8 * n)) - 1
 
 
 def smoothstep(p):
@@ -112,15 +120,11 @@ def _slide(direction, push):
         # the new picture enters from the opposite side; with push the old one moves out with it
         ox, oy = round(-dx * w * (1 - p)), round(-dy * h * (1 - p))
         px_, py_ = round(dx * w * p), round(dy * h * p)
-        for y in range(h):
-            for x in range(w):
-                nx, ny = x - ox, y - oy
-                if 0 <= nx < w and 0 <= ny < h:
-                    out.px[y * w + x] = new.px[ny * w + nx]
-                elif push:
-                    out.px[y * w + x] = old.get(x - px_, y - py_)
-                else:
-                    out.px[y * w + x] = old.px[y * w + x]
+        if push:
+            out.blit(old, px_, py_, transparent=False)  # the old picture on its way out (black beyond its edge)
+        else:
+            out.px[:] = old.px
+        out.blit(new, ox, oy, transparent=False)  # row-slice copies, no per-dot work
         return out
     return render
 
@@ -132,14 +136,20 @@ def _zoom(grow):
         front, back, s = (new, old, p) if grow else (old, new, 1 - p)
         if s <= 0.01:
             return back.copy()
-        cx, cy = (w - 1) / 2, (h - 1) / 2
-        for y in range(h):
-            for x in range(w):
-                fx, fy = round((x - cx) / s + cx), round((y - cy) / s + cy)
-                inside = 0 <= fx < w and 0 <= fy < h
-                out.px[y * w + x] = front.px[fy * w + fx] if inside else back.px[y * w + x]
+        # Pillow scales the front picture about the middle (nearest neighbour, in C); where it doesn't reach,
+        # the back picture shows through
+        img = _turned(front, 0.0, s)
+        inside = _scaled_mask(w, h, s)
+        out.px = bytearray(Image.composite(img, Image.frombytes("L", (w, h), bytes(back.px)), inside).tobytes())
         return out
     return render
+
+
+def _scaled_mask(w, h, s):
+    """0xFF where a picture scaled by s about the middle lands on the board."""
+    cx, cy = w / 2, h / 2
+    a = 1 / s
+    return Image.new("L", (w, h), 255).transform((w, h), Image.AFFINE, (a, 0, cx - a * cx, 0, a, cy - a * cy), Image.NEAREST)
 
 
 def _flip(t, old, new, p):
@@ -153,8 +163,7 @@ def _flip(t, old, new, p):
     for x in range(w):
         fx = round((x - cx) / s + cx)
         if 0 <= fx < w:
-            for y in range(h):
-                out.px[y * w + x] = src.px[y * w + fx]
+            out.px[x::w] = src.px[fx::w]  # the whole column in one slice
     return out
 
 
@@ -166,8 +175,8 @@ def _melt(t, old, new, p):
     out = new.copy()
     for x in range(w):
         drop = round(h * min(1.0, p * t.state["speeds"][x]) ** 2)
-        for y in range(drop, h):
-            out.px[y * w + x] = old.px[(y - drop) * w + x]
+        if drop < h:
+            out.px[drop * w + x::w] = old.px[x:(h - drop) * w:w]  # the column, shifted down, in one slice
     return out
 
 
@@ -178,14 +187,19 @@ def _pixelate(t, old, new, p):
     if block <= 1:
         return src.copy()
     out = Canvas(w, h)
-    for by in range(0, h, block):
-        for bx in range(0, w, block):
-            cells = [src.px[y * w + x] for y in range(by, min(by + block, h)) for x in range(bx, min(bx + block, w))]
-            v = 1 if sum(cells) * 2 >= len(cells) else 0
-            for y in range(by, min(by + block, h)):
-                for x in range(bx, min(bx + block, w)):
-                    out.px[y * w + x] = v
+    out.px = bytearray(pixelate(bytes(src.px), w, h, block))
     return out
+
+
+def pixelate(px, w, h, block):
+    """px (bytes of 0/1) in blocks of `block` dots, each block the majority of its dots: Pillow's reduce() averages
+    the blocks (partial ones at the right/bottom edge over the dots they have) and the result is blown back up."""
+    img = Image.frombytes("L", (w, h), bytes(px).translate(_FF)).reduce(block)
+    bw, bh = img.size
+    return img.point(_HALF).resize((bw * block, bh * block), Image.NEAREST).crop((0, 0, w, h)).tobytes()
+
+
+_HALF = [1 if v >= 127 else 0 for v in range(256)]  # half or more white: no block of up to 100 dots averages in [127, 127.5)
 
 
 def _flash(t, old, new, p):
@@ -208,7 +222,7 @@ def _glitch(t, old, new, p):
         row = src.px[y * w:(y + 1) * w]
         row = row[-shift:] + row[:-shift] if shift else row
         if t.rnd.random() < strength * 0.15:
-            row = bytearray(1 - v for v in row)
+            row = row.translate(_FLIP)
         out.px[y * w:(y + 1) * w] = row
     return out
 
@@ -219,7 +233,8 @@ def _ghost(t, old, new, p):
     if p > 2 / 3:
         return new.copy()
     out = old.copy()
-    out.px = bytearray(a ^ b for a, b in zip(old.px, new.px))
+    n = len(old.px)
+    out.px = bytearray((int.from_bytes(old.px, "big") ^ int.from_bytes(new.px, "big")).to_bytes(n, "big"))
     return out
 
 
@@ -288,49 +303,9 @@ def _migrate(scatter):
 
 
 def _distance_field(c):
-    """Signed distance (chamfer) to the white/black boundary: positive inside white areas."""
-    w, h = c.w, c.h
-    INF = 10**6
-    # work on a grid with a one-dot INF border, so neighbours never need bounds checks
-    W2 = w + 2
-    inner = [(y + 1) * W2 + 1 for y in range(h)]  # where each picture row starts in the padded grid
-
-    def dist(target):
-        d = [INF] * (W2 * (h + 2))
-        px = c.px
-        for y, s in enumerate(inner):
-            d[s:s + w] = [0 if v == target else INF for v in px[y * w:(y + 1) * w]]
-        for s in inner:  # forward pass
-            for i in range(s, s + w):
-                b = d[i]
-                if b:
-                    t = d[i - 1] + 3
-                    if t < b: b = t
-                    t = d[i - W2] + 3
-                    if t < b: b = t
-                    t = d[i - W2 - 1] + 4
-                    if t < b: b = t
-                    t = d[i - W2 + 1] + 4
-                    if t < b: b = t
-                    d[i] = b
-        for s in reversed(inner):  # backward pass
-            for i in range(s + w - 1, s - 1, -1):
-                b = d[i]
-                if b:
-                    t = d[i + 1] + 3
-                    if t < b: b = t
-                    t = d[i + W2] + 3
-                    if t < b: b = t
-                    t = d[i + W2 + 1] + 4
-                    if t < b: b = t
-                    t = d[i + W2 - 1] + 4
-                    if t < b: b = t
-                    d[i] = b
-        return [v for s in inner for v in d[s:s + w]]
-
-    to_black, to_white = dist(0), dist(1)
-    # inside white: distance to nearest black (>0); inside black: minus distance to nearest white
-    return [(to_black[i] if v else -to_white[i]) / 3 for i, v in enumerate(c.px)]
+    """Signed distance (chamfer 3-4) to the white/black boundary: positive inside white areas. An array('i') in
+    chamfer units; only the sign of a blend of two fields matters, so the scale is free (fastpath.distance_field)."""
+    return fastpath.distance_field(c.px, c.w, c.h)
 
 
 _df_cache = collections.OrderedDict()  # picture bytes -> distance field (GIF frames repeat every loop)
@@ -340,7 +315,7 @@ def _cached_df(c):
     key = bytes(c.px)
     df = _df_cache.get(key)
     if df is None:
-        df = _df_cache[key] = array("f", _distance_field(c))
+        df = _df_cache[key] = _distance_field(c)
         if len(_df_cache) > 400:
             _df_cache.popitem(last=False)
     else:
@@ -354,9 +329,8 @@ def _morph(t, old, new, p):
     if p >= 1:
         return new.copy()
     a, b = _cached_df(old), _cached_df(new)
-    q = 1 - p
     out = Canvas(old.w, old.h)
-    out.px = bytearray(1 if q * da + p * db > 0 else 0 for da, db in zip(a, b))
+    out.px = bytearray(fastpath.morph_blend(a, b, p))
     return out
 
 
@@ -370,21 +344,18 @@ def _life(t, old, new, p):
         st["cells"], st["steps"] = bytearray(old.px), 0
     target_steps = int(p * 14 * t.duration)  # about 14 generations a second
     cells = st["cells"]
+    n = w * h
     while st["steps"] < target_steps:
         st["steps"] += 1
         q = st["steps"] / max(1, 14 * t.duration)
-        nxt = bytearray(w * h)
-        for y in range(h):
-            up, dn, row = ((y - 1) % h) * w, ((y + 1) % h) * w, y * w
-            for x in range(w):
-                l, r = (x - 1) % w, (x + 1) % w
-                n = (cells[up + l] + cells[up + x] + cells[up + r] + cells[row + l] + cells[row + r]
-                     + cells[dn + l] + cells[dn + x] + cells[dn + r])
-                alive = 1 if n == 3 or (n == 2 and cells[row + x]) else 0
-                if t.rnd.random() < q * q:  # settle into the new picture more and more
-                    alive = new.px[row + x]
-                nxt[row + x] = alive
-        cells = st["cells"] = nxt
+        nxt = fastpath.life_step(cells, w, h)
+        # settle into the new picture more and more: each dot independently with probability q*q, decided by one
+        # random byte per dot (a 256-entry table turns the bytes into a mask; the mask picks new over nxt)
+        thr = min(256, int(q * q * 256))
+        lut = bytes([255] * thr + [0] * (256 - thr))
+        settle = int.from_bytes(t.rnd.randbytes(n).translate(lut), "big")
+        mixed = (int.from_bytes(nxt, "big") & ~settle) | (int.from_bytes(new.px, "big") & settle)
+        cells = st["cells"] = bytearray(mixed.to_bytes(n, "big"))
     out = Canvas(w, h)
     out.px = bytearray(cells)
     return out
@@ -410,11 +381,13 @@ def _flow(turn):
         if "order" not in t.state:
             cx, cy = (w - 1) / 2, (h - 1) / 2
             far = math.hypot(cx, cy)
-            t.state["order"] = [0.6 * math.hypot(x - cx, y - cy) / far + 0.4 * (BAYER4[y % 4][x % 4] + 0.5) / 16
-                                for y in range(h) for x in range(w)]
+            order = [0.6 * math.hypot(x - cx, y - cy) / far + 0.4 * (BAYER4[y % 4][x % 4] + 0.5) / 16
+                     for y in range(h) for x in range(w)]
+            t.state["order"] = bytes(min(255, int(v * 256)) for v in order)  # in 256 steps: one byte per dot
         a = _turned(old, turn * p, 1 + 1.5 * p * p)
         b = _turned(new, -turn * (1 - p), 0.35 + 0.65 * p)
-        mask = Image.frombytes("L", (w, h), bytes(255 if v < p else 0 for v in t.state["order"]))
+        thr = min(256, int(p * 256))
+        mask = Image.frombytes("L", (w, h), t.state["order"].translate(bytes([255] * thr + [0] * (256 - thr))))
         out = Canvas(w, h)
         out.px = bytearray(Image.composite(b, a, mask).tobytes())
         return out
@@ -451,6 +424,17 @@ class Transition:
             times = build(w, h, self.rnd)
             self.order = sorted(range(w * h), key=times.__getitem__)
             self.times = times
+            self._reset_reveal()
+
+    def _reset_reveal(self):
+        """The reveal mask grows as p does (p only ever rises within a transition), so each frame only marks the
+        dots whose time has just come: the whole transition does one pass over the dots, not one per frame."""
+        n = self.w * self.h
+        self._pos = self._edge_pos = 0  # how far along `order` the mask and the leading edge have got
+        self._p = -1.0
+        self._mask, self._edge_mask = bytearray(n), bytearray(n)
+        self._all = _ones(n)
+        self._one = int.from_bytes(b"\x01" * n, "big")
 
     def done(self, now):
         return now - self.start >= self.duration
@@ -462,15 +446,31 @@ class Transition:
         p = smoothstep(min(1.0, max(0.0, (now - self.start) / self.duration)))
         if self.kind in MOVES:
             return MOVES[self.kind](self, self.old, new, p)
-        out = self.old.copy()
-        order, times = self.order, self.times
-        i, n = 0, len(order)
-        while i < n and (times[order[i]] < p or p >= 1):
-            out.px[order[i]] = new.px[order[i]]
-            i += 1
-        if self.edge and 0 < p < 1:
-            # a bright leading edge, which looks great as the discs flip
-            while i < n and times[order[i]] <= p + 0.04:
-                out.px[order[i]] = 1
+        if p < self._p:
+            self._reset_reveal()  # the clock went backwards
+        self._p = p
+        order, times, mask, n = self.order, self.times, self._mask, len(self.order)
+        i = self._pos
+        if p >= 1:
+            while i < n:
+                mask[order[i]] = 1
                 i += 1
-        return out
+        else:
+            while i < n and times[order[i]] < p:
+                mask[order[i]] = 1
+                i += 1
+        self._pos = i
+        m = int.from_bytes(mask.translate(_FF), "big")
+        out = (int.from_bytes(self.old.px, "big") & ~m & self._all) | (int.from_bytes(new.px, "big") & m)
+        if self.edge and 0 < p < 1:
+            # a bright leading edge, which looks great as the discs flip: dots about to switch, not switched yet
+            edge, j = self._edge_mask, max(self._edge_pos, i)
+            limit = p + 0.04
+            while j < n and times[order[j]] <= limit:
+                edge[order[j]] = 1
+                j += 1
+            self._edge_pos = j
+            out |= int.from_bytes(edge.translate(_FF), "big") & ~m & self._one
+        c = Canvas(self.w, self.h)
+        c.px = bytearray(out.to_bytes(n, "big"))
+        return c

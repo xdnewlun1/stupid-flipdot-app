@@ -64,6 +64,17 @@ def main():
             tr.mix(pics[2], tr.start + tr.duration / 2)
         t(f"{kind}, one frame", mix, 20)
 
+    print("fastpath (C if built, else Python) and canvas")
+    import fastpath
+    print(f"  native helpers: {'yes' if fastpath.available else 'no (pure Python)'}")
+    t("distance field (morph)", lambda: fastpath.distance_field(pics[0].px, W, H))
+    fa, fb = fastpath.distance_field(pics[0].px, W, H), fastpath.distance_field(pics[1].px, W, H)
+    t("morph blend of two fields", lambda: fastpath.morph_blend(fa, fb, 0.4))
+    t("life generation", lambda: fastpath.life_step(pics[2].px, W, H))
+    blank = Canvas(W, H)
+    t("canvas blit, whole picture, transparent", lambda: blank.blit(pics[3], 0, 0))
+    t("canvas rect fill, whole board", lambda: blank.rect(0, 0, W, H, fill=True))
+
     print("video")
     n = W * H
     frames = [bytes(rnd.getrandbits(8) for _ in range(n)) for _ in range(video.CHUNK)]
