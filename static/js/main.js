@@ -5,27 +5,35 @@ import { fmtTime, loadVideos } from "./videos.js";
 import { loadGalleries } from "./slideshows.js";
 import { renderAppList } from "./apps.js";
 import { loadPlaylists } from "./playlists.js";
+import "./schedule.js";
 import { loadAutomations } from "./automations.js";
 import { loadCompositions, renderGallery } from "./layers.js";
 import "./scenes.js";
 import { loadSettings } from "./settings.js";
 import { loadQuietHours } from "./boardcare.js";
 import { loadGuestWall } from "./guestwall.js";
+import { loadFriends } from "./friends.js";
+import "./people.js";
+import "./plugins.js";
+import "./mirror.js";
+import { notifyResult } from "./notifications.js";
 
 // ---- pages, grouped the way the sidebar and the phone tab bar show them ----
 const PAGES = {
   now: ["now", "Now playing", "What the board shows right now and why. Stop it, skip ahead, or put something up quickly."],
   draw: ["create", "Draw", "Draw on the board, on a drawing layer that sits on top of what's running, or frame by frame as an animation."],
   import: ["create", "Import", "Photos and GIFs are saved to Pictures, videos to Videos, and several images or a .zip can become a slideshow. Each opens where it lands."],
+  mirror: ["create", "Mirror", "Your silhouette in dots, from a phone, laptop or the board's own camera. It can also take over the board when someone walks up."],
   pictures: ["library", "Pictures", "Everything you've drawn, imported or saved: still pictures, animations and drawing layers."],
   apps: ["library", "Apps", "Clocks, text, widgets, patterns and games. Pick one to set it up and show it."],
   layers: ["library", "Layers", "Stack apps and pictures so they play at the same time, like a clock over Game of Life."],
   slideshows: ["library", "Slideshows", "A playlist made of your own images and GIFs: each one stays up for a set time, then the next one starts."],
   videos: ["library", "Videos", "Longer clips (WebM, MP4, MOV, GIF…), converted for the board. Pick one to play it, scrub through it or loop part of it."],
   playlists: ["programme", "Playlists", "Items that play one after another, each for a set time. The schedule decides when each playlist runs."],
-  schedule: ["programme", "Schedule", "Which playlist plays when, and quiet hours for the night."],
+  schedule: ["programme", "Schedule", "What plays when: by weekday, date or sunset, with one-off events, plus quiet hours for the night."],
   automations: ["programme", "Automations", "When something happens (music starts, an event arrives), change what's on the board."],
   guests: ["guests", "Guest wall", "Messages guests leave from their phones. Approve them before they scroll across the board."],
+  friends: ["guests", "Friend messages", "Messages from people you gave a friend link: approve them, pin one, or show one again."],
   settings: ["settings", "Settings", "Location, fonts, connections and the board hardware."],
 };
 const GROUPS = {};
@@ -81,6 +89,7 @@ function showTab(spec) {
   if (name === "schedule") api("/api/settings").then(loadQuietHours).catch(e => toast(e.message, true));
   if (name === "automations" && catalog.apps.length) loadAutomations().catch(e => toast(e.message, true));
   if (name === "guests") loadGuestWall().catch(e => toast(e.message, true));
+  if (name === "friends") loadFriends().catch(e => toast(e.message, true));
   if (name === "now") renderWelcome().catch(() => {});
   if (changed) { window.scrollTo(0, 0); renderMini(); }
   bus.dispatchEvent(new CustomEvent("tabShown", { detail: name }));
@@ -113,17 +122,21 @@ function statusParts(r) {
     const v = r.video;
     const state = r.paused ? "paused" : v.ended ? "finished" : "playing";
     const sp = v.speed && v.speed !== 1 ? ` at ${v.speed}×` : "";
-    const where = r.mode === "app" ? "You started it" : r.mode === "playlist" ? `From the playlist "${r.playlist}"` : `From the schedule (${r.playlist})`;
+    const where = r.mode === "app" ? "You started it" : r.mode === "playlist" ? `From the playlist "${r.playlist}"` : `From the schedule (${r.schedule_target || r.playlist})`;
     return [`${v.name} · ${fmtTime(v.pos)} / ${fmtTime(v.duration)} · ${state}${sp}`, where + held];
   }
-  if (r.notification) s = [what, "For a few seconds, then back to what was on"];
-  else if (r.mode === "manual") s = ["A still picture", "Nothing is running" + held];
+  if (r.notification) {
+    const n = r.notifications || {};
+    s = [what, n.hold ? "Until it's dismissed, then back to what was on"
+      : n.seconds ? `For ${n.seconds} s, then back to what was on` : "For a moment, then back to what was on"];
+  } else if (r.mode === "manual") s = ["A still picture", "Nothing is running" + held];
   else if (r.mode === "app") s = [what, "You started it" + held];
   else if (r.mode === "playlist") s = [what || `Playlist "${r.playlist}" is empty`, `From the playlist "${r.playlist}"` + held];
   else if (!r.schedule_enabled) s = ["Nothing is running", "The schedule is turned off"];
   else if (r.playlist === "__off__") s = ["Board off (all black)", "From the schedule"];
-  else if (!r.playlist) s = ["Nothing scheduled right now", "The schedule is on"];
-  else s = [what || `Playlist "${r.playlist}" is empty`, `From the schedule (${r.playlist})`];
+  else if (!r.playlist && !r.app) s = ["Nothing scheduled right now", "The schedule is on"];
+  else if (!r.playlist) s = [what || "Nothing", `From the schedule (${r.schedule_target}${r.schedule_rule != null ? `, rule ${r.schedule_rule + 1}` : ""})`];
+  else s = [what || `Playlist "${r.playlist}" is empty`, `From the schedule (${r.playlist}${r.schedule_rule != null ? `, rule ${r.schedule_rule + 1}` : ""})`];
   if (r.paused) s[1] += " · paused";
   return s;
 }
@@ -177,6 +190,7 @@ function renderMode() {
     aria: r.paused ? "Carry on from here" : frozen ? "Pause on this picture" : "Stay on this item (the playlist stops moving on)" });
   setAct("resume", { hidden: !(r.schedule_enabled && r.mode !== "schedule"), aria: "Go back to what the schedule plays now" });
   renderWarning(r);
+  renderLink(r);
 }
 // a running app that needs setup or can't load its data: say so, with the way to fix it
 let lastWarn = "";
@@ -191,6 +205,44 @@ function renderWarning(r) {
   if (!msg) return box.replaceChildren();
   const fix = fixFor(msg);
   box.replaceChildren(icon("warn"), el("span", {}, msg), fix ? el("button", { type: "button", onclick: fix.onclick }, fix.label) : "");
+}
+// buses the server can't reach: the preview shows what the board would display, not what the discs show
+const hhmm = t => {
+  const d = new Date(t * 1000);
+  return d.toDateString() === new Date().toDateString() ? d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+    : d.toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+};
+function linkText(link) {
+  const down = link?.down || [];
+  if (!down.length) return null;
+  const byIp = {};
+  for (const d of down) (byIp[d.ip] ||= []).push(d.port);
+  const where = Object.entries(byIp).map(([ip, ports]) => `${ip}:${ports.sort((a, b) => a - b).join(", ")}`).join("; ");
+  const since = hhmm(Math.min(...down.map(d => d.since || Date.now() / 1000)));
+  const all = link.panels_down >= link.panels;
+  return all
+    ? { short: "Board offline",
+        long: `Board not reachable (${where}, since ${since}). The preview shows what it would display; the discs still show the last picture they got.` }
+    : { short: `${link.panels_down} panels offline`,
+        long: `${link.panels_down} of ${link.panels} panels not reachable (${where}, since ${since}). Those panels keep what they showed before; the rest of the board is up to date.` };
+}
+const retryLink = safe(async () => {
+  await api("/api/board/refresh", {});
+  toast("Trying the board again");
+});
+let lastLink = "";
+function renderLink(r) {
+  const t = linkText(r.link);
+  const key = t ? t.long : "";
+  if (key === lastLink) return;
+  lastLink = key;
+  const box = $("linkWarn"), strip = document.querySelector(".stripLink");
+  box.hidden = strip.hidden = !t;
+  $("nowStrip").classList.toggle("linkDown", !!t);
+  if (!t) { box.replaceChildren(); strip.replaceChildren(); return; }
+  box.replaceChildren(icon("warn"), el("span", {}, t.long), el("button", { type: "button", onclick: retryLink }, "Retry now"));
+  strip.replaceChildren(icon("warn"), el("span", {}, t.short));
+  strip.title = t.long;
 }
 // the connection to this server, shown once (under the board preview)
 let lastConn = "";
@@ -239,8 +291,8 @@ $("qTextFor").onclick = safe(async () => {
   const text = $("qText").value.trim();
   if (!text) { $("qText").focus(); throw new Error("Type a message first."); }
   const secs = Math.max(1, Math.round(+$("qSecs").value) || 10);
-  await api("/api/notify", { text, duration: secs });
-  toast(`Showing your message for ${secs} s`);
+  const r = await api("/api/notify", { text, duration: secs, source: "this page" });
+  toast(r.notify?.status === "show" ? `Showing your message for ${secs} s` : notifyResult(r));
 });
 $("qText").addEventListener("keydown", e => { if (e.key === "Enter") $("qTextShow").click(); });
 $("qClock").onclick = run({ app: "clock" }, "Showing the clock");
@@ -354,6 +406,7 @@ document.querySelectorAll("[data-theme-choice]").forEach(b => b.addEventListener
     await loadPlaylists();
     await loadAutomations();
     loadGuestWall().catch(() => {});  // for the count of waiting messages
+    loadFriends().catch(() => {});  // and of friend messages waiting for approval
   } catch (e) {
     toast(e.message, true);
   }

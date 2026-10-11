@@ -10,6 +10,8 @@ const TRIGGERS = [
   ["weather", "The weather turns"],
   ["event", "An event arrives"],
   ["idle", "The board is idle"],
+  ["presence", "Someone walks up (mirror camera)"],
+  ["calendar", "A calendar event starts"],
 ];
 const ACTIONS = [
   ["app", "Show an app"],
@@ -31,6 +33,8 @@ function triggerText(t) {
   if (t.type === "weather") return `Weather turns ${t.weather}`;
   if (t.type === "event") return `Event "${t.event}"`;
   if (t.type === "idle") return `Idle for ${t.minutes} min`;
+  if (t.type === "presence") return t.state === "leave" ? "Everyone has left the camera" : "Someone walks up to the camera";
+  if (t.type === "calendar") return t.keyword ? `A "${t.keyword}" event starts` : "A calendar event starts";
   return Object.fromEntries(TRIGGERS)[t.type] || t.type;
 }
 
@@ -133,6 +137,24 @@ function renderEditor() {
     m.oninput = () => { t.minutes = +m.value || 1; };
     row("For (minutes)", m);
     form.append(el("span"), el("small", { class: "muted" }, "Idle means nothing is running and the picture hasn't changed."));
+  } else if (t.type === "calendar") {
+    t.until_end ??= true;
+    const urls = el("textarea", { rows: 2, placeholder: "https://…/basic.ics" });
+    urls.value = t.urls || "";
+    urls.oninput = () => { t.urls = urls.value.trim(); };
+    row("iCal links", urls);
+    const kw = el("input", { type: "text", value: t.keyword || "", placeholder: "meeting, call (blank = any event)" });
+    kw.oninput = () => { t.keyword = kw.value.trim(); };
+    row("Title has", kw);
+    const until = el("input", { type: "checkbox", checked: !!t.until_end });
+    until.onchange = () => { t.until_end = until.checked; };
+    row("Until it ends", until);
+    form.append(el("span"), el("small", { class: "muted" },
+      "With Until it ends, an app or layer set shows over what's on and goes away when the event ends. Try the On air app."));
+  } else if (t.type === "presence") {
+    t.state ||= "arrive";
+    row("When someone", select([["arrive", "walks up"], ["leave", "has left"]], t.state, v => { t.state = v; }));
+    form.append(el("span"), el("small", { class: "muted" }, "Uses the camera set up on the Mirror page, with its timings."));
   } else {
     form.append(el("span"), el("small", { class: "muted" }, "Uses the Music Assistant server and player from Settings."));
   }
@@ -165,6 +187,10 @@ function renderEditor() {
     const dur = el("input", { type: "number", min: 1, value: a.duration ?? 10 });
     dur.oninput = () => { a.duration = +dur.value || 10; };
     row("For (seconds)", dur);
+    row("Priority", select([["low", "Low"], ["normal", "Normal"], ["high", "High"], ["critical", "Critical (shows even over a game)"]],
+      a.priority || "normal", v => { a.priority = v; }));
+    if (kind === "text") row("Icon", select([["", "None"], ...["bell", "mail", "door", "alert", "timer", "music", "weather", "calendar", "person"]
+      .map(n => [n, n[0].toUpperCase() + n.slice(1)])], a.icon || "", v => { if (v) a.icon = v; else delete a.icon; }));
   }
   const cool = el("input", { type: "number", min: 0, value: draft.cooldown ?? 60 });
   cool.oninput = () => { draft.cooldown = Math.max(0, +cool.value || 0); };

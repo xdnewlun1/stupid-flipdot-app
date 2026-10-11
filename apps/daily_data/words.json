@@ -1,0 +1,700 @@
+{
+"source": "Short definitions written for this app.",
+"words": [
+[
+"apricity",
+"noun",
+"The warmth of the sun on a cold winter day."
+],
+[
+"petrichor",
+"noun",
+"The earthy smell that rises when rain falls on dry ground."
+],
+[
+"susurrus",
+"noun",
+"A soft whispering or rustling sound."
+],
+[
+"sonder",
+"noun",
+"The sudden sense that every passer-by has a life as full as your own."
+],
+[
+"halcyon",
+"adjective",
+"Calm, peaceful and happy, often of a time remembered."
+],
+[
+"ephemeral",
+"adjective",
+"Lasting a very short time."
+],
+[
+"serendipity",
+"noun",
+"Finding something good by chance, without looking for it."
+],
+[
+"limerence",
+"noun",
+"The giddy, obsessive early stage of being in love."
+],
+[
+"crepuscular",
+"adjective",
+"Of twilight; active at dawn and dusk."
+],
+[
+"quiddity",
+"noun",
+"The essence that makes a thing what it is."
+],
+[
+"sempiternal",
+"adjective",
+"Lasting forever; eternal."
+],
+[
+"vellichor",
+"noun",
+"The wistful feeling of a secondhand bookshop."
+],
+[
+"eunoia",
+"noun",
+"Beautiful thinking; goodwill towards an audience."
+],
+[
+"lucubration",
+"noun",
+"Hard study, especially late at night by lamplight."
+],
+[
+"mellifluous",
+"adjective",
+"Sweet and smooth to hear, like flowing honey."
+],
+[
+"nemophilist",
+"noun",
+"A lover of forests and woodland."
+],
+[
+"numinous",
+"adjective",
+"Filled with a sense of the holy or mysterious."
+],
+[
+"palimpsest",
+"noun",
+"Something reused or altered that still shows traces of its earlier form."
+],
+[
+"redolent",
+"adjective",
+"Strongly smelling of, or suggestive of, something."
+],
+[
+"ineffable",
+"adjective",
+"Too great or strange to be put into words."
+],
+[
+"gloaming",
+"noun",
+"Twilight; the time after sunset before full dark."
+],
+[
+"hiraeth",
+"noun",
+"A homesick longing for a place you cannot return to (Welsh)."
+],
+[
+"komorebi",
+"noun",
+"Sunlight filtering through the leaves of trees (Japanese)."
+],
+[
+"fernweh",
+"noun",
+"An ache for faraway places; the opposite of homesickness (German)."
+],
+[
+"hygge",
+"noun",
+"Cosy contentment and well-being (Danish)."
+],
+[
+"saudade",
+"noun",
+"A deep, bittersweet longing for something absent (Portuguese)."
+],
+[
+"wabi-sabi",
+"noun",
+"Beauty found in imperfection and impermanence (Japanese)."
+],
+[
+"defenestrate",
+"verb",
+"To throw someone or something out of a window."
+],
+[
+"gallimaufry",
+"noun",
+"A confused jumble or medley of things."
+],
+[
+"kerfuffle",
+"noun",
+"A commotion or fuss, usually over something minor."
+],
+[
+"brouhaha",
+"noun",
+"A noisy and overexcited reaction."
+],
+[
+"flummox",
+"verb",
+"To bewilder or completely confuse."
+],
+[
+"lollygag",
+"verb",
+"To spend time aimlessly; to dawdle."
+],
+[
+"snollygoster",
+"noun",
+"A shrewd, unprincipled person, especially a politician."
+],
+[
+"cattywampus",
+"adjective",
+"Askew; not lined up properly."
+],
+[
+"bumbershoot",
+"noun",
+"An umbrella."
+],
+[
+"collywobbles",
+"noun",
+"Nervousness felt in the stomach; butterflies."
+],
+[
+"widdershins",
+"adverb",
+"Counterclockwise; in a direction contrary to the sun's course."
+],
+[
+"gobbledygook",
+"noun",
+"Language that is meaningless or hard to understand."
+],
+[
+"discombobulate",
+"verb",
+"To confuse or disconcert."
+],
+[
+"perspicacious",
+"adjective",
+"Quick to notice and understand things."
+],
+[
+"sesquipedalian",
+"adjective",
+"Given to using long words."
+],
+[
+"pulchritude",
+"noun",
+"Physical beauty."
+],
+[
+"obfuscate",
+"verb",
+"To make something unclear on purpose."
+],
+[
+"vicissitude",
+"noun",
+"A change of circumstances, usually unwelcome."
+],
+[
+"equanimity",
+"noun",
+"Mental calm, especially in a difficult situation."
+],
+[
+"alacrity",
+"noun",
+"Brisk and cheerful readiness."
+],
+[
+"sagacious",
+"adjective",
+"Wise; showing keen judgement."
+],
+[
+"taciturn",
+"adjective",
+"Saying little; reserved in speech."
+],
+[
+"garrulous",
+"adjective",
+"Excessively talkative, especially about trivial things."
+],
+[
+"laconic",
+"adjective",
+"Using very few words."
+],
+[
+"quixotic",
+"adjective",
+"Idealistic in an impractical way."
+],
+[
+"mercurial",
+"adjective",
+"Subject to sudden changes of mood."
+],
+[
+"phlegmatic",
+"adjective",
+"Calm and unexcitable."
+],
+[
+"sanguine",
+"adjective",
+"Optimistic, especially in a bad situation."
+],
+[
+"lugubrious",
+"adjective",
+"Looking or sounding sad and dismal."
+],
+[
+"insouciant",
+"adjective",
+"Casually unconcerned."
+],
+[
+"nonchalant",
+"adjective",
+"Calm and relaxed; not showing anxiety."
+],
+[
+"ebullient",
+"adjective",
+"Cheerful and full of energy."
+],
+[
+"effervescent",
+"adjective",
+"Bubbly; vivacious and enthusiastic."
+],
+[
+"luminous",
+"adjective",
+"Giving off light; bright or shining."
+],
+[
+"incandescent",
+"adjective",
+"Glowing with heat; also, full of strong emotion."
+],
+[
+"iridescent",
+"adjective",
+"Showing shifting rainbow colours as the angle changes."
+],
+[
+"diaphanous",
+"adjective",
+"Light and delicate enough to see through."
+],
+[
+"gossamer",
+"noun",
+"A fine, filmy substance, like spider silk floating in the air."
+],
+[
+"zephyr",
+"noun",
+"A soft, gentle breeze."
+],
+[
+"cynosure",
+"noun",
+"A person or thing that draws all attention."
+],
+[
+"penumbra",
+"noun",
+"The partly shaded outer region of a shadow."
+],
+[
+"syzygy",
+"noun",
+"Three celestial bodies lined up, as in an eclipse."
+],
+[
+"apogee",
+"noun",
+"The highest point; for an orbit, the farthest from Earth."
+],
+[
+"perihelion",
+"noun",
+"The point in an orbit closest to the sun."
+],
+[
+"nadir",
+"noun",
+"The lowest point."
+],
+[
+"zenith",
+"noun",
+"The point directly overhead; the peak of something."
+],
+[
+"umbra",
+"noun",
+"The darkest, central part of a shadow."
+],
+[
+"aurora",
+"noun",
+"Bands of natural light in the polar sky."
+],
+[
+"nebula",
+"noun",
+"A cloud of gas and dust in space."
+],
+[
+"meander",
+"verb",
+"To follow a winding course; to wander without hurry."
+],
+[
+"peregrinate",
+"verb",
+"To travel or wander from place to place."
+],
+[
+"saunter",
+"verb",
+"To walk in a slow, relaxed way."
+],
+[
+"ambulate",
+"verb",
+"To walk; to move about."
+],
+[
+"dawdle",
+"verb",
+"To waste time; to move slowly."
+],
+[
+"ruminate",
+"verb",
+"To think deeply about something; to chew the cud."
+],
+[
+"cogitate",
+"verb",
+"To think deeply."
+],
+[
+"extemporize",
+"verb",
+"To improvise; to speak or perform without preparation."
+],
+[
+"procrastinate",
+"verb",
+"To delay or postpone action."
+],
+[
+"juxtapose",
+"verb",
+"To place side by side for contrast."
+],
+[
+"burgeon",
+"verb",
+"To begin to grow or increase rapidly."
+],
+[
+"coalesce",
+"verb",
+"To come together to form one whole."
+],
+[
+"dither",
+"verb",
+"To be indecisive."
+],
+[
+"enervate",
+"verb",
+"To drain of energy; to weaken."
+],
+[
+"ameliorate",
+"verb",
+"To make something bad better."
+],
+[
+"assuage",
+"verb",
+"To make an unpleasant feeling less intense."
+],
+[
+"mollify",
+"verb",
+"To calm someone's anger or anxiety."
+],
+[
+"placate",
+"verb",
+"To make someone less angry or hostile."
+],
+[
+"obviate",
+"verb",
+"To remove a need or difficulty; to prevent."
+],
+[
+"eschew",
+"verb",
+"To deliberately avoid."
+],
+[
+"abscond",
+"verb",
+"To leave hurriedly and secretly."
+],
+[
+"pilfer",
+"verb",
+"To steal things of little value."
+],
+[
+"ensconce",
+"verb",
+"To settle comfortably and securely."
+],
+[
+"nestle",
+"verb",
+"To settle into a warm, comfortable position."
+],
+[
+"cachinnate",
+"verb",
+"To laugh loudly."
+],
+[
+"susurrate",
+"verb",
+"To whisper; to murmur."
+],
+[
+"tintinnabulation",
+"noun",
+"The ringing of bells."
+],
+[
+"cacophony",
+"noun",
+"A harsh, discordant mixture of sounds."
+],
+[
+"euphony",
+"noun",
+"A pleasing combination of sounds."
+],
+[
+"onomatopoeia",
+"noun",
+"A word that imitates the sound it names, like click or flip."
+],
+[
+"mnemonic",
+"noun",
+"A device such as a rhyme that helps you remember something."
+],
+[
+"palindrome",
+"noun",
+"A word or phrase that reads the same backwards, like level."
+],
+[
+"anagram",
+"noun",
+"A word formed by rearranging the letters of another."
+],
+[
+"oxymoron",
+"noun",
+"A phrase combining contradictory terms, like deafening silence."
+],
+[
+"hapax",
+"noun",
+"A word that occurs only once in a body of text."
+],
+[
+"ninnyhammer",
+"noun",
+"A foolish person."
+],
+[
+"quidnunc",
+"noun",
+"A person eager to know the latest news and gossip."
+],
+[
+"flaneur",
+"noun",
+"A person who strolls about the city, observing."
+],
+[
+"raconteur",
+"noun",
+"A person who tells anecdotes skilfully."
+],
+[
+"polymath",
+"noun",
+"A person with knowledge across many subjects."
+],
+[
+"autodidact",
+"noun",
+"A self-taught person."
+],
+[
+"bibliophile",
+"noun",
+"A person who loves or collects books."
+],
+[
+"tsundoku",
+"noun",
+"Buying books and letting them pile up unread (Japanese)."
+],
+[
+"smorgasbord",
+"noun",
+"A wide range of something; a buffet of many dishes."
+],
+[
+"panacea",
+"noun",
+"A cure for all difficulties."
+],
+[
+"modicum",
+"noun",
+"A small quantity of something."
+],
+[
+"plethora",
+"noun",
+"An excessive amount."
+],
+[
+"myriad",
+"noun",
+"A countless or very great number."
+],
+[
+"soupcon",
+"noun",
+"A very small quantity; a trace."
+],
+[
+"idiosyncrasy",
+"noun",
+"A peculiar habit or way of behaving."
+],
+[
+"denouement",
+"noun",
+"The final part of a story, where things are resolved."
+],
+[
+"epiphany",
+"noun",
+"A moment of sudden, striking insight."
+],
+[
+"reverie",
+"noun",
+"A pleasant daydream."
+],
+[
+"solace",
+"noun",
+"Comfort in a time of distress."
+],
+[
+"respite",
+"noun",
+"A short rest from something difficult."
+],
+[
+"sojourn",
+"noun",
+"A temporary stay."
+],
+[
+"wanderlust",
+"noun",
+"A strong desire to travel."
+],
+[
+"verisimilitude",
+"noun",
+"The appearance of being true or real."
+],
+[
+"juggernaut",
+"noun",
+"A huge, unstoppable force."
+],
+[
+"flotsam",
+"noun",
+"Floating wreckage of a ship or its cargo."
+],
+[
+"jetsam",
+"noun",
+"Goods thrown overboard to lighten a ship."
+],
+[
+"doldrums",
+"noun",
+"A state of stagnation; calm ocean regions near the equator."
+],
+[
+"fathom",
+"verb",
+"To understand after much thought; also a depth of six feet."
+]
+]
+}

@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="referrer" content="no-referrer">
+<meta name="color-scheme" content="dark light">
+<title>Board preview</title>
+<link rel="stylesheet" href="/static/style.css">
+<style>
+  body { max-width: 900px; margin: 0 auto; padding: var(--s4); }
+  h1 { font-size: var(--fs-lg); font-weight: 600; margin: 0 0 var(--s3); }
+  .wrap { background: #050506; border-radius: var(--r2); padding: 6px; }
+  canvas { display: block; width: 100%; aspect-ratio: 2 / 1; }
+  #status { color: var(--text-2); margin: var(--s3) 0 0; }
+  .foot { margin-top: var(--s5); font-size: var(--fs-sm); color: var(--text-3); }
+</style>
+</head>
+<body>
+<h1>The board right now</h1>
+<div class="wrap"><canvas id="board" width="840" height="420" role="img" aria-label="What the board shows"></canvas></div>
+<p id="status" role="status">Connecting…</p>
+<p class="foot">This link can watch the board but not change it. <a href="/leave">Forget this link on this device</a>.</p>
+<script>
+"use strict";
+const canvas = document.getElementById("board"), ctx = canvas.getContext("2d"), statusEl = document.getElementById("status");
+let wsOpen = false, retry = 500;
+function draw(W, H, isOn) {
+  const cell = canvas.width / W, r = cell * 0.42;
+  canvas.height = Math.round(cell * H);
+  ctx.fillStyle = "#050506"; ctx.fillRect(0, 0, canvas.width, canvas.height);
+  for (let y = 0, i = 0; y < H; y++) for (let x = 0; x < W; x++, i++) {
+    ctx.fillStyle = isOn(x, y, i) ? "#f4f4f0" : "#1c1d20";
+    ctx.beginPath(); ctx.arc((x + 0.5) * cell, (y + 0.5) * cell, r, 0, 2 * Math.PI); ctx.fill();
+  }
+}
+const describe = r => (r ? (r.description || (r.mode === "manual" ? "Nothing running" : r.mode)) : "");
+function connect() {
+  const ws = new WebSocket((location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/ws");
+  ws.binaryType = "arraybuffer";
+  ws.onopen = () => { wsOpen = true; retry = 500; };
+  ws.onmessage = e => {
+    if (typeof e.data === "string") {
+      const m = JSON.parse(e.data);
+      if (m.type === "status") statusEl.textContent = describe(m.runner);
+      return;
+    }
+    const dv = new DataView(e.data), W = dv.getUint16(4), H = dv.getUint16(6), bits = new Uint8Array(e.data, 8);
+    draw(W, H, (x, y, i) => bits[i >> 3] & (0x80 >> (i & 7)));
+  };
+  ws.onclose = () => { wsOpen = false; statusEl.textContent = "Reconnecting…"; setTimeout(connect, retry); retry = Math.min(retry * 2, 10000); };
+}
+connect();
+</script>
+</body>
+</html>

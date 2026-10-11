@@ -99,6 +99,37 @@ def geocode(name):
     ]
 
 
+def weather_location(store, location=""):
+    """{"name", "lat", "lon"} from a place name, or the Settings location."""
+    settings = store.settings.get("weather", {})
+    if location:
+        hits = geocode(location)
+        if not hits:
+            raise ValueError(f"location {location!r} not found")
+        return hits[0]
+    if settings.get("lat") is not None:
+        return settings
+    raise NeedsSetup("Set a location in Settings")
+
+
+def fetch_weather(store, location="", units=""):
+    """Open-Meteo current conditions + 4-day forecast. Shared by the weather apps: one URL, so one cached request."""
+    loc = weather_location(store, location)
+    units = units or store.settings.get("weather", {}).get("units", "fahrenheit")
+    q = urllib.parse.urlencode({
+        "latitude": loc["lat"], "longitude": loc["lon"], "timezone": "auto", "forecast_days": 4,
+        "current": "temperature_2m,weather_code,is_day,relative_humidity_2m,wind_speed_10m,"
+                   "wind_direction_10m,cloud_cover,precipitation",
+        "daily": "temperature_2m_max,temperature_2m_min,weather_code",
+        "temperature_unit": units, "wind_speed_unit": "mph" if units == "fahrenheit" else "kmh",
+    })
+    d = http_get(f"https://api.open-meteo.com/v1/forecast?{q}", ttl=300)
+    d["_name"] = loc.get("name", "")
+    d["_wind"] = "mph" if units == "fahrenheit" else "km/h"
+    d["_lat"], d["_lon"] = loc["lat"], loc["lon"]
+    return d
+
+
 @register
 class Weather(Widget):
     id = "weather"
@@ -119,27 +150,7 @@ class Weather(Widget):
         return None
 
     def fetch(self):
-        settings = self.ctx.store.settings.get("weather", {})
-        if self.p["location"]:
-            hits = geocode(self.p["location"])
-            if not hits:
-                raise ValueError(f"location {self.p['location']!r} not found")
-            loc = hits[0]
-        elif settings.get("lat") is not None:
-            loc = settings
-        else:
-            raise NeedsSetup("Set a location in Settings")
-        units = self.p["units"] or settings.get("units", "fahrenheit")
-        q = urllib.parse.urlencode({
-            "latitude": loc["lat"], "longitude": loc["lon"], "timezone": "auto", "forecast_days": 4,
-            "current": "temperature_2m,weather_code,is_day,relative_humidity_2m,wind_speed_10m",
-            "daily": "temperature_2m_max,temperature_2m_min,weather_code",
-            "temperature_unit": units, "wind_speed_unit": "mph" if units == "fahrenheit" else "kmh",
-        })
-        d = http_get(f"https://api.open-meteo.com/v1/forecast?{q}", ttl=300)
-        d["_name"] = loc.get("name", "")
-        d["_wind"] = "mph" if units == "fahrenheit" else "km/h"
-        return d
+        return fetch_weather(self.ctx.store, self.p["location"], self.p["units"])
 
     def draw(self, c, now):
         view = self.p["view"]

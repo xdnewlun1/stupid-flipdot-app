@@ -277,6 +277,9 @@ class Versus(Game):
         # frames come faster while the computer thinks, so its search finishes sooner
         self.interval = 0.02 if self.think else type(self).interval
 
+    def score_entry(self):
+        return None  # head-to-head: who won, not a score to rank
+
     def draw_title_card(self, c, now):
         c.text_center(8, self.title.upper(), NORMAL)
         level = self.p["difficulty"].upper()

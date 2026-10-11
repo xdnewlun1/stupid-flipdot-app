@@ -8,6 +8,7 @@ from canvas import Canvas
 from transitions import NAMES as TRANSITIONS, Transition
 
 from .base import REGISTRY, App, P, create, register
+from .react import react_params, reactive
 from .restart import RESTART_PARAMS, RestartFx
 
 BAYER4 = [[0, 8, 2, 10], [12, 4, 14, 6], [3, 11, 1, 9], [15, 7, 13, 5]]
@@ -27,6 +28,7 @@ def ring(c, cx, cy, r, toggle=False):
 
 
 @register
+@reactive
 class Fireworks(App):
     id = "fireworks"
     title = "Fireworks"
@@ -41,16 +43,32 @@ class Fireworks(App):
         self.rockets, self.sparks = [], []
 
     def render(self, c, now):
-        if self.rng.random() < float(self.p["rate"]) * self.interval:
+        m = self.music
+        rate, size = 1.0, 1.0
+        if m.enabled:  # rockets go up on the beat and on bass notes; louder music, bigger bursts
+            rate = 1 - 0.7 * m.presence  # a few random ones still, so a quiet passage isn't empty
+            size = 0.7 + 0.6 * min(1.5, m.level("level"))
+            if m.beat:  # rockets near the top burst on the beat
+                for r in self.rockets:
+                    if r[3] > -1.0:
+                        r[3] = -0.2
+            # launches on the beat (on bass notes too while no beat has come for a while), two in loud parts
+            if m.beat or (m.hit("bass") and now - getattr(self, "launched", 0) > 0.6):
+                self.launched = now
+                for _ in range(2 if m.level("level") > 0.85 else 1):
+                    self.rockets.append([self.rng.uniform(10, c.w - 10), c.h - 1, self.rng.uniform(-0.3, 0.3),
+                                         -self.rng.uniform(1.6, 2.3) * (0.85 + 0.25 * min(1.0, m.level("bass"))), size])
+        if self.rng.random() < float(self.p["rate"]) * self.interval * rate:
             self.rockets.append([self.rng.uniform(10, c.w - 10), c.h - 1, self.rng.uniform(-0.3, 0.3),
                                  -self.rng.uniform(1.6, 2.3)])
         alive = []
         for r in self.rockets:
             r[0] += r[2]; r[1] += r[3]; r[3] += 0.06
             if r[3] >= -0.2:  # apex: burst
-                n = self.rng.randint(18, 34)
+                big = r[4] if len(r) > 4 else 1.0
+                n = self.rng.randint(18, 34) if big == 1.0 else int(self.rng.randint(18, 34) * big)
                 for k in range(n):
-                    a, sp = k * 6.2832 / n, self.rng.uniform(0.6, 1.4)
+                    a, sp = k * 6.2832 / n, self.rng.uniform(0.6, 1.4) * big
                     self.sparks.append([r[0], r[1], math.cos(a) * sp, math.sin(a) * sp * 0.8, self.rng.randint(12, 26)])
             else:
                 alive.append(r)
@@ -67,6 +85,7 @@ class Fireworks(App):
 
 
 @register
+@reactive
 class Ripples(App):
     id = "ripples"
     title = "Ripples"
@@ -82,6 +101,9 @@ class Ripples(App):
         self.drops = []
 
     def render(self, c, now):
+        m = self.music
+        if m.enabled:
+            return self.render_music(c, now, m)
         if self.rng.random() < float(self.p["rate"]) * self.interval:
             self.drops.append((self.rng.uniform(0, c.w), self.rng.uniform(0, c.h), now))
         keep = []
@@ -95,8 +117,32 @@ class Ripples(App):
                         ring(c, x, y, r, toggle=True)
         self.drops = keep[-14:]
 
+    def render_music(self, c, now, m):
+        """Drops fall on the hits: a bass note is a big drop with extra rings, a snare a smaller one, a
+        hi-hat a tiny one. Rings spread on the music's clock (faster with the tempo or the loudness)."""
+        T = m.clock("t", now, 1.0)
+        rings = int(self.p["rings"])
+        if self.rng.random() < float(self.p["rate"]) * self.interval * (1 - 0.75 * m.presence):
+            self.drops.append((self.rng.uniform(0, c.w), self.rng.uniform(0, c.h), T, rings, 70))
+        for band, extra, reach in (("bass", 2, 80), ("mid", 0, 45), ("high", -1, 18)):
+            if m.hit(band):
+                n = max(1, rings + round(extra * min(1.5, m.amount)))
+                self.drops.append((self.rng.uniform(0, c.w), self.rng.uniform(0, c.h), T, n, reach))
+        keep = []
+        for d in self.drops:
+            x, y, t0, n, reach = d if len(d) == 5 else (*d, rings, 70)
+            r0 = (T - t0) * 18
+            if r0 < reach:
+                keep.append((x, y, t0, n, reach))
+                for k in range(n):
+                    r = r0 - k * 4
+                    if r > 0:
+                        ring(c, x, y, r, toggle=True)
+        self.drops = keep[-14:]
+
 
 @register
+@reactive
 class Metaballs(App):
     id = "metaballs"
     title = "Metaballs"
@@ -113,13 +159,30 @@ class Metaballs(App):
                        rng.uniform(-0.5, 0.5), rng.uniform(6, 11)] for _ in range(int(self.p["balls"]))]
 
     def render(self, c, now):
+        m = self.music
+        go, grow, edge = 1.0, 1.0, 1.0
+        if m.enabled:  # the bass swells the blobs; the mids stir them faster and thin the outline band
+            go = m.speed * (1 + 1.2 * min(1.5, m.level("mid"))) * m.surge(0.5)
+            grow = 1 + 0.25 * min(1.5, m.level("bass")) + 0.5 * min(1.5, m.hits("bass"))
+            edge = 1 + 0.4 * min(1.0, m.level("mid"))
         for b in self.balls:
-            b[0] += b[2]; b[1] += b[3]
+            b[0] += b[2] * go; b[1] += b[3] * go
             if not 0 < b[0] < c.w: b[2] = -b[2]
             if not 0 < b[1] < c.h: b[3] = -b[3]
         w, h, px = c.w, c.h, c.px
-        balls = [(bx, by, r * r) for bx, by, _, _, r in self.balls]
+        balls = [(bx, by, r * r * grow) for bx, by, _, _, r in self.balls]
         outline = self.p["outline"]
+        if edge != 1.0 and outline:
+            hi = 1.35 / edge + (1 - 1 / edge)  # 1.35 at rest, narrower with the mids
+            for y in range(h):
+                row = y * w
+                for x in range(w):
+                    f = 0.0
+                    for bx, by, r2 in balls:
+                        dx, dy = x - bx, (y - by) * 1.6
+                        f += r2 / (dx * dx + dy * dy + 0.5)
+                    px[row + x] = 1 if 1.0 < f < hi else 0
+            return
         for y in range(h):
             row = y * w
             for x in range(w):
@@ -131,6 +194,7 @@ class Metaballs(App):
 
 
 @register
+@reactive
 class Tunnel(App):
     id = "tunnel"
     title = "Tunnel"
@@ -141,12 +205,20 @@ class Tunnel(App):
     interval = 0.05
 
     def render(self, c, now):
-        t = (now - self.started) * float(self.p["speed"])
+        m = self.music
+        # following the tempo, one ring passes per beat (landing on it); else the bass and loudness push
+        t = m.clock("t", now, float(self.p["speed"]), per_beat=7 / 12)
+        swell = 1.0
+        if m.enabled:
+            swell = 1 + 0.25 * min(1.5, m.both("bass"))  # the rings breathe out on the kick
+            if m.follow != "tempo":
+                self.push = getattr(self, "push", 0.0) + m.dt * 1.2 * min(1.5, m.both("bass"))
+        t += getattr(self, "push", 0.0)
         cx = c.w / 2 + math.sin(t * 0.7) * 14
         cy = c.h / 2 + math.cos(t * 0.9) * 6
         gap = 7
         for k in range(12):
-            r = ((t * 12 + k * gap) % (gap * 12)) * 0.75
+            r = ((t * 12 + k * gap) % (gap * 12)) * 0.75 * swell
             if self.p["shape"] == "square":
                 c.rect(cx - r, cy - r / 2, r * 2, r)
             else:
@@ -154,6 +226,7 @@ class Tunnel(App):
 
 
 @register
+@reactive
 class Spiral(App):
     id = "spiral"
     title = "Spiral"
@@ -172,12 +245,21 @@ class Spiral(App):
                     for y in range(h) for x in range(w)]
 
     def render(self, c, now):
-        t = (now - self.started) * float(self.p["speed"])
+        m = self.music
+        # following the tempo: an arm moves round to the next one every 4 beats, in step with the beat
+        t = m.clock("t", now, float(self.p["speed"]), per_beat=math.pi / 2)
         arms, twist = int(self.p["arms"]), float(self.p["twist"])
+        if m.enabled:  # a bass note kicks it round a little further; the mids widen the arms
+            self.kick = getattr(self, "kick", 0.0) + m.dt * 5 * min(1.5, m.hits("bass"))
+            t += self.kick
+            thr = 0.15 - 0.3 * min(1.0, m.level("mid")) - 0.3 * min(1.0, m.hits("mid"))
+            c.px[:] = bytearray(1 if math.sin(a * arms + d * twist * 3 - t) > thr else 0 for a, d in self.geo)
+            return
         c.px[:] = bytearray(1 if math.sin(a * arms + d * twist * 3 - t) > 0.15 else 0 for a, d in self.geo)
 
 
 @register
+@reactive
 class Maze(App):
     id = "maze"
     title = "Maze"
@@ -207,8 +289,14 @@ class Maze(App):
         self.grid.set(1 + cx * 2, 1 + cy * 2, 0)
 
     def render(self, c, now):
+        m = self.music
         if self.done_at is None:
-            self.budget += float(self.p["speed"]) * self.interval
+            if m.on:  # carves faster with the tempo / loudness, and a spurt on every beat
+                self.budget += float(self.p["speed"]) * self.interval * m.speed
+                if m.beat:
+                    self.budget += float(self.p["speed"]) * 0.15 * min(1.5, m.amount)
+            else:
+                self.budget += float(self.p["speed"]) * self.interval
             while self.budget >= 1 and self.stack:
                 self.budget -= 1
                 x, y = self.stack[-1]
@@ -228,14 +316,16 @@ class Maze(App):
             self.reset()
             self.fx.restarted(now)
         c.px[:] = self.grid.px
-        if self.stack:  # the carving head blinks
+        if self.stack:  # the carving head blinks (on the beat, with music)
             x, y = self.stack[-1]
-            c.set(1 + x * 2, 1 + y * 2, int(now * 8) % 2)
+            blink = (m.phase < 0.5) if m.on and m.amount and m.phase is not None else int(now * 8) % 2
+            c.set(1 + x * 2, 1 + y * 2, blink)
         self.fx.finish(c, now)
         self.interval = self.fx.interval(0.05)
 
 
 @register
+@reactive
 class Lissajous(App):
     id = "lissajous"
     title = "Lissajous"
@@ -247,8 +337,12 @@ class Lissajous(App):
     interval = 0.05
 
     def render(self, c, now):
-        t = (now - self.started) * float(self.p["speed"])
+        m = self.music
+        # following the tempo: a quarter turn per beat, in step with it
+        t = m.clock("t", now, float(self.p["speed"]), per_beat=math.pi / 2)
         a, b = int(self.p["a"]), int(self.p["b"])
+        if m.enabled:
+            return self.render_music(c, t, a, b, m)
         prev = None
         for k in range(361):
             s = k * 6.2832 / 360
@@ -258,8 +352,25 @@ class Lissajous(App):
                 c.line(*prev, x, y)
             prev = (x, y)
 
+    def render_music(self, c, t, a, b, m):
+        """The mids morph the Y ratio towards the next one up (b -> b+1, still a closed curve); the highs
+        do the same for X; the kick squashes it like a speaker cone."""
+        wy = min(1.0, 0.6 * m.level("mid") + 0.5 * m.hits("mid"))
+        wx = min(1.0, 0.3 * m.level("high") + 0.4 * m.hits("high"))
+        ry = (c.h / 2 - 2) * (1 - 0.35 * min(1.0, m.both("bass")))
+        rx = c.w / 2 - 2
+        prev = None
+        for k in range(361):
+            s = k * 6.2832 / 360
+            x = c.w / 2 + rx * ((1 - wx) * math.sin(a * s + t) + wx * math.sin((a + 1) * s + t))
+            y = c.h / 2 + ry * ((1 - wy) * math.sin(b * s) + wy * math.sin((b + 1) * s))
+            if prev:
+                c.line(*prev, x, y)
+            prev = (x, y)
+
 
 @register
+@reactive
 class Fire(App):
     id = "fire"
     title = "Fire"
@@ -275,14 +386,27 @@ class Fire(App):
 
     def render(self, c, now):
         w, h, heat, rnd = c.w, c.h, self.heat, self.rng.random
+        m = self.music
+        tall, flare = 1.0, 0
+        if m.enabled:  # the bass makes the flames leap (a bass note flares them up); quiet passages burn low
+            tall = 1 - 0.45 * m.presence + 0.2 * min(1.5, m.level("bass"))
+            flare = int(14 * min(1.5, m.hits("bass")))
+            self.interval = max(0.04, 0.06 / max(0.6, min(1.5, m.speed)))
         for x in range(w):
             heat[(h - 1) * w + x] = 36 if rnd() < 0.8 else 20
-        decay = 1.4 / float(self.p["height"])
+        decay = 1.4 / (float(self.p["height"]) * tall)
         for y in range(h - 1):
             for x in range(w):
                 src = (y + 1) * w + min(w - 1, max(0, x + int(rnd() * 3) - 1))
                 heat[y * w + x] = max(0, heat[src] - int(rnd() * decay * 2.2))
         px = c.px
+        if flare:  # a bass note: every flame flares up at once (shown hotter; the fire itself doesn't change)
+            for y in range(h):
+                brow = BAYER4[y % 4]
+                for x in range(w):
+                    v = heat[y * w + x]
+                    px[y * w + x] = 1 if v and (v + flare) * 16 / 36 > brow[x % 4] + 0.5 else 0
+            return
         for y in range(h):
             brow = BAYER4[y % 4]
             for x in range(w):
@@ -343,6 +467,7 @@ class _Child:
 
 
 @register
+@reactive
 class RandomEffects(App):
     id = "random_effects"
     title = "Random effects"
@@ -368,7 +493,10 @@ class RandomEffects(App):
         pool = POOL + (["visualizer"] if self.p["visualizer"] else [])
         pool = [a for a in pool if a in REGISTRY and (self.cur is None or a != self.cur.app.id)]
         app_id = self.rng.choice(pool)
-        app = create(type(self.ctx)(w, h, self.ctx.store), {"app": app_id, "params": _rand_params(app_id, self.rng)})
+        params = _rand_params(app_id, self.rng)
+        if self.p.get("react") and app_id != "visualizer":  # the effect reacts itself; the effects on top stay here
+            params.update(react_params(self.p), react_overlay=False)
+        app = create(type(self.ctx)(w, h, self.ctx.store), {"app": app_id, "params": params})
         self.name = app.title
         return _Child(app, w, h)
 

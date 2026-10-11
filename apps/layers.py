@@ -165,6 +165,8 @@ class Layers(App):
                 layer.app.stop()
         self.layers = new
         self.interactive = any(l.app.interactive for l in new)
+        # a layer kept in time with the music (Percussion, the visualizer) keeps the whole stack's timing steady
+        self.steady_timing = any(getattr(l.app, "steady_timing", False) for l in new)
         self.rev = next(_revs)
 
     def density_mask(self, d):

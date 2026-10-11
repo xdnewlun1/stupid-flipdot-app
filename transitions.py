@@ -421,7 +421,40 @@ def _flow(turn):
     return render
 
 
+def _split_flap(t, old, new, p, cw=6, ch=8):
+    """A wall of split-flap tiles (6 x 8 dots, a character cell of the 5 x 7 font): along each row the tiles turn
+    one after another, each showing a stray flap first, then the top half of its new picture, then all of it.
+    (Characters in clocks and text flap through the alphabet instead: charfx.py.)"""
+    w, h = old.w, old.h
+    cols, rows = -(-w // cw), -(-h // ch)
+    starts = t.state.get("flap")
+    if starts is None:  # each tile's start time and its stray flap, a scrambled copy of the tile, fixed per run
+        starts = t.state["flap"] = [[0.55 * cx / max(1, cols - 1) + 0.15 * cy / max(1, rows - 1) + t.rnd.random() * 0.05
+                                     for cx in range(cols)] for cy in range(rows)]
+        t.state["stray"] = t.rnd.randrange(1, cw * ch)
+    out = Canvas(w, h)
+    for ty in range(rows):
+        for tx in range(cols):
+            q = (p - starts[ty][tx]) / 0.25 if p < 1 else 1.0
+            x0, y0 = tx * cw, ty * ch
+            for yy in range(y0, min(h, y0 + ch)):
+                top = yy - y0 < ch // 2
+                row = yy * w
+                for i in range(row + x0, row + min(w, x0 + cw)):
+                    if q < 0:
+                        out.px[i] = old.px[i]
+                    elif q < 0.34:  # a stray flap: the old tile shifted round
+                        j = row + x0 + ((i - row - x0) + t.state["stray"]) % cw
+                        out.px[i] = old.px[j] ^ (1 if top else 0) if top else old.px[i]
+                    elif q < 0.67:
+                        out.px[i] = new.px[i] if top else old.px[i]
+                    else:
+                        out.px[i] = new.px[i]
+    return out
+
+
 MOVES = {
+    "split-flap": _split_flap,
     "slide-left": _slide("left", False), "slide-right": _slide("right", False),
     "slide-up": _slide("up", False), "slide-down": _slide("down", False),
     "push-left": _slide("left", True), "push-right": _slide("right", True),

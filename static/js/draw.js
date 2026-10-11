@@ -6,6 +6,7 @@ import {
   safe, toast, download, refreshScenes, wsSend, fontSelect, fontCache, drawingsCache, loadDrawings, el, scenesCache, confirmDelete,
   ask, confirmDialog,
 } from "./common.js";
+import { addToPlaylistButton } from "./addto.js";
 
 const CELL = 16;
 const canvas = $("board"), ctx = canvas.getContext("2d");
@@ -508,7 +509,7 @@ function updateTargetUi() {
   const isLayer = !!target;
   $("drawLiveBox").hidden = isLayer || animOn;
   updateCanvasMode();
-  for (const id of ["layerOnlyBox", "renameDrawing", "deleteDrawing"]) $(id).hidden = !isLayer;
+  for (const id of ["layerOnlyBox", "renameDrawing", "deleteDrawing", "drawToPlaylist"]) $(id).hidden = !isLayer;
   $("showDrawing").hidden = !isLayer || onBoard();
   $("targetHint").textContent = !isLayer ? (animOn ? "" : $("drawLive").checked
       ? "Strokes go straight to the board and stop whatever is running. Press Resume schedule at the top to go back."
@@ -532,6 +533,10 @@ export async function setTarget(id) {
 }
 
 $("drawTarget").onchange = safe(() => setTarget($("drawTarget").value));
+const toPlaylist = addToPlaylistButton(() => target && { app: "drawing", params: { drawing: target.id } }, { name: () => target?.name || "" });
+toPlaylist.id = "drawToPlaylist";
+toPlaylist.hidden = !target;
+$("showDrawing").after(toPlaylist);
 $("layerOnly").onchange = () => redraw();
 $("drawLive").onchange = () => { updateTargetUi(); redraw(); };
 $("newDrawing").onclick = safe(async () => {

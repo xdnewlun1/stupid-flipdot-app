@@ -7,6 +7,7 @@
 <meta name="color-scheme" content="dark light">
 <title>Game controller</title>
 <link rel="stylesheet" href="/static/style.css">
+<link rel="stylesheet" href="/static/party.css">
 <script>try { const t = localStorage.getItem("theme"); if (t === "light" || t === "dark") document.documentElement.dataset.theme = t; } catch {}</script>
 <style>
   /* phone game pad: same tokens and controls as the main app, big thumb targets, no text selection while mashing buttons */
@@ -74,22 +75,26 @@
   </svg>
   <header class="head">
     <h1>Game controller</h1>
-    <a href="/">Back to the board</a>
+    <a href="/" id="backLink">Back to the board</a>
   </header>
   <div class="pick">
     <label class="gamePick"><span class="sr">Game</span>
       <select id="gamePick" aria-label="Game"><option value="">Pick a game…</option></select>
     </label>
     <div class="group" role="group" aria-label="Player">
-      <button data-player="1" class="active" aria-pressed="true">Player 1</button>
-      <button data-player="2" aria-pressed="false">Player 2</button>
+      <button data-player="1" class="active" aria-pressed="true" aria-label="Player 1">P1</button>
+      <button data-player="2" aria-pressed="false" aria-label="Player 2">P2</button>
+      <button data-player="3" aria-pressed="false" aria-label="Player 3">P3</button>
+      <button data-player="4" aria-pressed="false" aria-label="Player 4">P4</button>
     </div>
+    <button type="button" id="boardMenu" title="Open the game menu on the board; pick with the arrows and A">Menu on board</button>
   </div>
   <div class="screen">
   <div class="wrap"><canvas id="board" aria-label="The board"></canvas></div>
   <p id="status" role="status" aria-live="polite">Connecting…</p>
   <p id="padHint" hidden>Game menu: hold Start on a controller to switch games.</p>
   </div>
+  <section class="party" id="party" hidden aria-label="Party game"></section>
   <div class="pad">
     <div class="dpad">
       <span></span><button data-key="up" aria-label="Up"><svg class="i" aria-hidden="true"><use href="#i-up"/></svg></button><span></span>
@@ -123,6 +128,7 @@
   </div>
 <script type="module">
 import { GAME_GROUPS as GAMES } from "/static/js/games.js";
+import { partyMode } from "/static/js/partyplay.js";
 const canvas = document.getElementById("board"), ctx = canvas.getContext("2d");
 let player = 1, runner = null;
 const runKey = document.getElementById("runKey");
@@ -155,7 +161,8 @@ const HINTS = { tetris: ["rotate", "drop"], blackjack: ["deal / hit", "stand"], 
   connect4: ["drop", "drop"], tictactoe: ["place", "place"], artillery: ["fire", ""], checkers: ["select / move", "cancel"],
   battleship: ["fire / place", "rotate"], quickdraw: ["draw", "draw"], air_hockey: ["", ""],
   game2048: ["keep going", "new game"], minesweeper: ["open / chord", "flag"], sokoban: ["restart (×2)", "undo"], lights_out: ["toggle", "undo"],
-  simon: ["", ""], columns: ["cycle", "drop"], mastermind: ["check", "clear slot"] };
+  simon: ["", ""], columns: ["cycle", "drop"], mastermind: ["check", "clear slot"],
+  party: ["join / mash", "leave"], quiz: ["join / buzz", "buzz"], pictionary: ["join", ""], rhythm: ["hit", "hit"], drummachine: ["play / stop", "stop"] };
 function showStatus() {
   if (!runner) return;
   const game = runner.interactive ? (runner.description || "").toLowerCase() : "";
@@ -172,6 +179,7 @@ function showStatus() {
   if (!doom) runKey.setAttribute("aria-pressed", "false");
   statusEl.textContent = (runner.interactive ? runner.description : "No game running. Pick one above.") + (wsOpen ? "" : " (reconnecting…)");
   if (document.activeElement !== gamePick) gamePick.value = runner.interactive && HINTS[runner.app] ? runner.app : "";
+  partyMode(runner, player, wsParty);  // the party games' own controls (static/js/partyplay.js)
 }
 
 // Live updates over a WebSocket; plain polling while it's down.
@@ -206,6 +214,7 @@ async function poll() {
 }
 poll();
 
+const wsParty = msg => { if (!wsOpen) return false; ws.send(JSON.stringify(msg)); return true; };
 const send = (key, action) => {
   const msg = { key, action, player };
   if (wsOpen) ws.send(JSON.stringify({ type: "input", ...msg }));
@@ -225,6 +234,15 @@ fetch("/api/settings").then(r => r.json()).then(s => {
   document.getElementById("padHint").hidden = s.gamepad?.enabled === false || s.gamepad?.menu_button === "off";
 }).catch(() => {});
 
+// a player link (Settings, People & access) can't open the main app: no link back to it
+fetch("/api/me").then(r => r.json()).then(me => { if (me.role && me.role !== "owner") document.getElementById("backLink").hidden = true; }).catch(() => {});
+document.getElementById("boardMenu").onclick = async () => {
+  try {
+    const r = await fetch("/api/play/menu", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ player }) });
+    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || `error ${r.status}`);
+  } catch (e) { statusEl.textContent = `Couldn't open the menu: ${e.message}`; }
+};
+
 gamePick.onchange = async () => {
   const id = gamePick.value;
   if (!id) return;
@@ -234,10 +252,16 @@ gamePick.onchange = async () => {
   } catch (e) { statusEl.textContent = `Couldn't start ${gamePick.selectedOptions[0].text}: ${e.message}`; }
   gamePick.blur();
 };
-document.querySelectorAll("[data-player]").forEach(b => b.onclick = () => {
+const pickPlayer = b => {
   player = +b.dataset.player;
   document.querySelectorAll("[data-player]").forEach(x => { x.classList.toggle("active", x === b); x.setAttribute("aria-pressed", String(x === b)); });
+};
+document.querySelectorAll("[data-player]").forEach(b => b.onclick = () => {
+  pickPlayer(b);
+  try { localStorage.setItem("playPlayer", b.dataset.player); } catch {}
+  if (runner) showStatus();
 });
+try { const saved = document.querySelector(`[data-player="${localStorage.getItem("playPlayer")}"]`); if (saved) pickPlayer(saved); } catch {}
 
 const KEYS = { ArrowUp: "up", ArrowDown: "down", ArrowLeft: "left", ArrowRight: "right", w: "up", s: "down", a: "left", d: "right", " ": "a", Enter: "b",
   q: "strafe_left", e: "strafe_right", r: "weapon", Shift: "run" };

@@ -30,6 +30,7 @@ GROUPS = [
     ("Runners & racing", ["dino", "racer", "copter", "stacker", "skyjump", "pitfall"]),
     ("Two players", ["connect4", "tictactoe", "artillery", "checkers", "battleship", "quickdraw", "air_hockey"]),
     ("Puzzles", ["game2048", "minesweeper", "sokoban", "lights_out", "simon", "columns", "mastermind"]),
+    ("Party", ["party", "quiz", "pictionary", "rhythm", "drummachine"]),
 ]
 PAUSE_KEY = {"doom": "start", "nes": "pause"}  # games that keep running on their own: toggle their pause around the menu
 
@@ -197,7 +198,8 @@ class GamepadMenu:
             last = self.store._load(STATE_FILE, {}).get("last")
             self.menu = GameMenu(self.runner.ctx, player=player, current=game.id if game else None, last=last,
                                  on_pick=self._pick, on_close=lambda: self._closed(game))
-            self.runner.notify(app=self.menu, duration=24 * 3600, transition="none")
+            self.runner.notify(app=self.menu, duration=24 * 3600, transition="none", priority="critical",
+                               sound="none", source="game menu", record=False, dedupe=False)
 
     @staticmethod
     def _tap(app, key):

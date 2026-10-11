@@ -1,5 +1,6 @@
 // Videos page: upload clips (converted on the server with ffmpeg), pick one, play it on the board, scrub through it.
 import { $, api, ask, autosave, board, bus, el, icon, iconButton, renderDots, rowsToGrid, safe, toast, undoable, videosCache } from "./common.js";
+import { addToPlaylist } from "./addto.js";
 
 let lib = { videos: [], ffmpeg: true, settings: {} };
 let current = null;          // id of the video in the player panel
@@ -76,6 +77,8 @@ function card(v) {
         await play(v.id, 0);
       }) }, icon("play")) : null,
       el("span", { class: "spacer" }),
+      ready ? iconButton("playlist", `Add ${v.name} to a playlist`, safe(() => addToPlaylist({ app: "video", params: { video: v.id } },
+        { name: v.name, duration: Math.max(5, Math.ceil(v.duration || 60)) }))) : null,
       iconButton("edit", `Rename ${v.name}`, safe(() => rename(v))),
       iconButton("x", `Delete ${v.name}`, safe(() => remove(v)), "danger")));
 }

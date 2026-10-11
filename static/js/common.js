@@ -447,6 +447,7 @@ export const APP_SECTIONS = [
   ["widgets", "Widgets", a => a.category === "Widgets"],
   ["generative", "Generative", a => a.category === "Generative"],
   ["utilities", "Utilities", a => ["Utilities", "Clocks", "Text"].includes(a.category)],
+  ["plugins", "Plugins", a => a.category === "Plugins"],
   ["other", "More", a => !["Games", "Layers", "Media"].includes(a.category)],
   ["playlists", "Used in playlists", a => ["Layers", "Media"].includes(a.category)],
   ["games", "Games", () => true],
@@ -481,6 +482,9 @@ export async function refreshScenes() {
   return scenesCache.list;
 }
 
+// Param types other modules build (musicreact.js): type -> (param, value, id) => { input, get }
+export const paramTypes = {};
+
 // Build a form for an app's params. Returns { el, values() }.
 export function paramForm(app, values = {}) {
   const form = el("div", { class: "form" });
@@ -490,7 +494,9 @@ export function paramForm(app, values = {}) {
     const id = `p_${app.id}_${p.name}_${Math.random().toString(36).slice(2, 7)}`;
     const v = values[p.name] ?? p.default;
     let input;
-    if (p.type === "select") {
+    if (paramTypes[p.type]) {
+      ({ input, get: getters[p.name] } = paramTypes[p.type](p, v, id));
+    } else if (p.type === "select") {
       input = el("select", { id }, p.options.map(([val, label]) => el("option", { value: val, selected: String(val) === String(v) }, label)));
       getters[p.name] = () => input.value;
     } else if (p.type === "scene") {

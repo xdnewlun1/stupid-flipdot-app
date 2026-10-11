@@ -1,10 +1,11 @@
 """Minimal MQTT 3.1.1 client (QoS 0, stdlib only) for Home Assistant and friends.
 
 Topics (with the default prefix "flipdot"):
-    flipdot/notify   payload: plain text, or JSON like the /api/notify body
+    flipdot/notify   payload: plain text, or JSON like the /api/notify body (priority, icon, sound, repeat, hold, key...)
     flipdot/run      payload: JSON app spec, e.g. {"app": "clock"}
-    flipdot/command  payload: stop | schedule | next | black | white | invert
+    flipdot/command  payload: stop | schedule | next | black | white | invert | dismiss | clear (the notifications)
     flipdot/event    payload: an event name for Automations (e.g. "doorbell")
+    flipdot/timer    payload: a timer command, e.g. "pasta 8m", "pause pasta", "cancel all", "pomodoro" (timers.py)
     flipdot/status   published (retained) by us whenever the mode/app changes
     flipdot/availability  online / offline (retained; "offline" is also our Last Will)
 
@@ -40,7 +41,7 @@ def _packet(ptype, body):
 
 
 class MqttClient:
-    def __init__(self, cfg, on_message, on_connect=None, will=None, subscribe=()):
+    def __init__(self, cfg, on_message, on_connect=None, will=None, subscribe=(), client_id=None):
         """will: (topic, payload, retain) the broker publishes if we vanish; subscribe: extra topics
         (full names, wildcards allowed). Messages under the prefix reach on_message with the prefix
         stripped ("notify"), others with their full topic."""
@@ -49,6 +50,7 @@ class MqttClient:
         self.on_connect = on_connect
         self.will = will
         self.extra_subs = list(subscribe)
+        self.client_id = client_id  # None: flipdot-<number>; a second connection needs its own
         self.prefix = cfg.get("prefix") or "flipdot"
         self.sock = None
         self.connected = False
@@ -112,7 +114,7 @@ class MqttClient:
         c = self.cfg
         self.sock = socket.create_connection((c["host"], int(c.get("port") or 1883)), timeout=10)
         flags = 0x02  # clean session
-        payload = _str(f"flipdot-{int(time.time()) % 100000}")
+        payload = _str(self.client_id or f"flipdot-{int(time.time()) % 100000}")
         if self.will:
             topic, message, retain = self.will
             flags |= 0x04 | (0x20 if retain else 0)  # will flag (QoS 0), will retain
@@ -130,7 +132,7 @@ class MqttClient:
         if head >> 4 != 2 or data[1] != 0:
             raise ConnectionError(f"broker refused connection (code {data[1] if len(data) > 1 else '?'})")
         sub = struct.pack("!H", 1)
-        for t in [f"{self.prefix}/{t}" for t in ("notify", "run", "command", "event")] + self.extra_subs:
+        for t in [f"{self.prefix}/{t}" for t in ("notify", "run", "command", "event", "timer")] + self.extra_subs:
             sub += _str(t) + b"\x00"
         self.sock.sendall(_packet(0x82, sub))
         self.sock.settimeout(30)
@@ -190,7 +192,8 @@ def ha_topics(prefix):
         "availability": f"{prefix}/availability",
         "status": f"{prefix}/status",
         "command": f"{prefix}/command",
-        **{f"{e}_{k}": f"{prefix}/ha/{e}/{k}" for e in ("app", "playlist", "schedule", "quiet", "message")
+        **{f"{e}_{k}": f"{prefix}/ha/{e}/{k}" for e in ("app", "playlist", "schedule", "quiet", "message", "timer", "dnd",
+                                                                "notifications")
            for k in ("set", "state")},
     }
 
@@ -220,8 +223,22 @@ def discovery_configs(prefix, disc_prefix, app_options, playlist_options, model=
         entity("switch", "quiet_hours", "Quiet hours", "mdi:volume-off", command_topic=t["quiet_set"],
                state_topic=t["quiet_state"]),
         entity("text", "message", "Message", "mdi:message-text", command_topic=t["message_set"], max=255),
+        # notifications: notify.send_message to the Board entity, or JSON with priority/icon/... on <prefix>/notify
+        entity("notify", "board", "Board", "mdi:message-badge", command_topic=f"{prefix}/notify"),
+        entity("switch", "dnd", "Do not disturb", "mdi:bell-off", command_topic=t["dnd_set"], state_topic=t["dnd_state"]),
+        entity("sensor", "notifications", "Notifications waiting", "mdi:bell-badge",
+               state_topic=t["notifications_state"]),
+        entity("button", "dismiss", "Dismiss notification", "mdi:bell-cancel", command_topic=t["command"],
+               payload_press="dismiss"),
         entity("button", "next", "Next", "mdi:skip-next", command_topic=t["command"], payload_press="next"),
         entity("button", "stop", "Stop", "mdi:stop", command_topic=t["command"], payload_press="stop"),
+        # timers: say "pasta 8 minutes" to the Timer text (e.g. from an Assist sentence automation)
+        entity("text", "timer", "Timer", "mdi:timer-plus-outline", command_topic=t["timer_set"], max=255),
+        entity("sensor", "timers", "Timers", "mdi:timer-outline", state_topic=t["timer_state"]),
+        entity("button", "timers_cancel", "Cancel timers", "mdi:timer-off-outline", command_topic=t["timer_set"],
+               payload_press="cancel all"),
+        entity("button", "pomodoro", "Start Pomodoro", "mdi:timer-sand", command_topic=t["timer_set"],
+               payload_press="pomodoro"),
         entity("sensor", "showing", "Showing", "mdi:dots-grid", state_topic=t["status"],
                value_template="{{ value_json.description or 'Nothing' }}", json_attributes_topic=t["status"]),
     ]
@@ -236,6 +253,7 @@ def handle_message(runner, board, notify_fn, topic, payload):
                 raise ValueError
         except ValueError:
             body = {"text": payload}
+        body.setdefault("source", "mqtt")
         notify_fn(body)
     elif topic == "run":
         body = json.loads(payload)
@@ -254,5 +272,9 @@ def handle_message(runner, board, notify_fn, topic, payload):
         elif cmd == "invert":
             runner.stop()
             board.invert_all()
+        elif cmd == "dismiss":
+            runner.dismiss()
+        elif cmd == "clear":
+            runner.clear_notifications()
         else:
             raise ValueError(f"unknown command {cmd!r}")

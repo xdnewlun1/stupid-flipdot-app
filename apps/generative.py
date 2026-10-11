@@ -4,12 +4,14 @@ import math
 import random
 
 from .base import App, P, register
+from .react import reactive
 from .restart import RESTART_PARAMS, RestartFx
 
 BAYER4 = [[0, 8, 2, 10], [12, 4, 14, 6], [3, 11, 1, 9], [15, 7, 13, 5]]
 
 
 @register
+@reactive
 class Life(App):
     id = "life"
     title = "Game of Life"
@@ -50,10 +52,28 @@ class Life(App):
                 nxt[row + x] = 1 if n == 3 or (n == 2 and cur[row + x]) else 0
         self.cells = nxt
 
+    def burst(self, size):
+        """Music: a random blob of live cells somewhere (a new beat to grow from)."""
+        w, h, rnd = self.w, self.h, random.random
+        r = max(1, int(size))
+        cx, cy = int(rnd() * w), int(rnd() * h)
+        for y in range(cy - r, cy + r + 1):
+            for x in range(cx - r * 2, cx + r * 2 + 1):  # wider than tall, like the board
+                if rnd() < 0.5:
+                    self.cells[(y % h) * w + x % w] = 1
+
     def render(self, c, now):
-        if now >= self.next_gen:  # generations keep their own pace, even while a transition draws faster
+        m = self.music
+        if m.enabled:  # generations on the music's clock: faster with the tempo, landing on the beat
+            gens = m.ticks("gen", now, float(self.p["fps"]), per_beat=float(self.p["fps"]) / 2)
+            if m.beat or m.hit("bass"):  # seed bursts on beats and bass notes, bigger when it's loud
+                self.burst(1 + 3 * min(1.5, m.level("bass") + 0.5 * m.amount))
+        else:
+            gens = 1 if now >= self.next_gen else 0
+        if gens:  # generations keep their own pace, even while a transition draws faster
             self.next_gen = max(self.next_gen + self.gen_time, now - self.gen_time)
-            self.step()
+            for _ in range(gens):
+                self.step()
             if self.seeded_at is None:
                 self.seeded_at = now
             key = hash(bytes(self.cells))
@@ -68,10 +88,12 @@ class Life(App):
             self.history = (self.history + [key])[-12:]
         c.px[:] = self.cells
         self.fx.finish(c, now)
-        self.interval = self.fx.interval(max(0.01, self.next_gen - now))
+        # reacting: come back often enough to catch each beat and the clock's next generation
+        self.interval = self.fx.interval(0.05 if m.enabled else max(0.01, self.next_gen - now))
 
 
 @register
+@reactive
 class Rain(App):
     id = "rain"
     title = "Matrix rain"
@@ -87,16 +109,25 @@ class Rain(App):
         super().__init__(ctx, **params)
         self.drops = [self.new_drop(x, initial=True) for x in range(self.w)]
 
-    def new_drop(self, x, initial=False):
+    def new_drop(self, x, initial=False, dense=1.0):
         return {"x": x, "y": random.uniform(-self.h, self.h if initial else 0),
                 "v": random.uniform(0.3, 1.0) * float(self.p["speed"]), "len": random.randint(3, 14),
-                "active": random.random() < float(self.p["density"])}
+                "active": random.random() < float(self.p["density"]) * dense}
 
     def render(self, c, now):
+        m = self.music
+        go, dense = 1.0, 1.0
+        if m.enabled:  # the highs speed the streams up; hats start new ones, so busy cymbals fill the board
+            go = m.speed * (1 - 0.3 * m.presence + 0.6 * m.level("high") + 1.2 * m.hits("high"))
+            dense = 1 - 0.4 * m.presence + 0.9 * m.level("high")
+            if m.hit("high"):
+                idle = [d for d in self.drops if not d["active"] and d["y"] - d["len"] < 0]
+                for d in random.sample(idle, min(len(idle), round(1 + 3 * min(1.5, m.hits("high"))))):
+                    d["active"] = True  # still above the top: it streams in rather than appearing
         for i, d in enumerate(self.drops):
-            d["y"] += d["v"]
+            d["y"] += d["v"] * go
             if d["y"] - d["len"] > self.h:
-                self.drops[i] = d = self.new_drop(d["x"])
+                self.drops[i] = d = self.new_drop(d["x"], dense=dense)
             if not d["active"]:
                 continue
             head = int(d["y"])
@@ -107,6 +138,7 @@ class Rain(App):
 
 
 @register
+@reactive
 class Plasma(App):
     id = "plasma"
     title = "Plasma"
@@ -120,22 +152,30 @@ class Plasma(App):
     interval = 0.08
 
     def render(self, c, now):
-        t = (now - self.started) * float(self.p["speed"])
+        m = self.music
+        t = m.clock("t", now, float(self.p["speed"]))
         k = 1 / float(self.p["scale"])
+        shift = warp = 0.0
+        if m.enabled:
+            # bass warps the rings from the centre outwards; the mids roll the palette (the bands flow)
+            warp = 1.1 * min(1.5, m.both("bass"))
+            self.shift = getattr(self, "shift", 0.0) + m.dt * (0.5 * m.level("mid") + 1.5 * m.hits("mid"))
+            shift = self.shift
         cx, cy = self.w / 2 + 20 * math.sin(t * 0.3), self.h / 2 + 10 * math.cos(t * 0.4)
         bands = self.p["style"] == "bands"
         for y in range(self.h):
             for x in range(self.w):
                 v = (math.sin(x * k / 7 + t) + math.sin(y * k / 5 + t * 1.3)
-                     + math.sin((x + y) * k / 9 + t * 0.7) + math.sin(math.hypot(x - cx, y - cy) * k / 5 - t))
+                     + math.sin((x + y) * k / 9 + t * 0.7) + math.sin(math.hypot(x - cx, y - cy) * k / 5 - t - warp))
                 if bands:
-                    on = int((v + 4) * 2) % 2
+                    on = int((v + 4) * 2 + shift) % 2
                 else:
-                    on = (v + 4) / 8 * 16 > BAYER4[y % 4][x % 4] + 0.5
+                    on = (v + 4 + 2 * math.sin(shift * math.pi)) / 8 * 16 > BAYER4[y % 4][x % 4] + 0.5
                 c.px[y * self.w + x] = 1 if on else 0
 
 
 @register
+@reactive
 class Bounce(App):
     id = "bounce"
     title = "Bouncing balls"
@@ -155,11 +195,23 @@ class Bounce(App):
         } for _ in range(int(self.p["balls"]))]
 
     def render(self, c, now):
+        m = self.music
+        go, grow = 1.0, 0.0
+        if m.enabled:
+            go = m.speed
+            grow = 0.1 * min(1.5, m.level("bass")) + 0.5 * min(1.5, m.hits("bass"))
+        if m.on:  # bass notes kick every ball upwards (sideways too, a little); loud bass swells them
+            if m.hit("bass") or m.beat:
+                kick = 1.5 + 2.5 * min(1.5, max(m.hits("bass"), m.pulse))
+                for b in self.balls:
+                    b["vy"] = min(b["vy"], 0.0) - kick
+                    b["vx"] += random.uniform(-0.6, 0.6) * min(1.0, m.amount)
+                    b["vx"] = max(-3.0, min(3.0, b["vx"]))
         for b in self.balls:
             if self.p["gravity"]:
-                b["vy"] += 0.15
-            b["x"] += b["vx"]
-            b["y"] += b["vy"]
+                b["vy"] += 0.15 * go
+            b["x"] += b["vx"] * go
+            b["y"] += b["vy"] * go
             r = b["r"]
             if b["x"] < r or b["x"] > self.w - 1 - r:
                 b["vx"] = -b["vx"]
@@ -172,10 +224,11 @@ class Bounce(App):
                 b["vy"] = -abs(b["vy"]) * (0.95 if self.p["gravity"] else 1)
                 if self.p["gravity"] and abs(b["vy"]) < 1.5:
                     b["vy"] = -random.uniform(3, 4.5)  # keep them bouncing forever
-            c.circle(b["x"], b["y"], r, fill=True)
+            c.circle(b["x"], b["y"], r * (1 + grow) if grow else r, fill=True)
 
 
 @register
+@reactive
 class Starfield(App):
     id = "starfield"
     title = "Starfield"
@@ -198,9 +251,15 @@ class Starfield(App):
         return self.w / 2 + s[0] / s[2] * self.w / 2, self.h / 2 + s[1] / s[2] * self.h / 2
 
     def render(self, c, now):
+        m = self.music
+        go, streak = 1.0, 0.4
+        if m.enabled:  # warp speed on the kick: the bass surges you forward, loud passages fly faster
+            kick = min(1.5, m.hits("bass"))
+            go = m.speed * (1 - 0.4 * m.presence + 0.5 * m.level("level") + 0.3 * m.level("bass") + 2.5 * kick)
+            streak = 0.4 + 0.25 * min(1.0, kick)
         for i, s in enumerate(self.stars):
             x0, y0 = self.project(s)
-            s[2] -= 0.02 * float(self.p["speed"])
+            s[2] -= 0.02 * float(self.p["speed"]) * go
             if s[2] <= 0.02:
                 self.stars[i] = self.new_star()
                 continue
@@ -208,7 +267,7 @@ class Starfield(App):
             if not (0 <= x1 < self.w and 0 <= y1 < self.h):
                 self.stars[i] = self.new_star()
                 continue
-            if s[2] < 0.4:
+            if s[2] < streak:
                 c.line(x0, y0, x1, y1)  # streak when close
             else:
                 c.set(x1, y1)

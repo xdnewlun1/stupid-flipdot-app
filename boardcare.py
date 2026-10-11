@@ -126,5 +126,6 @@ class BoardCare:
         interval = max(0.6, len(dots) / rate * 1.2) if rate else 0.6
         app = Exercise(self.runner.ctx, base, dots, times, interval)
         app.interval = interval
-        self.runner.notify(app=app, duration=interval * (times * 2 + 2), transition="none")
+        self.runner.notify(app=app, duration=interval * (times * 2 + 2), transition="none", source="board care",
+                           record=False, dedupe=False)
         return {"discs": len(dots), "seconds": round(interval * times * 2, 1)}

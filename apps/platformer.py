@@ -1,15 +1,18 @@
 """Platformer: a side-scroller with tile levels, stompable walkers, coins and a flag.
 
 Built on arcade.Arcade (fixed 40 Hz physics). Levels are 3x3-dot tiles drawn
-below a 6-row HUD. Speeds are in dots per second.
+below a 6-row HUD. Speeds are in dots per second. An idle title screen gives way
+to a demo run (games.Attract).
 """
 
 import math
+import random
 
 from fonts import SMALL
 
 from .arcade import STEP, Arcade, fill, sprite
 from .base import P, register
+from .games import DEMO, Attract
 
 T = 3            # tile size in dots
 ROWS = 12        # tile rows per level (36 dots)
@@ -94,11 +97,12 @@ class Body:
 
 
 @register
-class Platformer(Arcade):
+class Platformer(Attract, Arcade):
     id = "platformer"
     title = "Platformer"
     description = "Left/right to run (hold B to run faster), A or up to jump; hold it longer to jump higher. Stomp walkers, grab coins, reach the flag."
-    params = [P("lives", "number", 3, "Lives", min=1, max=9)]
+    params = [P("lives", "number", 3, "Lives", min=1, max=9), DEMO]
+    DEMO_POS = (1, 7)
 
     def reset(self):
         self.score, self.number = 0, 0
@@ -193,6 +197,30 @@ class Platformer(Arcade):
             self.buffer = BUFFER
         elif key == "down" and self.grounded:
             self.drop = 0.25  # fall through a one-way platform
+
+    def autoplay(self, now):
+        """Runs right and jumps over walls, pits and walkers; holds the button for a full jump."""
+        if self.phase != "play":
+            return self.hold()
+        h = self.hero
+        keys = ["right"]
+        if random.random() < 0.002:
+            self.dawdle = now + random.uniform(0.3, 0.8)  # stops to look around now and then
+        if now < getattr(self, "dawdle", 0):
+            keys = []
+        front = h.x + h.w
+        ahead = math.floor((front + 2) / T)
+        feet = math.floor((h.y + h.h + 0.5) / T)  # the tile row under the hero
+        wall = any(self.solid(ahead, ty) for ty in range(feet - 2, feet))
+        pit = not any(self.solid(tx, feet) or self.ledge(tx, feet) for tx in (ahead, ahead + 1))
+        walker = any(e.dead_at is None and -2 < e.x - front < 14 and abs(e.y + e.h - h.y - h.h) < 7
+                     for e in self.enemies)
+        if self.grounded and (wall or pit or walker) and keys:
+            self.press("a", 1)
+            keys.append("a")
+        elif not self.grounded and h.vy < 0:
+            keys.append("a")  # keep rising
+        self.hold(*keys)
 
     def die(self):
         self.phase, self.phase_t = "dying", 0.0
@@ -350,4 +378,4 @@ class Platformer(Arcade):
     def describe(self):
         if self.state == "title":
             return "Platformer (title)"
-        return f"Platformer ({self.state}, level {getattr(self, 'name', '1-1')}, score {self.score})"
+        return f"Platformer ({'demo' if self.demo else self.state}, level {getattr(self, 'name', '1-1')}, score {self.score})"

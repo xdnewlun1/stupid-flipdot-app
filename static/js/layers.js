@@ -2,6 +2,7 @@
 // Edits save themselves into the set; when the set being edited is what's on the board, they show there right away too.
 // Also builds the transitions gallery (shown on the Playlists page).
 import { $, api, appOptions, ask, autosave, board, bus, catalog, compCache, confirmDelete, confirmDialog, drawingsCache, el, flushUndo, icon, iconButton, loadDrawings, nameFree, paramForm, safe, toast, undoable } from "./common.js";
+import { addToPlaylistButton } from "./addto.js";
 
 // [value, plain name, what it does]
 const BLENDS = [
@@ -283,6 +284,11 @@ $("lyDelete").onclick = safe(async () => {
   select(Object.keys(comps)[0] || null);
 });
 $("lyRun").onclick = safe(() => run(false));
+// a saved set goes in by name (later edits to it show up in the playlist too); an unsaved stack as it is now
+$("lyState").before(addToPlaylistButton(() => {
+  if (!layers.length) { toast("Add a layer first", true); return null; }
+  return current ? { app: "layers", params: { composition: current } } : { app: "layers", params: { layers: structuredClone(layers) } };
+}, { name: () => current ? `Layer set "${current}"` : "These layers (not saved as a set)" }));
 $("lyLoadRunning").onclick = safe(async () => {
   if (fromBoard && !linked() && layers.length && !await confirmDialog({ title: "Replace these unsaved layers?", message: "They aren't saved as a layer set.", confirmText: "Replace" })) return;
   await loadRunning();

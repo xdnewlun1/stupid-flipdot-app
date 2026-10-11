@@ -12,6 +12,9 @@ sweep_ms: 85           # how long one panel takes to flip from its left edge to 
                        # wave (no seams). Tune it live: POST /api/board/timing {"sweep_ms": 40}; 0 = off
 sweep_mode: auto       # auto: only changes that stand on their own get the wave; moving content (video, games,
                        # transitions) flips every column together so it doesn't tear. always: every change
+full_refresh_s: 300    # resend every panel this often while its bus is idle (never during the music visualizer or
+                       # games), to put right discs that missed a frame; 0 = off. A bus that comes back after
+                       # being unreachable always resends all its panels
 
 # Pasted from Maestro
 panels:

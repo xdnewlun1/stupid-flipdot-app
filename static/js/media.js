@@ -4,6 +4,7 @@
 import { $, api, ask, board, bus, choose, renderDots, gridToRows, safe, scenesCache, toast, refreshScenes, loadDrawings, uploadFile, wsSend, wsBacklog } from "./common.js";
 import { importVideos } from "./videos.js";
 import { importToSlideshow } from "./slideshows.js";
+import { addToPlaylistButton } from "./addto.js";
 
 const MAX_FRAMES = 500;
 const preview = $("preview"), pctx = preview.getContext("2d");
@@ -145,6 +146,7 @@ function updateButtons() {
   $("saveMedia").disabled = !hasFrames;
   $("saveMedia").hidden = !!saved;
   $("openSaved").hidden = !saved;
+  if ($("imToPlaylist")) $("imToPlaylist").hidden = !saved;
   $("addAsLayer").disabled = !hasFrames;
   $("live").disabled = !isVideo;
   $("clip").disabled = !isVideo;
@@ -444,6 +446,11 @@ $("saveMedia").onclick = safe(async () => {
     bus.dispatchEvent(new CustomEvent("picturesAdded", { detail: { ids: [id] } }));
   } }, 6000);
 });
+const imToPlaylist = addToPlaylistButton(() => saved && { app: "scene", params: { scene: saved.id } },
+  { name: () => saved?.name || sourceName, duration: () => 30 });
+imToPlaylist.id = "imToPlaylist";
+imToPlaylist.hidden = true;
+$("openSaved").after(imToPlaylist);
 $("openSaved").onclick = () => {
   if (!saved) return;
   go("pictures");

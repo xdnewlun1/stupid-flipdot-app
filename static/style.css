@@ -401,6 +401,13 @@ pre, .tableWrap, .animStrip { scrollbar-color: var(--line-strong) transparent; }
 .statusWarn .i { stroke: var(--warn); }
 .statusWarn span { flex: 1; min-width: 200px; }
 .statusWarn button { height: 28px; }
+/* the board can't be reached: the preview shows what it would display, not what the discs show */
+.linkWarn { border-color: var(--danger); background: var(--danger-soft); }
+.linkWarn .i { stroke: var(--danger); }
+.stripText .stripLink { display: inline-flex; align-items: center; gap: 4px; min-width: 0; color: var(--danger); font-size: var(--fs-sm); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.stripText .stripLink .i { flex: none; width: 14px; height: 14px; stroke: var(--danger); }
+.stripText .stripLink span { overflow: hidden; text-overflow: ellipsis; }
+.nowStrip.linkDown .statusWhy { display: none; }
 
 /* ---------- saving, busy buttons, errors ---------- */
 .savedNote { display: inline-flex; align-items: center; gap: 4px; color: var(--text-3); font: 400 var(--fs-xs)/1 var(--font); letter-spacing: 0; text-transform: none; vertical-align: middle; }
@@ -621,6 +628,9 @@ body[data-tab=draw] .device { max-width: max(520px, calc((100vh - 480px) * 2)); 
 .reactStatus .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: var(--s2); background: var(--text-3); vertical-align: 1px; }
 .reactStatus.on .dot { background: var(--ok); }
 .reactRows { display: grid; gap: var(--s2); margin: var(--s3) 0 var(--s2); }
+.form > .wide { grid-column: 1 / -1; }
+.form > .reactMap .reactRows { margin: 0; }
+.musicSwitch .reactStatus { margin: var(--s2) 0 0; }
 .reactRow { display: grid; grid-template-columns: minmax(170px, 32%) minmax(0, 1fr); gap: var(--s2) var(--s4); align-items: center;
   padding: var(--s2) var(--s3); background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--r2); }
 .reactRow .sig { display: grid; gap: 2px; min-width: 0; }
@@ -632,8 +642,59 @@ body[data-tab=draw] .device { max-width: max(520px, calc((100vh - 480px) * 2)); 
 .reactRow .ctl select { min-width: 0; max-width: 100%; }
 .reactRow .ctl .amt { display: flex; align-items: center; gap: var(--s2); flex: 1 1 180px; min-width: 0; font-size: var(--fs-sm); color: var(--text-2); }
 .reactRow .ctl .amt input { flex: 1; min-width: 60px; }
-.reactRow.off .ctl .amt, .reactRow.off .ctl .sens { opacity: .45; }
+.reactRow.off .ctl .amt, .reactRow.off .ctl .sens, .reactRow.off .ctl .react { opacity: .45; }
+.reactRow .spd { display: none; grid-column: 2; flex-wrap: wrap; gap: var(--s2) var(--s3); align-items: center; min-width: 0; font-size: var(--fs-sm); }
+.reactRow.moving .spd { display: flex; }
+.reactRow .spd select { min-width: 0; max-width: 100%; }
 @media (max-width: 600px) {
   .reactRow { grid-template-columns: minmax(0, 1fr); }
   .reactRow .ctl select { flex: 1 1 100%; }
+  .reactRow .spd { grid-column: 1; }
+  .reactRow .spd select { flex: 1 1 40%; }
+  .reactRow .spd select.follow { flex-basis: 100%; }
+  .reactRow .spd > span { flex: 1 1 100%; }
 }
+
+/* Settings → Maintenance / Backup (ops.js) */
+.opsLine { display: block; color: var(--text-3); font-size: var(--fs-xs); }
+.opsWarn { color: var(--danger); }
+#upResult p { margin: var(--s2) 0; }
+.form #bkWeekday { width: auto; flex: 1 1 auto; }
+.form #bkKeep { width: 96px; }
+#bkList .item .name { overflow-wrap: anywhere; }
+/* People & access (people.js) and Friend messages (friends.js) */
+#paWarn { color: var(--danger); }
+.paShare { display: flex; flex-wrap: wrap; gap: var(--s4); align-items: flex-start; margin: var(--s4) 0; padding: var(--s4); background: var(--surface-2); border: 1px solid var(--accent); border-radius: var(--r3); }
+.paQr { width: 168px; height: 168px; image-rendering: pixelated; border-radius: var(--r2); flex: none; }
+.paShareText { flex: 1 1 240px; min-width: 0; }
+.paShareText h3 { margin: 0 0 var(--s1); }
+.paShareText .row { flex-wrap: wrap; }
+.paLinkField { width: 100%; font-family: var(--mono, ui-monospace, monospace); font-size: var(--fs-sm); }
+.paTrust { display: inline-flex; align-items: center; gap: var(--s2); font-size: var(--fs-sm); }
+.item.paExpired .name { color: var(--text-3); }
+.fmItem canvas { width: 168px; max-width: 100%; height: auto; border-radius: var(--r1, 4px); flex: none; }
+.fmItem .fmText { white-space: pre-wrap; overflow-wrap: anywhere; }
+
+/* notifications (notifications.js): the queue on Now playing */
+.notifPanel { margin-top: var(--s5); }
+.notifPanel h3, .notifPanel h4 { margin: 0; }
+.notifHead, .notifSub { flex-wrap: wrap; gap: var(--s2) var(--s3); margin-bottom: var(--s3); }
+.notifSub { margin-top: var(--s4); }
+.notifDnd { font-size: var(--fs-xs); color: var(--text-2); border: 1px solid var(--line-strong); border-radius: 999px; padding: 2px var(--s2); }
+.notifItem .name { min-width: 0; overflow-wrap: anywhere; }
+.notifItem.prio-high { border-left: 3px solid var(--text-3); }
+.notifItem.prio-critical { border-left: 3px solid var(--danger); }
+.notifHistory { margin-top: var(--s4); }
+.notifHistory summary { cursor: pointer; color: var(--text-2); margin-bottom: var(--s3); }
+#notifSettings pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+#tab-friends .form input[type=number] { width: 96px; flex: none; }
+
+/* Settings → Plugins (plugins.js) */
+.plItem .plStatus { flex-basis: 100%; }
+.plItem .plStatus pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 240px; overflow-y: auto; margin-top: var(--s2); }
+.plItem .plSwitch { display: inline-flex; align-items: center; gap: var(--s2); }
+.plItem .plReason { margin: 0; }
+.dlg.plDlg { width: min(860px, calc(100vw - 32px)); }
+.plDlg .plFiles { display: flex; flex-direction: column; gap: var(--s2); margin-bottom: var(--s3); }
+.plDlg .plCode { max-height: 55vh; overflow: auto; white-space: pre; margin-top: var(--s2); }
+.plDlg .plTrust { display: flex; align-items: center; gap: var(--s2); margin-bottom: var(--s3); font-weight: 500; }

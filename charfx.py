@@ -7,7 +7,7 @@ from transitions import NAMES, Transition
 
 CHAR_PARAMS = [
     P("char_transition", "select", "none", "Character transition",
-      options=[["none", "None"]] + [[n, n] for n in NAMES if n != "none"]),
+      options=[["none", "None"], ["split-flap", "split-flap (flaps through the alphabet)"]] + [[n, n] for n in NAMES if n not in ("none", "split-flap")]),
     P("char_time", "number", 0.5, "Character transition time (s)", min=0.1, max=3, step=0.1,
       show_if={"char_transition": {"not": "none"}}),
 ]
@@ -23,6 +23,17 @@ def crop(c, x, y, w, h):
                 if 0 <= sx < c.w:
                     out.px[yy * w + xx] = c.px[sy * c.w + sx]
     return out
+
+
+def _flapper(shown, old_key, key, slot, new, w, h, duration, now):
+    """Split-flap: flap from the old character through the drum to the new one (digits of a seven-segment
+    clock go round a digit drum), as many flaps as fit in `duration`; the last flap shows the real picture."""
+    import splitflap
+    seg = isinstance(slot, tuple) and slot[0] == "seg" and str(key) in splitflap.DIGITS
+    limit = max(1, int(float(duration) / splitflap.FLAP_S))
+    steps = splitflap.sequence(str(old_key)[:1], str(key)[:1], seg=seg, limit=limit)
+    pics = [splitflap.glyph(ch, w, h, seg=seg) for ch in steps[:-1]] + [new]
+    return splitflap.Flapper(shown, steps, pics, now, min(splitflap.FLAP_S, float(duration) / len(steps)))
 
 
 class CharFx:
@@ -50,15 +61,18 @@ class CharFx:
                 self.slots[slot] = {"geom": geom, "key": key, "shown": new, "t": None}
                 continue
             if key != st["key"]:
-                t = Transition(self.kind, st["shown"], w, h, self.duration)
-                t.start = now
+                if self.kind == "split-flap":
+                    t = _flapper(st["shown"], st["key"], key, slot, new, w, h, self.duration, now)
+                else:
+                    t = Transition(self.kind, st["shown"], w, h, self.duration)
+                    t.start = now
                 st["t"], st["key"] = t, key
             out = new
             if st["t"] is not None:
                 if st["t"].done(now):
                     st["t"] = None
                 else:
-                    out = st["t"].mix(new, now)
+                    out = st["t"].frame(now) if self.kind == "split-flap" else st["t"].mix(new, now)
                     self.active = True
                     # paste the in-between picture over this character's box
                     for yy in range(h):

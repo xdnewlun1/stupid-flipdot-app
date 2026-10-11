@@ -3,6 +3,7 @@ import {
   $, api, ask, board, bus, confirmDelete, download, drawingsCache, el, icon, loadDrawings, refreshScenes, renderDots, rowsToGrid,
   safe, scenesCache, thumbCanvas, toast,
 } from "./common.js";
+import { addToPlaylist } from "./addto.js";
 
 let kind = "all";
 let fresh = new Set(), adjustable = null;  // just imported (highlighted until another page opens); the one Import can still re-convert
@@ -13,6 +14,7 @@ function pictures() {
   const scenes = scenesCache.list.map(s => ({
     key: "s" + s.id, name: s.name, thumb: s.thumb, kind: s.frames > 1 ? "anim" : "still",
     meta: s.frames > 1 ? `Animation · ${s.frames} frames` : "Picture",
+    item: { app: "scene", params: { scene: s.id } },
     show: () => api("/api/run", { app: "scene", params: { scene: s.id } }),
     layer: () => api("/api/layers/add", { layer: { app: "scene", params: { scene: s.id } }, position: "top" }),
     edit: () => bus.dispatchEvent(new CustomEvent("editScene", { detail: s.id })),
@@ -44,6 +46,7 @@ function pictures() {
   const drawings = drawingsCache.list.map(d => ({
     key: "d" + d.id, name: d.name, thumb: d.thumb, kind: "drawing", live: onBoard.has(d.id),
     meta: onBoard.has(d.id) ? "Drawing layer · on the board now" : "Drawing layer",
+    item: { app: "drawing", params: { drawing: d.id } },
     show: () => api("/api/run", { app: "drawing", params: { drawing: d.id } }),
     layer: onBoard.has(d.id) ? null : () => api(`/api/drawings/${d.id}/show`, {}),
     edit: () => bus.dispatchEvent(new CustomEvent("drawTarget", { detail: d.id })),
@@ -68,6 +71,7 @@ function pictureCard(p) {
       el("button", { class: "primary", onclick: safe(async () => { await p.show(); toast(`Showing "${p.name}"`); }) }, icon("play"), "Show on board"),
       p.layer ? el("button", { title: "Add it on top of what's on the board", onclick: safe(async () => { await p.layer(); toast(`Added "${p.name}" as a layer`); }) }, "Add as layer") : null,
       el("button", { title: "Open it in Draw", onclick: p.edit }, icon("edit"), "Edit"),
+      el("button", { title: "Put it in a playlist, or start a new one", onclick: safe(() => addToPlaylist(p.item, { name: p.name })) }, icon("playlist"), "Add to playlist"),
       adjustable === p.key ? el("button", { title: "Back to Import: change sizing, style, cutoff or negative, and this picture is updated",
         onclick: () => bus.dispatchEvent(new CustomEvent("tab", { detail: "import" })) }, "Change conversion") : null),
     el("div", { class: "row minor" },

@@ -1,7 +1,8 @@
 """Arcade games: Breakout, Space Invaders, Tron light cycles and Flappy.
 
 Built on games.Game. Physics runs on a fixed 40 Hz clock (step()) so speeds
-don't depend on the frame rate; speeds below are in dots per second.
+don't depend on the frame rate; speeds below are in dots per second. Each game
+plays itself (games.Attract) when the title screen has sat idle for a while.
 """
 
 import math
@@ -11,7 +12,7 @@ import time
 from fonts import NORMAL, SMALL
 
 from .base import P, register
-from .games import Game
+from .games import DEMO, Attract, Game
 
 STEP = 1 / 40
 
@@ -36,13 +37,15 @@ def sprite(c, x, y, rows):
 
 
 class Arcade(Game):
-    """Game with a fixed-step clock, a title that fits the board and a best score."""
+    """Game with a fixed-step clock, a title that fits the board and a best score
+    (from the shared high-score table, kept up to date while a game runs)."""
 
     def __init__(self, ctx, **params):
         super().__init__(ctx, **params)
         self.now = time.time()
         self.clock = None
-        self.best = 0
+        hi = self.hi()
+        self.best = hi["score"] if hi and not self.lower_better else 0
 
     def tick(self, now):
         self.now = now
@@ -51,7 +54,8 @@ class Arcade(Game):
         while now - self.clock >= STEP and self.state == "playing":
             self.clock += STEP
             self.step()
-        self.best = max(self.best, self.score)
+        if not getattr(self, "demo", False):
+            self.best = max(self.best, self.score)
 
     def step(self): ...
     def draw_title(self, c, now): ...
@@ -65,8 +69,7 @@ class Arcade(Game):
             else:
                 c.text_center(8, t, NORMAL)
             self.draw_title(c, now)
-            if int(now * 2) % 2:
-                c.text_center(36, "PRESS ANY BUTTON", SMALL)
+            self.title_footer(c, now)
             return
         if self.state == "over":
             c.text_center(4, "GAME OVER", NORMAL)
@@ -82,11 +85,12 @@ class Arcade(Game):
 # ---- Breakout -----------------------------------------------------------------
 
 @register
-class Breakout(Arcade):
+class Breakout(Attract, Arcade):
     id = "breakout"
     title = "Breakout"
     description = "Left/right moves the paddle, A or up launches the ball. Where the ball hits the paddle sets its angle."
-    params = [P("lives", "number", 3, "Lives", min=1, max=9)]
+    params = [P("lives", "number", 3, "Lives", min=1, max=9), DEMO]
+    DEMO_POS = (-1, 0)
     TOP = 7          # ceiling (the HUD sits above it)
     BRICKS_Y = 10
     BW, BH = 6, 2    # brick size; bricks sit on a 7x3 grid
@@ -109,6 +113,7 @@ class Breakout(Arcade):
     def serve(self):
         self.stuck = True
         self.serve_at = self.now
+        self.aim = random.uniform(-0.6, 0.6)
         self.speed = 28 + 4 * self.level
         self.bx, self.by = self.px + self.pw / 2 - 1, self.PADDLE_Y - 2
         self.vx = self.vy = 0
@@ -121,6 +126,30 @@ class Breakout(Arcade):
     def press(self, key, player):
         if key in ("a", "up", "b") and self.stuck:
             self.launch()
+
+    def landing_x(self):
+        """Where the ball will cross the paddle row, bouncing off the side walls."""
+        t = (self.PADDLE_Y - 2 - self.by) / self.vy
+        x = self.bx + self.vx * t
+        span = self.w - 2
+        x %= 2 * span
+        return 2 * span - x if x > span else x
+
+    def autoplay(self, now):
+        if self.stuck:
+            self.hold()
+            if now - self.serve_at > 1:
+                self.press("a", 1)
+            return
+        if self.vy > 0:
+            target = self.landing_x() + 1 - self.aim * self.pw / 2  # hit off-centre to steer the ball
+        else:
+            target = self.bx + 1
+        d = target - (self.px + self.pw / 2)
+        if abs(d) > 1.5:
+            self.hold("right" if d > 0 else "left")
+        else:
+            self.hold()
 
     def brick_at(self, x, y):
         """(row, col) of the brick covering dot (x, y), or None."""
@@ -171,6 +200,7 @@ class Breakout(Arcade):
                 self.speed = min(self.speed + 0.6, 55)
                 self.vx, self.vy = self.speed * math.sin(a), -self.speed * math.cos(a)
                 self.by = self.PADDLE_Y - 2
+                self.aim = random.uniform(-0.75, 0.75) if random.random() > 0.04 else 2.5  # the demo fumbles now and then
         if self.left == 0:
             self.level += 1
             return self.new_level()
@@ -201,7 +231,7 @@ class Breakout(Arcade):
         fill(c, 36, 30, 12, 2)
 
     def describe(self):
-        return f"Breakout ({self.state}, level {getattr(self, 'level', 1)}, score {self.score})"
+        return f"Breakout ({'demo' if self.demo else self.state}, level {getattr(self, 'level', 1)}, score {self.score})"
 
 
 # ---- Space Invaders ---------------------------------------------------------------
@@ -219,11 +249,12 @@ SHIELD = [".XXXX.", "XXXXXX", "XX..XX"]  # in 2x2 blocks
 
 
 @register
-class Invaders(Arcade):
+class Invaders(Attract, Arcade):
     id = "invaders"
     title = "Space Invaders"
     description = "Left/right to move, A or up to fire. Shields wear away; each wave marches faster."
-    params = [P("lives", "number", 3, "Lives", min=1, max=9)]
+    params = [P("lives", "number", 3, "Lives", min=1, max=9), DEMO]
+    DEMO_POS = (None, 0)
     ROWS, COLS = 3, 6
     SHIP_Y = 38
     SHIELD_Y = 29
@@ -318,7 +349,7 @@ class Invaders(Arcade):
                 if self.lives <= 0:
                     return self.game_over()
                 break
-        if len(self.bombs) < 1 + min(self.wave, 4) // 2 and random.random() < 0.03 + 0.01 * self.wave:
+        if self.count and len(self.bombs) < 1 + min(self.wave, 4) // 2 and random.random() < 0.03 + 0.01 * self.wave:
             cols = {}
             for _, col, x, y in self.aliens():
                 cols[col] = (x + 3, y + 5)
@@ -326,6 +357,30 @@ class Invaders(Arcade):
         if self.count == 0:
             self.wave += 1
             self.new_wave()
+
+    def autoplay(self, now):
+        ship = self.sx + 3
+        # a bomb coming down on the ship: step out from under it
+        threat = [b for b in self.bombs if b[1] > self.SHIP_Y - 16 and abs(b[0] - ship) < 6]
+        if threat:
+            b = min(threat, key=lambda b: -b[1])[0]
+            away = "left" if b > ship else "right"
+            if (away == "left" and self.sx < 2) or (away == "right" and self.sx > self.w - 9):
+                away = "right" if away == "left" else "left"
+            return self.hold(away)
+        cols = {}
+        for _, col, x, y in self.aliens():
+            cols[col] = (x + 3, y)  # the lowest alien of each column
+        if not cols:
+            return self.hold()
+        if getattr(self, "target", None) not in cols or random.random() < 0.01:
+            self.target = min(cols, key=lambda k: abs(cols[k][0] - ship) - cols[k][1] / 4 + random.uniform(0, 6))
+        tx = cols[self.target][0] + self.dir * 2  # lead the march a little
+        d = tx - ship
+        keys = ["right" if d > 0 else "left"] if abs(d) > 1 else []
+        if abs(d) < 3:
+            keys.append("a")
+        self.hold(*keys)
 
     def hit_alien(self, x, y):
         for r, col, ax, ay in self.aliens():
@@ -359,7 +414,7 @@ class Invaders(Arcade):
             sprite(c, 22 + i * 15, 20, ALIENS[r][f])
 
     def describe(self):
-        return f"Space Invaders ({self.state}, wave {getattr(self, 'wave', 1)}, score {self.score})"
+        return f"Space Invaders ({'demo' if self.demo else self.state}, wave {getattr(self, 'wave', 1)}, score {self.score})"
 
 
 # ---- Tron light cycles ----------------------------------------------------------
@@ -368,14 +423,16 @@ DIRS = {"up": (0, -1), "down": (0, 1), "left": (-1, 0), "right": (1, 0)}
 
 
 @register
-class Tron(Arcade):
+class Tron(Attract, Arcade):
     id = "tron"
     title = "Tron"
     description = ("Light cycles: steer with the arrows, don't hit any trail or the edge. "
-                   "Player 2 is the computer unless someone presses buttons as player 2.")
+                   "Player 2 is the computer unless someone presses buttons as player 2. "
+                   "Against the computer you score 1 a cell and 100 a round won.")
     params = [P("rounds", "number", 5, "Best of (rounds)", min=1, max=15),
-              P("speed", "number", 14, "Speed (cells per second)", min=6, max=30)]
+              P("speed", "number", 14, "Speed (cells per second)", min=6, max=30), DEMO]
     CELL = 2
+    DEMO_POS = (None, 36)
 
     def reset(self):
         self.gw, self.gh = self.w // self.CELL, self.h // self.CELL
@@ -392,6 +449,9 @@ class Tron(Arcade):
 
     def cpu(self):
         return self.now - self.p2_human_at > 15
+
+    def score_entry(self):
+        return super().score_entry() if self.cpu() else None
 
     def new_round(self):
         self.round += 1
@@ -436,9 +496,10 @@ class Tron(Arcade):
                     todo.append((nx, ny))
         return n
 
-    def cpu_turn(self):
-        (x, y), d = self.pos[1], self.dir[1]
-        ox, oy = self.pos[0]
+    def cpu_turn(self, i=1):
+        """Steer cycle i (1 = player 2; the demo also steers player 1) toward open space."""
+        (x, y), d = self.pos[i], self.dir[i]
+        ox, oy = self.pos[1 - i]
         danger = {(ox + dx, oy + dy) for dx, dy in DIRS.values()}  # where player 1 could be next
         best, choice = -1, d
         for nd in (d, (d[1], -d[0]), (-d[1], d[0])):
@@ -457,7 +518,7 @@ class Tron(Arcade):
                 score += 2 * ((abs(ox - x) + abs(oy - y)) - (abs(ox - nx) + abs(oy - ny)))
             if score > best:
                 best, choice = score, nd
-        self.dir[1] = choice
+        self.dir[i] = choice
 
     def step(self):
         now = self.now
@@ -478,6 +539,9 @@ class Tron(Arcade):
         if self.cpu():
             self.queue[1].clear()
             self.cpu_turn()
+        if self.demo:
+            self.queue[0].clear()
+            self.cpu_turn(0)
         new = [(x + dx, y + dy) for (x, y), (dx, dy) in zip(self.pos, self.dir)]
         crashed = {i for i in (0, 1) if not self.free(*new[i])}
         if new[0] == new[1]:
@@ -488,12 +552,15 @@ class Tron(Arcade):
                 self.grid[y * self.gw + x] = i + 1
                 self.trail[i].append(new[i])
                 self.pos[i] = new[i]
+        if 0 not in crashed:
+            self.score += 1
         if crashed:
             self.crashed = crashed
             self.end_at = now + 2
             if len(crashed) == 1:
                 self.wins[1 - next(iter(crashed))] += 1
-            self.score = self.wins[0]
+                if 1 in crashed:
+                    self.score += 100
 
     def draw(self, c, now):
         s = self.CELL
@@ -537,7 +604,7 @@ class Tron(Arcade):
         if self.state == "title":
             return "Tron (title)"
         p2 = "CPU" if self.cpu() else "P2"
-        return f"Tron ({self.state}, P1 {self.wins[0]} - {self.wins[1]} {p2})"
+        return f"Tron ({'demo' if self.demo else self.state}, P1 {self.wins[0]} - {self.wins[1]} {p2})"
 
 
 # ---- Flappy -------------------------------------------------------------------------
@@ -555,11 +622,12 @@ BIRD_TILT = {
 
 
 @register
-class Flappy(Arcade):
+class Flappy(Attract, Arcade):
     id = "flappy"
     title = "Flappy"
     description = "Tap A or up to flap through the gaps."
-    params = []
+    params = [DEMO]
+    DEMO_POS = (1, 0)
     BIRD_X = 18
     PIPE_W = 6
     SPACING = 32
@@ -578,6 +646,24 @@ class Flappy(Arcade):
             self.ready = False
             self.vy = -36
             self.flap_at = self.now
+
+    def autoplay(self, now):
+        if self.ready:
+            if now - self.demo_at > 1:
+                self.press("a", 1)
+            return
+        ahead = [p for p in self.pipes if p[0] + self.PIPE_W + 1 >= self.BIRD_X]
+        if ahead:
+            p = ahead[0]
+            if not p[3] and getattr(self, "planned", None) is not p:
+                self.planned = p  # once a pipe: aim somewhere in the gap, rarely too low
+                self.slip = random.uniform(-2, 1.5) if random.random() > 0.05 else 7
+            target = p[1] + p[2] / 2 + 1 + getattr(self, "slip", 0)
+        else:
+            target = self.h / 2
+        # flap once the bird's middle sinks below the target: it then bobs from ~5 dots above it
+        if self.y + 2 > target and self.vy > 0 and now - self.flap_at > 0.18:
+            self.press("a", 1)
 
     def add_pipe(self, x):
         gap = max(11, 16 - self.score // 4)

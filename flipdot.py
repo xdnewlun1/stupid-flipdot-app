@@ -16,9 +16,15 @@ a change arriving before the previous wave has finished flips every column toget
 Each bus (ip, port) has its own sender thread, so a bus that is down or slow never holds up the others.
 With `baud:` set, a bus is never handed data faster than its RS485 line can carry it: changes wait here
 and are coalesced, so the board shows the newest picture instead of working through a backlog.
+
+Panels that already show a frame aren't sent it again, so a bus that comes back after failing resends all its
+panels (the converter or the panels may have lost power), and with `full_refresh_s:` every bus resends all its
+panels that often while it's idle, to put right discs that were knocked or missed a frame.
 """
 
+import json
 import logging
+import select
 import socket
 import threading
 import time
@@ -32,6 +38,8 @@ CMD_WRITE = 0x84
 REFRESH = bytes([0x80, 0x82, 0x8F])
 COALESCE = 0.02  # updates closer together than this go out as one (e.g. dragging on the web page)
 RETRY = 2.0  # seconds before trying an unreachable bus again
+IDLE = 0.5  # a periodic full refresh waits for a bus to have had no change for this long
+LOG_EVERY = 300.0  # while a bus stays unreachable, say so in the log this often (not on every retry)
 _BITS = bytes([0] + [1] * 255)  # any non-zero byte is a white dot
 _CHARS = bytes([48, 49] + [48] * 254)  # dot 0/1 -> "0"/"1"
 _ROW = bytes([0] * 49 + [1] + [0] * 206)  # "1" -> 1, anything else -> 0
@@ -57,14 +65,23 @@ def parse_panels(panels):
 def load_config(path):
     """Load config.yaml with PyYAML if available, else a tiny parser for Maestro's flat format."""
     with open(path) as f:
-        text = f.read()
+        return parse_config(f.read())
+
+
+def parse_config(text):
     try:
         import yaml
-        return yaml.safe_load(text)
+        return yaml.safe_load(text) or {}
     except ImportError:
         pass
 
     def scalar(v):
+        v = v.strip()
+        if v.startswith('"'):  # double-quoted (config.local.yaml writes JSON strings): keep '#', unescape
+            try:
+                return json.JSONDecoder().raw_decode(v)[0]
+            except ValueError:
+                pass
         v = v.split(" #")[0].strip().strip('"').strip("'")
         if v.lower() in ("true", "false"):
             return v.lower() == "true"
@@ -102,6 +119,16 @@ class _Bus:
         self.free_at = 0.0  # when the line will have finished sending what it was given (with baud set)
         self.last_flush = 0.0
         self.col = 0  # leftmost panel column on this bus: its place in the sweep wave
+        self.retry = threading.Event()  # cut the wait before retrying an unreachable bus (Board.refresh)
+        self.resend = False  # send every panel of this bus next time, even unchanged ones
+        self.next_full = 0.0  # when the periodic full refresh is due (monotonic)
+        self.changed_at = 0.0  # when a panel of this bus last changed (monotonic)
+        # link state, for status and health: connected is None until the first send
+        self.connected = None
+        self.down_since = None  # wall time of the first failure in a row
+        self.last_ok = None  # wall time of the last successful send
+        self.last_error = None
+        self.logged_at = 0.0
 
 
 class Board:
@@ -125,6 +152,8 @@ class Board:
         self.steady = False
         self._present_at = None  # steady timing: when (monotonic) the latest picture is to go out, see set_canvas()
         self.dry_run = dry_run
+        self.full_refresh = max(0.0, float(config.get("full_refresh_s", 300) or 0))  # 0 = no periodic full refresh
+        self.link_listeners = []  # called (from a bus thread) when a bus goes down or comes back
 
         self.panels = parse_panels(config["panels"])
         self.width = self.pw * (max(p.col for p in self.panels) + 1)
@@ -166,7 +195,9 @@ class Board:
         for key in self._bus_of:
             if key not in self._buses:
                 bus = self._buses[key] = _Bus(key)
-                threading.Thread(target=self._bus_loop, args=(bus,), daemon=True, name=f"flipdot-{key[0]}:{key[1]}").start()
+                bus.next_full = time.monotonic() + self.full_refresh
+                bus.thread = threading.Thread(target=self._bus_loop, args=(bus,), daemon=True, name=f"flipdot-{key[0]}:{key[1]}")
+                bus.thread.start()
         for key, bus in self._buses.items():
             cols = [p.col for p, k in zip(panels, self._bus_of) if k == key]
             bus.col = min(cols) if cols else 0
@@ -254,6 +285,8 @@ class Board:
                     self._since.setdefault(i, now)
                 wake.add(self._bus_of[i])
             buses = [self._buses[k] for k in wake]
+            for bus in buses:
+                bus.changed_at = now
         for bus in buses:
             bus.wake.set()
         for fn in self.listeners:
@@ -333,6 +366,85 @@ class Board:
         for bus in list(self._buses.values()):
             bus.wake.set()
 
+    def refresh(self):
+        """Resend every panel, and retry unreachable buses now rather than after their wait (Retry now)."""
+        for bus in list(self._buses.values()):
+            bus.resend = True
+            bus.retry.set()
+            bus.wake.set()
+
+    def link_status(self):
+        """Which buses can't be reached, for the runner status the pages get. Only changes when a bus goes down or
+        comes back (no per-send times), so it doesn't cause a status push on every frame."""
+        counts = {}
+        for key in self._bus_of:
+            counts[key] = counts.get(key, 0) + 1
+        down = []
+        if not self.dry_run:
+            for key, bus in list(self._buses.items()):
+                if bus.connected is False and key in counts:
+                    down.append({"bus": f"{key[0]}:{key[1]}", "ip": key[0], "port": key[1], "panels": counts[key],
+                                 "since": bus.down_since, "error": bus.last_error})
+        return {"ok": not down, "panels": len(self._bus_of), "panels_down": sum(d["panels"] for d in down), "down": down}
+
+    def bus_health(self):
+        """Every bus in detail, for /api/health."""
+        now, wall = time.monotonic(), time.time()
+        with self._lock:
+            keys = list(self._bus_of)
+            pending = [keys[i] for i in self._dirty]
+            buses = list(self._buses.items())
+        out = []
+        for key, bus in buses:
+            if key not in keys:
+                continue  # left over from an earlier panel mapping
+            out.append({
+                "bus": f"{key[0]}:{key[1]}", "panels": keys.count(key),
+                "connected": True if self.dry_run else bus.connected,
+                "sender_alive": bus.thread.is_alive(),
+                "last_ok_age_s": None if bus.last_ok is None else round(wall - bus.last_ok, 1),
+                "down_since": bus.down_since, "last_error": bus.last_error,
+                "pending_panels": pending.count(key),  # changes waiting to go out
+                "backlog_ms": round(max(0.0, bus.free_at - now) * 1000),  # what the line is still sending
+                "next_full_refresh_s": round(max(0.0, bus.next_full - now)) if self.full_refresh else None,
+            })
+        return out
+
+    def _link_changed(self):
+        for fn in self.link_listeners:
+            try:
+                fn()
+            except Exception as e:
+                log.debug("link listener failed: %s", e)
+
+    def _link_down(self, bus, err):
+        mono, first = time.monotonic(), bus.connected is not False
+        bus.connected = False
+        bus.last_error = str(err) or type(err).__name__
+        if first:
+            bus.down_since = time.time()
+            bus.logged_at = mono
+            log.warning("send to %s:%d failed: %s (retrying every %g s)", *bus.key, err, RETRY)
+            self._link_changed()
+        elif mono - bus.logged_at >= LOG_EVERY:  # a converter that's off for hours mustn't fill the journal
+            bus.logged_at = mono
+            log.warning("%s:%d still unreachable (for %d min): %s", *bus.key, (time.time() - bus.down_since) // 60, err)
+
+    def _link_up(self, bus, sent_all):
+        was = bus.connected
+        bus.connected = True
+        bus.last_ok = time.time()
+        if was is True:
+            return
+        if was is False:
+            log.info("%s:%d is reachable again after %d s: resending all its panels", *bus.key, bus.last_ok - bus.down_since)
+            bus.down_since = bus.last_error = None
+            if not sent_all:
+                # the converter or the panels may have lost power: what they show isn't what was last sent
+                bus.resend = True
+                bus.wake.set()
+        self._link_changed()
+
     # ---- hardware --------------------------------------------------------
 
     def _frame_for(self, panel, px, cmd=CMD_WRITE_REFRESH):
@@ -366,6 +478,10 @@ class Board:
             else:
                 sock = socket.create_connection(bus.key, timeout=3)
                 sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+                if hasattr(socket, "TCP_USER_TIMEOUT"):
+                    # a converter that lost power never answers: give up on unacknowledged data after 5 s rather
+                    # than TCP's usual 15 minutes, so the bus shows as unreachable and is resent when it's back
+                    sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_USER_TIMEOUT, 5000)
             log.info("connected to %s:%d", *bus.key)
             bus.sock = sock
         return bus.sock
@@ -382,11 +498,26 @@ class Board:
                 for f in frames:
                     sock.send(f)
             else:
+                if self._closed_by_peer(sock):
+                    # the converter dropped the connection (restarted, or another client took the port): a write
+                    # now would vanish without an error, so connect again first
+                    sock.close()
+                    bus.sock = None
+                    sock = self._connect(bus)
+                    log.info("%s:%d had closed the connection: resending all its panels", *bus.key)
+                    bus.resend = True  # it may have restarted, and the panels with it
+                    bus.wake.set()
                 sock.sendall(b"".join(frames))
         except OSError:
             bus.sock = None
             sock.close()
             raise
+
+    @staticmethod
+    def _closed_by_peer(sock):
+        if not select.select([sock], [], [], 0)[0]:
+            return False  # open, nothing to read: the usual case
+        return sock.recv(1, socket.MSG_PEEK) == b""  # readable: data (ignored) or the end of the connection
 
     def _flip_cost(self, i, frame):
         old = self._sent.get(i)
@@ -446,72 +577,108 @@ class Board:
 
     def _bus_loop(self, bus):
         while True:
-            bus.wake.wait()
-            bus.wake.clear()
-            # coalesce bursts, and don't hand the line more than it can carry (later changes merge into one send)
-            wait = max(bus.last_flush + COALESCE, bus.free_at) - time.monotonic()
-            if wait > 0:
-                time.sleep(wait)
-            if self.sweep and self._wave and not self.sync_refresh:
-                # no separate refresh: hold this column's data back until its turn in the wave (the picture is
-                # taken after the wait, so it's the newest)
-                self._wait_turn(bus, self._wave_start + bus.col * self.sweep)
-            with self._lock:
-                mine = [i for i in self._dirty if self._bus_of[i] == bus.key]
-                self._dirty.difference_update(mine)
-                steady = self.steady and bool(mine)
-                present = self._present_at if steady else None
-                if steady:
-                    order = [i for i, k in enumerate(self._bus_of) if k == bus.key]  # all of them, always this order
-                else:
-                    order = sorted(mine, key=lambda i: self._since.get(i, 0))
-                panels = self.panels
-                px = bytes(self.px)
-                wave, staggered = self._wave_start, self._wave
-            if not order:
-                continue
-            sweep, sync = (self.sweep if staggered else 0.0), self.sync_refresh
-            bus.last_flush = time.monotonic()
-            cmd = CMD_WRITE if sync else CMD_WRITE_REFRESH
-            batch, deferred, needed = [], [], 0
-            for i in order:
-                frame = self._frame_for(panels[i], px, cmd)
-                if frame == self._sent.get(i) and not steady:
-                    self._since.pop(i, None)
-                    continue
-                short = self._take_budget(i, frame)
-                if short:
-                    deferred.append(i)
-                    needed = max(needed, short)
-                    continue
-                batch.append((i, frame))
-            if batch:
-                # in sync mode with a sweep the refresh goes separately, when this column's turn in the wave comes
-                frames = [f for _, f in batch] + ([REFRESH] if sync and not sweep else [])
-                if present is not None:
-                    self._sleep_until(present)  # steady timing: the same time after every picture was started
-                try:
-                    self._send(bus, frames)
-                    if sync and sweep:
-                        self._pace(bus, frames)
-                        frames = [REFRESH]
-                        self._wait_turn(bus, wave + self._lead + bus.col * sweep)
-                        self._send(bus, frames)
-                except OSError as e:
-                    log.warning("send to %s:%d failed: %s", *bus.key, e)
-                    with self._lock:
-                        self._dirty.update(i for i, _ in batch)
-                        self._dirty.update(deferred)
-                    time.sleep(RETRY)  # only this bus waits; the others carry on
-                    bus.wake.set()
-                    continue
-                self._pace(bus, frames)
-                for i, frame in batch:
-                    self._count_flips(i, panels[i], frame)
-                    self._since.pop(i, None)
-            if deferred:
-                with self._lock:
-                    self._dirty.update(deferred)
-                rate = float(self.max_flips_per_sec or 1)
-                time.sleep(min(1.0, max(0.05, (needed - self._tokens) / rate)))
+            try:
+                self._bus_step(bus)
+            except Exception:  # a bug here mustn't leave this bus dead for good
+                if time.monotonic() - bus.logged_at >= 60:
+                    bus.logged_at = time.monotonic()
+                    log.exception("sender for %s:%d failed", *bus.key)
+                time.sleep(RETRY)
                 bus.wake.set()
+
+    def _bus_step(self, bus):
+        """Wait for a change (or the periodic full refresh) and send it to this bus."""
+        woke = bus.wake.wait(max(0.05, bus.next_full - time.monotonic()) if self.full_refresh else None)
+        bus.wake.clear()
+        if not woke:
+            now = time.monotonic()
+            if not self.full_refresh or now < bus.next_full:
+                return
+            # periodic full refresh: never during steady timing or a game, and only while this bus is idle (resending
+            # a frame the panel already shows flips nothing, so it costs nothing in quiet hours either)
+            with self._lock:
+                idle = (not self.steady and not self.interactive and now - bus.changed_at >= IDLE
+                        and bus.free_at <= now and not any(self._bus_of[i] == bus.key for i in self._dirty))
+            if not idle:
+                bus.next_full = now + 1.0  # look again soon
+                return
+            bus.resend = True
+        # coalesce bursts, and don't hand the line more than it can carry (later changes merge into one send)
+        wait = max(bus.last_flush + COALESCE, bus.free_at) - time.monotonic()
+        if wait > 0:
+            time.sleep(wait)
+        if self.sweep and self._wave and not self.sync_refresh:
+            # no separate refresh: hold this column's data back until its turn in the wave (the picture is
+            # taken after the wait, so it's the newest)
+            self._wait_turn(bus, self._wave_start + bus.col * self.sweep)
+        with self._lock:
+            mine = [i for i in self._dirty if self._bus_of[i] == bus.key]
+            self._dirty.difference_update(mine)
+            steady = self.steady and bool(mine)
+            resend, bus.resend = bus.resend, False
+            present = self._present_at if steady else None
+            if steady or resend:
+                order = [i for i, k in enumerate(self._bus_of) if k == bus.key]  # all of them, always this order
+            else:
+                order = sorted(mine, key=lambda i: self._since.get(i, 0))
+            panels = self.panels
+            px = bytes(self.px)
+            wave, staggered = self._wave_start, self._wave
+        if not order:
+            return
+        sweep, sync = (self.sweep if staggered else 0.0), self.sync_refresh
+        bus.last_flush = time.monotonic()
+        cmd = CMD_WRITE if sync else CMD_WRITE_REFRESH
+        batch, deferred, needed = [], [], 0
+        for i in order:
+            frame = self._frame_for(panels[i], px, cmd)
+            if frame == self._sent.get(i) and not steady and not resend:
+                self._since.pop(i, None)
+                continue
+            short = self._take_budget(i, frame)  # an unchanged frame costs nothing
+            if short:
+                deferred.append(i)
+                needed = max(needed, short)
+                continue
+            batch.append((i, frame))
+        if batch:
+            # in sync mode with a sweep the refresh goes separately, when this column's turn in the wave comes
+            frames = [f for _, f in batch] + ([REFRESH] if sync and not sweep else [])
+            if present is not None:
+                self._sleep_until(present)  # steady timing: the same time after every picture was started
+            try:
+                self._send(bus, frames)
+                if sync and sweep:
+                    self._pace(bus, frames)
+                    frames = [REFRESH]
+                    self._wait_turn(bus, wave + self._lead + bus.col * sweep)
+                    self._send(bus, frames)
+            except OSError as e:
+                self._link_down(bus, e)
+                with self._lock:
+                    self._dirty.update(i for i, _ in batch)
+                    self._dirty.update(deferred)
+                    # keep trying even if nothing changes meanwhile, and once it's back send every panel: the last
+                    # frames "sent" before the failure showed up may never have arrived
+                    bus.resend = True
+                bus.retry.wait(RETRY)  # only this bus waits; the others carry on
+                bus.retry.clear()
+                bus.wake.set()
+                return
+            self._pace(bus, frames)
+            for i, frame in batch:
+                self._count_flips(i, panels[i], frame)
+                self._since.pop(i, None)
+            sent_all = len(batch) == len(order) and (steady or resend)
+            if sent_all and self.full_refresh:
+                bus.next_full = time.monotonic() + self.full_refresh
+            if bus.connected is not True:
+                self._link_up(bus, sent_all)
+            else:
+                bus.last_ok = time.time()
+        if deferred:
+            with self._lock:
+                self._dirty.update(deferred)
+            rate = float(self.max_flips_per_sec or 1)
+            time.sleep(min(1.0, max(0.05, (needed - self._tokens) / rate)))
+            bus.wake.set()

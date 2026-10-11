@@ -168,6 +168,9 @@ class PackGame(Arcade):
         """(headline, score line) for the game over screen of a versus game."""
         return None
 
+    def score_entry(self):
+        return None if self.result() else super().score_entry()
+
 
 # ---- Pac-Man ------------------------------------------------------------------------
 

@@ -14,6 +14,7 @@ import urllib.request
 log = logging.getLogger("apps")
 
 REGISTRY = {}
+notify = None  # set by the server to runner.notify, for apps that raise a notification themselves
 
 
 def register(cls):
