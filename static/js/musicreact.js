@@ -4,14 +4,14 @@
 import { api, el, paramTypes, safe } from "./common.js";
 
 const FX = [["invert", "Invert"], ["sweep", "Invert sweep"], ["flash", "Flash"], ["glitch", "Glitch"], ["mirror", "Mirror"],
-  ["kaleidoscope", "Kaleidoscope"], ["wave", "Wave"], ["scanlines", "Scanlines"], ["pixelate", "Pixelate"], ["outline", "Outline"],
+  ["kaleidoscope", "Kaleidoscope"], ["wave", "Wave"], ["vortex", "Vortex"], ["scanlines", "Scanlines"], ["pixelate", "Pixelate"], ["outline", "Outline"],
   ["static", "Static"]];
 const SIGNALS = {
   bass: ["Bass", "kick drum, low notes"], lowmid: ["Low-mid", "bass guitar, warmth"], mid: ["Mid", "vocals, guitars, keys"],
   high: ["High", "hi-hats, cymbals"], beat: ["Beat", "each beat as it hits"], level: ["Loudness", "the overall volume"],
 };
 const SENS = [[0, "Any sound"], [20, "High"], [35, "Medium"], [50, "Low"], [70, "Only the peaks"]];
-const MOVING = new Set(["wave", "scanlines", "flash", "glitch", "static"]);  // effects with a speed (slidefx.MOTION)
+const MOVING = new Set(["wave", "vortex", "scanlines", "flash", "glitch", "static"]);  // effects with a speed (slidefx.MOTION)
 const FOLLOW = [["fixed", "Fixed"], ["signal", "Its signal: louder is faster"], ["tempo", "Tempo: faster songs move faster"], ["both", "Tempo and signal"]];
 const LOCKS = [[0, "Not locked to the beat"], [1, "1 cycle per beat"], [2, "1 cycle per 2 beats"], [4, "1 cycle per 4 beats"]];
 const SPEEDS = [0.25, 0.5, 0.75, 1, 1.5, 2, 3, 4];

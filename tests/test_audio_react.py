@@ -367,6 +367,25 @@ def _band(out, src, w=84, h=42):
     return (xs[0], xs[-1] + 1) if xs else None
 
 
+def test_vortex_is_a_moving_effect_on_any_band():
+    rows = slidefx.clean_react_map([{"signal": "bass", "effect": "vortex", "amount": 100, "threshold": 0, "react": "level"}])
+    bass = rows[0]
+    assert bass["effect"] == "vortex" and bass["follow"] == "tempo" and bass["lock"] == 2
+    reading = {"bass": 0.8, "lowmid": 0.0, "mid": 0.0, "high": 0.0, "level": 0.5, "pulse": 0.0, "hits": {"bass": 0.0},
+               "bpm": 0.0, "beat_phase": 0.0, "groove": 0.0}
+    plan = slidefx.react_plan(rows, reading)
+    assert "vortex" in plan and plan["vortex"][0] > 0.5
+    r = slidefx.Reactive(random.Random(1))
+    c = Canvas(84, 42)
+    c.rect(0, 20, 84, 3, fill=True)
+    pics = set()
+    for i in range(30):  # at 1x a sway takes 2 s: the picture changes as the twist builds
+        pics.add(bytes(r.apply(c, 10.0 + i * 0.05, plan, reading).px))
+    assert len(pics) > 5
+    quiet = slidefx.react_plan(rows, {**reading, "bass": 0.0})
+    assert "vortex" not in quiet or quiet["vortex"][0] == 0.0
+
+
 def test_sweep_crosses_the_picture_while_it_keeps_moving():
     row = {"signal": "beat", "effect": "sweep", "amount": 100, "threshold": 0}
     r = slidefx.Reactive(cross=0.3)

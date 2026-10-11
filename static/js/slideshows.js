@@ -331,7 +331,7 @@ $("ssInvert").onchange = safe(() => saveSettings({ invert: $("ssInvert").checked
 
 // ---- random effects ----
 const FX = [["invert", "Invert"], ["sweep", "Invert sweep"], ["flash", "Flash"], ["glitch", "Glitch"], ["mirror", "Mirror"],
-  ["kaleidoscope", "Kaleidoscope"], ["wave", "Wave"], ["scanlines", "Scanlines"], ["pixelate", "Pixelate"], ["outline", "Outline"],
+  ["kaleidoscope", "Kaleidoscope"], ["wave", "Wave"], ["vortex", "Vortex"], ["scanlines", "Scanlines"], ["pixelate", "Pixelate"], ["outline", "Outline"],
   ["static", "Static"], ["life", "Game of Life"], ["melt", "Melt"]];
 const pct = v => (+v ? `${v}%` : "Off");
 

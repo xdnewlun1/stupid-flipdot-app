@@ -394,6 +394,85 @@ def _flow(turn):
     return render
 
 
+# ---- vortex: a whirlpool warp ------------------------------------------------------------------------------
+# Each dot of the result samples the picture at a point turned round the middle, more the nearer the middle (a
+# whirlpool, not a rigid turn), and at `zoom` times its distance from it (> 1: the picture is drawn into the
+# middle). The sample maps are cached per (size, twist, zoom), quantised finely enough that no dot moves a step.
+
+_POLAR = {}  # (w, h) -> (cx, cy, [r], [theta], [twist weight])
+_WARPS = collections.OrderedDict()  # (w, h, twist, zoom) -> sample index per dot (n = outside: black)
+_WARP_CACHE = 512
+
+
+def _polar(w, h):
+    k = (w, h)
+    if k not in _POLAR:
+        cx, cy = (w - 1) / 2, (h - 1) / 2
+        far = math.hypot(cx, cy)
+        rs, ths, ws = [], [], []
+        for y in range(h):
+            for x in range(w):
+                dx, dy = x - cx, y - cy
+                r = math.hypot(dx, dy)
+                rs.append(r)
+                ths.append(math.atan2(dy, dx))
+                ws.append((1 - r / far) ** 1.5)  # all the twist in the middle, none at the corners
+        _POLAR[k] = (cx, cy, rs, ths, ws)
+    return _POLAR[k]
+
+
+def vortex_map(w, h, twist, zoom=1.0):
+    """Sample indices for a whirlpool warp: dot i takes the picture's dot map[i] (w*h means black)."""
+    key = (w, h, round(twist, 2), round(zoom, 2))
+    m = _WARPS.get(key)
+    if m is not None:
+        _WARPS.move_to_end(key)
+        return m
+    cx, cy, rs, ths, ws = _polar(w, h)
+    twist, zoom = key[2], key[3]
+    n, cos, sin = w * h, math.cos, math.sin
+    m = array("I", bytes(4 * n))
+    for i in range(n):
+        a = ths[i] + twist * ws[i]
+        r = rs[i] * zoom
+        sx, sy = int(cx + r * cos(a) + 0.5), int(cy + r * sin(a) + 0.5)
+        m[i] = sy * w + sx if 0 <= sx < w and 0 <= sy < h else n
+    _WARPS[key] = m
+    if len(_WARPS) > _WARP_CACHE:
+        _WARPS.popitem(last=False)
+    return m
+
+
+def vortex(px, w, h, twist, zoom=1.0):
+    """px (w*h dots) swirled round the middle by `twist` radians at the centre, drawn in by `zoom`. -> bytes"""
+    if abs(twist) < 0.005 and abs(zoom - 1) < 0.005:
+        return bytes(px)
+    src = bytes(px) + b"\0"
+    return bytes(map(src.__getitem__, vortex_map(w, h, twist, zoom)))
+
+
+def _vortex(t, old, new, p):
+    """The old picture spins up and is drawn down the plughole in the middle while the new one unwinds out of it,
+    the new one taking over from the middle outwards."""
+    if p >= 1:
+        return new.copy()
+    w, h = old.w, old.h
+    if "order" not in t.state:
+        cx, cy = (w - 1) / 2, (h - 1) / 2
+        far = math.hypot(cx, cy)
+        order = [0.7 * math.hypot(x - cx, y - cy) / far + 0.3 * (BAYER4[y % 4][x % 4] + 0.5) / 16
+                 for y in range(h) for x in range(w)]
+        t.state["order"] = bytes(min(255, int(v * 256)) for v in order)
+    q = 1 - p
+    a = vortex(old.px, w, h, 2.5 * math.pi * p, 1 + 3 * p * p)
+    b = vortex(new.px, w, h, -2.5 * math.pi * q, 1 + 3 * q * q)
+    thr = min(256, int(p * 256))
+    mask = t.state["order"].translate(bytes([1] * thr + [0] * (256 - thr)))
+    out = Canvas(w, h)
+    out.px = bytearray(map(lambda m, x, y: y if m else x, mask, a, b))
+    return out
+
+
 def _split_flap(t, old, new, p, cw=6, ch=8):
     """A wall of split-flap tiles (6 x 8 dots, a character cell of the 5 x 7 font): along each row the tiles turn
     one after another, each showing a stray flap first, then the top half of its new picture, then all of it.
@@ -434,7 +513,7 @@ MOVES = {
     "push-up": _slide("up", True), "push-down": _slide("down", True),
     "zoom-in": _zoom(True), "zoom-out": _zoom(False), "flip": _flip, "melt": _melt,
     "pixelate": _pixelate, "flash": _flash, "glitch": _glitch, "ghost": _ghost,
-    "swirl": _flow(1.0), "zoom-through": _flow(0.0), "morph": _morph, "migrate": _migrate(False), "scatter": _migrate(True), "life": _life,
+    "swirl": _flow(1.0), "zoom-through": _flow(0.0), "vortex": _vortex, "morph": _morph, "migrate": _migrate(False), "scatter": _migrate(True), "life": _life,
 }
 
 ALIASES = {"wipe": "wipe-right", "slide": "push-up"}

@@ -6,7 +6,7 @@ import random
 
 import fastpath
 from canvas import Canvas, _BITS, _FLIP
-from transitions import pixelate
+from transitions import pixelate, vortex
 
 _FF = bytes([0] + [255] * 255)  # dot -> 0x00/0xFF, for masks used as big integers
 _EDGES = {}  # (w, h) -> masks of the dots that have a neighbour on each side
@@ -37,6 +37,7 @@ EFFECTS = {
     "mirror": "Mirror",
     "kaleidoscope": "Kaleidoscope",
     "wave": "Wave",
+    "vortex": "Vortex",
     "scanlines": "Scanlines",
     "pixelate": "Pixelate",
     "outline": "Outline",
@@ -44,7 +45,7 @@ EFFECTS = {
     "life": "Game of Life",
     "melt": "Melt",
 }
-ANIMATED = {"flash", "sweep", "glitch", "wave", "scanlines", "static", "life", "melt"}
+ANIMATED = {"flash", "sweep", "glitch", "wave", "vortex", "scanlines", "static", "life", "melt"}
 
 
 def roll(settings, rng, now, item_seconds, hold=0.0, cross=0.25):
@@ -175,6 +176,14 @@ class Effect:
             row = src[y * w:(y + 1) * w]
             px[y * w:(y + 1) * w] = (row[-shift:] + row[:-shift]) if shift else row
 
+    VORTEX_TURN = 1.5 * math.pi  # at full strength the middle is turned this far, swaying one way then the other
+
+    def _vortex(self, c, t):
+        """A whirlpool: the middle of the picture turns, the edges stay put. It sways there and back once a cycle
+        (on the beat when locked to the tempo), as far as the strength says."""
+        twist = self.VORTEX_TURN * self.strength * math.sin(2 * math.pi * t * MOTION["vortex"])
+        c.px[:] = vortex(c.px, c.w, c.h, twist)
+
     def _scanlines(self, c, t):
         w = c.w
         gap = 2 if self.strength > 0.6 else 3
@@ -241,7 +250,7 @@ class Effect:
 # every frame breaks them.
 
 SIGNALS = ["bass", "lowmid", "mid", "high", "beat", "level"]
-REACT_ORDER = ["pixelate", "mirror", "kaleidoscope", "wave", "glitch", "outline", "scanlines", "static", "flash", "sweep", "invert"]
+REACT_ORDER = ["pixelate", "mirror", "kaleidoscope", "wave", "vortex", "glitch", "outline", "scanlines", "static", "flash", "sweep", "invert"]
 SWITCHED = {"invert", "mirror", "kaleidoscope", "outline"}  # no strength: on while the strength is past half
 TRIGGERED = {"sweep"}  # starts as its signal rises past half and runs to the end (the amount sets the band's width)
 BAND_SIGNALS = ("bass", "lowmid", "mid", "high")
@@ -258,11 +267,12 @@ REACT_DEFAULTS = [
 # Effects with motion: cycles per second at 1x. A cycle is what "lock to beat" fits to one beat: one wave
 # (a crest back where it was), the scanlines moving 6 rows, one flash, one new glitch/static pattern.
 # 1x matches how they moved before they had their own clocks.
-MOTION = {"wave": 6 / (2 * math.pi), "scanlines": 2.0, "flash": 2.5, "glitch": 10.0, "static": 10.0}
+MOTION = {"wave": 6 / (2 * math.pi), "vortex": 0.5, "scanlines": 2.0, "flash": 2.5, "glitch": 10.0, "static": 10.0}
 FOLLOW = ["fixed", "signal", "tempo", "both"]
 LOCKS = [0, 1, 2, 4]  # beats per cycle when following the tempo; 0 = not locked (just faster/slower)
 MOTION_DEFAULTS = {   # also used for rows saved before speed settings existed
     "wave": {"follow": "tempo", "speed": 1.0, "lock": 2},  # 1 per beat is frantic at 160 BPM; this is the old speed at 120
+    "vortex": {"follow": "tempo", "speed": 1.0, "lock": 2},  # in on one beat, out on the next
     "scanlines": {"follow": "tempo", "speed": 1.0, "lock": 1},
     "flash": {"follow": "tempo", "speed": 1.0, "lock": 1},
     "glitch": {"follow": "signal", "speed": 1.0, "lock": 0},

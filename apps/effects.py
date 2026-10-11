@@ -447,7 +447,7 @@ def _rand_params(app_id, r):
 POOL = ["life", "rain", "plasma", "bounce", "starfield", "fireworks", "ripples", "metaballs",
         "tunnel", "spiral", "maze", "lissajous", "fire", "mushrooms"]
 NICE_TRANSITIONS = ["morph", "migrate", "scatter", "life", "dissolve", "fade", "iris-open", "iris-close", "clock",
-                    "spiral", "tiles", "drip", "diagonal", "wipe-ragged", "push-left", "push-up", "zoom-in",
+                    "spiral", "tiles", "drip", "diagonal", "wipe-ragged", "push-left", "push-up", "zoom-in", "vortex",
                     "melt", "pixelate", "glitch", "blinds", "checker"]
 
 

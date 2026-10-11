@@ -571,8 +571,12 @@ Snapcast, the same signal the visualizer uses) drive effects on top of the pictu
   picture inverted at the peak),
   **loudness** → tones all of them down in quiet parts. Life and Melt aren't offered: they build up over
   time and don't suit a strength that changes every frame. Several effects can run at once; they're
-  applied in a fixed order (pixelate, mirror, kaleidoscope, wave, glitch, outline, scanlines, static,
-  flash, invert sweep, invert), after the item's random effect and the transition between items.
+  applied in a fixed order (pixelate, mirror, kaleidoscope, wave, vortex, glitch, outline, scanlines, static,
+  flash, invert sweep, invert), after the item's random effect and the transition between items. **Vortex**
+  is a whirlpool: the middle of the picture turns while the edges stay put, as far as its band says (the bass,
+  say: louder, more twist), swaying one way then the other once a cycle (locked to two beats by default: in on
+  one beat, out on the next). It's also a random slideshow effect and a transition (the old picture spins down
+  the plughole in the middle while the new one unwinds out of it).
 - **Follows** (bass, low-mid, mid, high rows): **level** (how loud that part is), **notes and hits** (each
   new bass note, snare, clap or hi-hat, found per band from the rise in its spectrum, so a moving bassline
   under a steady loud bass, ghost notes and off-beat hats all register), or **level and hits** (some of
@@ -1027,7 +1031,7 @@ journalctl --user -u flipdot -f       # logs
 - `runner.py` – manual / app / playlist / schedule modes, notifications
 - `health.py` – `/api/health` and the systemd notify/watchdog pings
 - `localconfig.py` – `config.local.yaml` over `config.yaml`; `backups.py` – backups folder, schedule, rotation; `updater.py` – update from git with rollback, restart
-- `transitions.py` – ~40 transitions (reveal maps like wipes/iris/clock/spiral, plus slides, pushes, zoom, melt, glitch…)
+- `transitions.py` – ~40 transitions (reveal maps like wipes/iris/clock/spiral, plus slides, pushes, zoom, melt, glitch, vortex…)
 - `apps/layers.py` – the layer compositor
 - `rules.py` – automations; `qr.py` – QR code encoder (byte mode, ECC L/M/Q/H, versions 1–40)
 - `store.py` – JSON files in `data/`; `storage.py` – the `storage.db` they're kept in; `mqtt.py` – tiny MQTT client + Home Assistant discovery; `ws.py` – WebSocket push; `server.py` – HTTP

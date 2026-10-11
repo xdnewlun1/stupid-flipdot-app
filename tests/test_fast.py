@@ -197,6 +197,44 @@ class TransitionsTest(unittest.TestCase):
                         vals = {got[y * W + x] for y in range(by, min(by + block, H)) for x in range(bx, min(bx + block, W))}
                         self.assertEqual(len(vals), 1)
 
+    def test_vortex_warp(self):
+        # no twist, no zoom: the picture as it was; the map is cached and reused
+        c = pic(self.rnd)
+        self.assertEqual(transitions.vortex(c.px, W, H, 0.0), bytes(c.px))
+        m1, m2 = transitions.vortex_map(W, H, 1.234), transitions.vortex_map(W, H, 1.2341)
+        self.assertIs(m1, m2)
+        # a twist turns the middle of the picture, and leaves the corners where they are
+        c = Canvas(W, H)
+        c.rect(0, 20, 84, 3, fill=True)  # a bar across the middle
+        got = transitions.vortex(c.px, W, H, math.pi / 2)
+        self.assertEqual(got[21 * W + 41], 1)  # still through the centre...
+        self.assertTrue(any(got[y * W + x] for y in range(16, 27) for x in range(4)))  # ...the ends barely move...
+        self.assertTrue(any(got[y * W + x] for y in range(16, 27) for x in range(80, 84)))
+        self.assertEqual(got[21 * W + 30], 0)  # ...but between them the bar has swung away
+        self.assertTrue(any(got[14 * W + x] for x in range(40, 46)))  # ...to run up and down through the middle
+        c.rect(0, 0, 3, 3, fill=True)
+        self.assertEqual(transitions.vortex(c.px, W, H, math.pi)[0], 1)  # no twist at all in the corner
+        # drawing in: the picture shrinks towards the middle, the outside goes black
+        c = Canvas(W, H, fill=1)
+        got = transitions.vortex(c.px, W, H, 0.0, zoom=2.0)
+        self.assertEqual(got[21 * W + 41], 1)
+        self.assertEqual(got[0], 0)
+        self.assertEqual(got[21 * W + 2], 0)
+        self.assertEqual(got[21 * W + 25], 1)
+
+    def test_vortex_transition_starts_old_and_ends_new(self):
+        old, new = blobs(self.rnd), blobs(self.rnd)
+        t = SimpleNamespace(state={}, rnd=self.rnd)
+        self.assertEqual(transitions._vortex(t, old, new, 0.0).px, old.px)
+        self.assertEqual(transitions._vortex(t, old, new, 1.0).px, new.px)
+        mid = transitions._vortex(t, old, new, 0.5).px
+        self.assertNotEqual(mid, old.px)
+        self.assertNotEqual(mid, new.px)
+        tr = transitions.Transition("vortex", old, W, H, 1.0)
+        tr.start = 0.0
+        self.assertEqual(tr.mix(new, 1.0).px, new.px)
+        self.assertIn("vortex", transitions.NAMES)
+
     def test_reveal_mix_matches_per_dot_loop(self):
         for kind in ("dissolve", "wipe-right", "iris-open", "clock", "spiral", "tiles", "interlace"):
             old = blobs(self.rnd)
@@ -288,6 +326,17 @@ class EffectsTest(unittest.TestCase):
                     sy = y - drop
                     ref[y * W + x] = src[sy * W + x] if sy >= 0 else 0
         self.assertEqual(got.px, ref)
+
+    def test_vortex_effect_sways_with_the_strength(self):
+        c = blobs(self.rnd)
+        e = Effect("vortex", 0, None, 1.0, self.rnd)
+        self.assertEqual(e.apply(c, 0.0).px, c.px)  # the sway starts at rest...
+        peak = e.apply(c, 0.5).px                    # ...and is furthest half a cycle in (2 s cycle at 1x)
+        self.assertNotEqual(peak, c.px)
+        self.assertEqual(e.apply(c, 1.0).px, c.px)   # back through rest
+        e.strength = 0.3
+        self.assertNotEqual(e.apply(c, 0.5).px, peak)  # a weaker strength twists less
+        self.assertEqual(peak, bytes(transitions.vortex(c.px, W, H, Effect.VORTEX_TURN)) or peak)
 
     def test_glitch_only_shifts_and_inverts_rows(self):
         c = blobs(self.rnd)
