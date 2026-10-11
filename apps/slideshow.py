@@ -169,6 +169,35 @@ class Player:
         return self.started + float(self.item.get("seconds") or settings["image_seconds"] or 10)
 
 
+_PASSES = {}  # slideshow id -> {"files": the shuffled pass in play order, "pos": the one playing}: a shuffled pass
+              # carries on across restarts (a playlist coming back to the slideshow) and edits to the pictures
+
+
+def next_shuffled(gid, items, rng=random):
+    """(pos, order) for the next item of a shuffled slideshow: every picture once before any comes round again,
+    even across restarts and while pictures are added or removed, and never the same one twice running.
+    `order` is the whole pass as indices into items; `pos` is where the next item sits in it."""
+    files = [it["file"] for it in items]
+    st = _PASSES.get(gid) or {"files": [], "pos": -1}
+    done = [f for f in st["files"][:st["pos"] + 1] if f in files]  # played this pass and still here
+    todo = [f for f in st["files"][st["pos"] + 1:] if f in files]  # still to play
+    seen = set(done) | set(todo)
+    fresh = [f for f in files if f not in seen]  # added since: somewhere in what's left of this pass
+    rng.shuffle(fresh)
+    for f in fresh:
+        todo.insert(rng.randint(0, len(todo)), f)
+    last = st["files"][st["pos"]] if 0 <= st["pos"] < len(st["files"]) else None
+    if not todo:  # a new pass, not opening with the picture that just ended
+        todo = list(files)
+        rng.shuffle(todo)
+        if len(todo) > 1 and todo[0] == last:
+            k = rng.randrange(1, len(todo))
+            todo[0], todo[k] = todo[k], todo[0]
+        done = []
+    index = {f: i for i, f in enumerate(files)}
+    return len(done), [index[f] for f in done + todo]
+
+
 @register
 class Slideshow(App):
     id = "slideshow"
@@ -239,10 +268,11 @@ class Slideshow(App):
                 if items[idx]["file"] == self.jump_to:
                     return k, items[idx], order
             self.jump_to = None  # not in the slideshow (any more)
+        if settings["shuffle"]:
+            pos, order = next_shuffled(self.gid, items)
+            return pos, items[order[pos]], order
         if not self.order or len(self.order) != len(items) or self.pos + 1 >= len(self.order):
             order = list(range(len(items)))
-            if settings["shuffle"]:
-                random.shuffle(order)
             return 0, items[order[0]], order
         return self.pos + 1, items[self.order[self.pos + 1]], None
 
@@ -293,6 +323,8 @@ class Slideshow(App):
                     self.order = new_order
                 self.pos = pos
                 self.jump_to = None
+                if settings["shuffle"]:  # the pass carries on from here next time, even after a restart
+                    _PASSES[self.gid] = {"files": [items[i]["file"] for i in self.order], "pos": self.pos}
                 if not frames:
                     continue  # couldn't be converted; skip it
                 incoming = Player(nxt, frames, now, gif_speed(nxt, settings))
