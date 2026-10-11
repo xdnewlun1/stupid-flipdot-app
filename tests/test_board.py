@@ -346,6 +346,37 @@ class SendTest(unittest.TestCase):
         self.assertGreaterEqual(first, at - 0.002)
         self.assertLess(first, at + 0.03)
 
+    def test_sync_auto_writes_a_whole_picture_first_and_a_small_change_at_once(self):
+        b, buses = self.run_board(sync_refresh="auto")
+        self.assertTrue(self.wait_for(lambda: self.board_matches(b, buses, 0x84)))  # the startup picture: whole
+        self.assertTrue(all(c.refreshes >= 1 for c in buses))
+        b.set_canvas(random_canvas(b.width, b.height, 3))
+        self.assertTrue(self.wait_for(lambda: self.board_matches(b, buses, 0x84)))
+        refreshes = [c.refreshes for c in buses]
+        b.set_dots([(3, 2, None)])  # one panel on bus 0: written and flipped at once
+        self.assertTrue(self.wait_for(lambda: buses[0].latest.get(0) == expected_frame(b, b.panels[0], b.dots()[1], 0x83)))
+        time.sleep(0.05)
+        self.assertEqual([c.refreshes for c in buses], refreshes)
+
+    def test_board_wide_change_starts_every_bus_together(self):
+        # 4800 baud: one panel frame takes 67 ms on the line, a whole bus 400 ms
+        b, buses = self.run_board(sync_refresh=True, baud=4800)
+        self.assertTrue(self.wait_for(lambda: self.board_matches(b, buses, 0x84)))
+        time.sleep(0.5)
+        b.set_dots([(3, 2, None)])  # bus 0 alone: busy for the next 67 ms
+        self.assertTrue(self.wait_for(lambda: buses[0].refreshes >= 2))
+        busy_until = max(bus.free_at for bus in b._buses.values())  # when bus 0's line is free again
+        self.assertGreater(busy_until, time.monotonic() + 0.03)
+        for c in buses:
+            c.events.clear()
+        b.set_canvas(random_canvas(b.width, b.height, 9))  # the whole board: buses 1 and 2 are free, bus 0 isn't
+        self.assertTrue(self.wait_for(lambda: self.board_matches(b, buses, 0x84)))
+        starts = [min(t for t, k in c.events) for c in buses]
+        self.assertGreaterEqual(min(starts), busy_until)  # nobody went ahead of bus 0
+        self.assertLess(max(starts) - min(starts), 0.03)
+        t = self.last_refreshes(buses)
+        self.assertLess(max(t) - min(t), 0.03)
+
     def test_timing_can_change_live(self):
         b, buses = self.run_board()
         self.assertEqual(b.set_timing(sweep_ms=40, sync_refresh=True)["sweep_ms"], 40)

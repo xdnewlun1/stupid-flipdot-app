@@ -194,6 +194,7 @@ class Slideshow(App):
         self.fx = None
         self.fx_rng = random.Random()
         self.react = slidefx.Reactive(self.fx_rng)  # music-driven effects (React to music)
+        self.board = getattr(ctx, "board", None)  # for its settle time: how long a whole new picture takes to show
         self.react_on = False   # reacting right now (enabled, music or generated beat, not quiet hours)
         self.react_rate = 1.0   # smoothed loudness-driven GIF speed
         self.react_beats = None  # beat counter last seen, so each beat skips exactly one frame
@@ -256,6 +257,10 @@ class Slideshow(App):
     def _fps(self):
         return max(5, min(30, float(self.ctx.store.settings.get("display", {}).get("transition_fps", 15))))
 
+    def _hold(self):
+        """How long the discs take to show a whole new picture (read each time: the timing can be tuned live)."""
+        return self.board.settle_time() if self.board is not None else 0.0
+
     def render(self, c, now):
         try:
             g = self.ctx.store.gallery(self.gid)
@@ -296,7 +301,7 @@ class Slideshow(App):
                 self.cur = incoming
                 # maybe give this item a random effect (rate and kinds set per slideshow)
                 length = max(0.0, incoming.end_time(settings) - now)
-                self.fx = slidefx.roll(settings, self.fx_rng, now, length)
+                self.fx = slidefx.roll(settings, self.fx_rng, now, length, self._hold())
                 after_pos, after, _ = self._peek_next(items, settings)
                 prefetch(self._path(after), settings, c.w, c.h)
                 break
@@ -376,8 +381,9 @@ class Slideshow(App):
             self.cur.set_rate(now, self.react_rate)
         if not on:
             self.react_beats = None
-            self.react.last = None  # the effects' motion clocks pause rather than catch up
+            self.react.reset()
             return None
+        self.react.hold = self._hold()
         if self.react_beats is not None and r["beat_count"] != self.react_beats and settings.get("react_skip"):
             self.cur.skip_frame(now)
         self.react_beats = r["beat_count"]

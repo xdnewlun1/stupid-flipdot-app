@@ -2,7 +2,7 @@
 // You can draw on the board itself (only with "Draw on the board" ticked: it stops whatever is running), on a drawing layer
 // (which keeps the running layers going), or, in animation mode, on frames kept in the page.
 import {
-  $, api, board, bus, renderDots, cloneGrid, gridToRows, blankGrid, pausePolling, rowsToGrid,
+  $, api, board, bus, debounce, renderDots, cloneGrid, gridToRows, blankGrid, pausePolling, rowsToGrid,
   safe, toast, download, refreshScenes, wsSend, fontSelect, fontCache, drawingsCache, loadDrawings, el, scenesCache, confirmDelete,
   ask, confirmDialog,
 } from "./common.js";
@@ -44,11 +44,13 @@ export function setActive(on) {
   active = on;
   if (!on && zoom > 1) setZoom(1);  // the same canvas is the big preview on Now playing
   updateCanvasMode();
-  redraw();
+  redraw();  // the board may have moved on while the canvas was hidden (main.js shows #device before this)
 }
 
 function redraw() {
-  if (!board.grid.length) return;
+  // the big canvas is only on Now playing and Draw: on every other page (and in a background tab) skip the 3528
+  // cells per board frame, and catch up when it comes back (setActive / the tab's "state" event)
+  if (!board.grid.length || $("device").hidden || document.hidden) return;
   if (canvas.width !== board.W * CELL) { canvas.width = board.W * CELL; canvas.height = board.H * CELL; }
   renderDots(ctx, editingAnim() ? frame().grid : showLayerOnly() ? target.grid : board.grid, CELL, { overlay });
   if (!active) return;
@@ -65,6 +67,7 @@ function redraw() {
   }
 }
 bus.addEventListener("state", () => { if (!drawing) redraw(); });
+document.addEventListener("visibilitychange", () => { if (!document.hidden) redraw(); });
 
 // ---- helpers ----
 
@@ -440,9 +443,10 @@ function renderStampFont() {
   $("stampFontBox").replaceChildren(sel);
 }
 bus.addEventListener("fonts", () => { renderStampFont(); updateStamp().catch(() => {}); });
-$("stampText").addEventListener("input", safe(updateStamp));
-$("stampScale").addEventListener("input", safe(updateStamp));
-$("stampSize").addEventListener("input", safe(updateStamp));
+const stampSoon = debounce(safe(updateStamp));  // one render per pause in typing, not one per keystroke
+$("stampText").addEventListener("input", stampSoon);
+$("stampScale").addEventListener("input", stampSoon);
+$("stampSize").addEventListener("input", stampSoon);
 
 // selection / clipboard
 function copySel(cut) {

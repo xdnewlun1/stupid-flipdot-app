@@ -103,7 +103,7 @@ fi
 say "5/5  Checking that it runs"
 frame=$(cd "$BUILD" && (sleep 6) | timeout 8 "$BUILD/doomgeneric_flipdot" -iwad "$wad" -warp 1 1 -skill 3 -flipfps 10 -nogui \
            2>"$BUILD/verify.log" | head -c 4 || true)
-if [ "$frame" = "FDM2" ]; then
+if [ "$frame" = "FDM2" ] || [ "$frame" = "FDM3" ]; then
   echo "Doom starts and sends frames. Run the \"Doom\" app (Apps > Games) and open /play to control it."
 else
   echo "Doom didn't send a frame. Its output:"

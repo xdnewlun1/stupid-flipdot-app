@@ -1,62 +1,85 @@
 // Settings page: location & display, fonts, AI drawing, Music Assistant, MQTT and webhook docs, gamepads, board hardware and maintenance (boardcare.js), backup.
-import { $, api, autosave, bus, confirmDialog, el, fillField as fill, fontCache, fontSelect, forgetFields, loadFonts, renderDots, rowsToGrid, safe, toast, undoable, unsavedFields, uploadFile } from "./common.js";
+import { $, api, autosave, bus, confirmDialog, debounce, el, fillField as fill, fontCache, fontSelect, forgetFields, loadFonts, renderDots, rowsToGrid, safe, toast, undoable, unsavedFields, uploadFile } from "./common.js";
 import { loadBoardCare } from "./boardcare.js";
 import { offerRestart, refreshOps } from "./ops.js";
 
 let settings = {};
 
-export async function loadSettings() {
+// Settings arrive from the server once; after a save only the saved section's fields are refilled (from the
+// POST's own reply), so the "Saved" tick doesn't wait for the wear map, panels and board to be fetched again.
+export async function loadSettings(only = null) {
   settings = await api("/api/settings");
-  const wx = settings.weather || {};
-  $("wxCurrent").textContent = wx.name ? `${wx.name} (${(+wx.lat).toFixed(2)}, ${(+wx.lon).toFixed(2)})` : "Not set. Search for a city above.";
-  fill("wxUnits", wx.units || "fahrenheit");
-  fill("trFps", settings.display?.transition_fps ?? 15);
-  const sp = settings.sendspin || {};
-  fill("ssName", sp.name || "Flipdot board");
-  fill("ssUnpaired", !!sp.unpaired, "checked");
-  fill("ssServer", sp.server_url ?? "auto");
-  fill("vaSource", settings.visualizer?.source || "off");
-  const sc = settings.snapcast || {};
-  fill("scHost", sc.host ?? "auto");
-  fill("scPort", sc.port || 1704);
-  fill("scCtrl", sc.control_port || 1705);
-  fill("scName", sc.name || "Flipdot board");
-  fill("scDelay", sc.delay_ms ?? 150);
-  showAudioSource();
-  const ma = settings.music_assistant || {};
-  fill("maUrl", ma.url || "");
-  fill("maToken", ma.token || "");
-  maPlayer = ma.player || "";
-  if (ma.url) testMusic().catch(() => {});
-  const mq = settings.mqtt || {};
-  fill("mqEnabled", !!mq.enabled, "checked");
-  fill("mqHost", mq.host || "");
-  fill("mqPort", mq.port || 1883);
-  fill("mqUser", mq.username || "");
-  fill("mqPass", mq.password || "");
-  fill("mqPrefix", mq.prefix || "flipdot");
-  fill("mqDiscovery", !!mq.discovery, "checked");
-  fill("mqDiscPrefix", mq.discovery_prefix || "homeassistant");
-  $("mqStatus").textContent = !mq.enabled ? "Off" : mq.connected ? "Connected" : `Not connected${mq.error ? `: ${mq.error}` : ""}`;
-  renderHooks(mq.prefix || "flipdot");
-  const ai = settings.ai || {};
-  fill("aiKey", ai.api_key || "");
-  aiModels().then(models => {
-    const keep = unsavedFields().includes("aiModel") ? $("aiModel").value : null;
-    $("aiModel").replaceChildren(...models.map(([v, label]) => el("option", { value: v }, label)));
-    if (keep) $("aiModel").value = keep;
-    fill("aiModel", ai.model || models[0][0]);
-  }).catch(() => {});
-  const gp = settings.gamepad || {};
-  fill("gpEnabled", gp.enabled !== false, "checked");
-  fill("gpDeadzone", gp.deadzone ?? 0.35);
-  fill("gpMenu", gp.menu_button || "hold_start");
-  $("gpDeadzoneVal").textContent = (+$("gpDeadzone").value).toFixed(2);
-  gpMapping = { ...(gp.mapping || {}) };
-  refreshGamepad().catch(() => {});
-  refreshStorage().catch(() => {});
-  refreshOps().catch(() => {});
-  await loadBoardCare(settings);
+  applySettings(only);
+  if (!only || only.has("board_health") || only.has("quiet_hours")) await loadBoardCare(settings);
+}
+
+function applySettings(only = null) {
+  const want = k => !only || only.has(k);
+  if (want("weather")) {
+    const wx = settings.weather || {};
+    $("wxCurrent").textContent = wx.name ? `${wx.name} (${(+wx.lat).toFixed(2)}, ${(+wx.lon).toFixed(2)})` : "Not set. Search for a city above.";
+    fill("wxUnits", wx.units || "fahrenheit");
+  }
+  if (want("display")) fill("trFps", settings.display?.transition_fps ?? 15);
+  if (want("sendspin")) {
+    const sp = settings.sendspin || {};
+    fill("ssName", sp.name || "Flipdot board");
+    fill("ssUnpaired", !!sp.unpaired, "checked");
+    fill("ssServer", sp.server_url ?? "auto");
+  }
+  if (want("visualizer")) fill("vaSource", settings.visualizer?.source || "off");
+  if (want("snapcast")) {
+    const sc = settings.snapcast || {};
+    fill("scHost", sc.host ?? "auto");
+    fill("scPort", sc.port || 1704);
+    fill("scCtrl", sc.control_port || 1705);
+    fill("scName", sc.name || "Flipdot board");
+    fill("scDelay", sc.delay_ms ?? 150);
+  }
+  if (want("visualizer") || want("snapcast") || want("sendspin")) showAudioSource();
+  if (want("music_assistant")) {
+    const ma = settings.music_assistant || {};
+    fill("maUrl", ma.url || "");
+    fill("maToken", ma.token || "");
+    maPlayer = ma.player || "";
+    if (ma.url && !only) testMusic().catch(() => {});  // after a save the section's own hook tests it
+  }
+  if (want("mqtt")) {
+    const mq = settings.mqtt || {};
+    fill("mqEnabled", !!mq.enabled, "checked");
+    fill("mqHost", mq.host || "");
+    fill("mqPort", mq.port || 1883);
+    fill("mqUser", mq.username || "");
+    fill("mqPass", mq.password || "");
+    fill("mqPrefix", mq.prefix || "flipdot");
+    fill("mqDiscovery", !!mq.discovery, "checked");
+    fill("mqDiscPrefix", mq.discovery_prefix || "homeassistant");
+    $("mqStatus").textContent = !mq.enabled ? "Off" : mq.connected ? "Connected" : `Not connected${mq.error ? `: ${mq.error}` : ""}`;
+    renderHooks(mq.prefix || "flipdot");
+  }
+  if (want("ai")) {
+    const ai = settings.ai || {};
+    fill("aiKey", ai.api_key || "");
+    aiModels().then(models => {
+      const keep = unsavedFields().includes("aiModel") ? $("aiModel").value : null;
+      $("aiModel").replaceChildren(...models.map(([v, label]) => el("option", { value: v }, label)));
+      if (keep) $("aiModel").value = keep;
+      fill("aiModel", ai.model || models[0][0]);
+    }).catch(() => {});
+  }
+  if (want("gamepad")) {
+    const gp = settings.gamepad || {};
+    fill("gpEnabled", gp.enabled !== false, "checked");
+    fill("gpDeadzone", gp.deadzone ?? 0.35);
+    fill("gpMenu", gp.menu_button || "hold_start");
+    $("gpDeadzoneVal").textContent = (+$("gpDeadzone").value).toFixed(2);
+    gpMapping = { ...(gp.mapping || {}) };
+  }
+  if (!only) {
+    refreshGamepad().catch(() => {});  // after a save the Controllers group's own poll shows the restarted reader
+    refreshStorage().catch(() => {});
+    refreshOps().catch(() => {});
+  }
 }
 
 // fields per settings section, so saving one section refreshes only those (drafts elsewhere stay)
@@ -72,7 +95,7 @@ export const savedSection = section => forgetFields(Object.keys(section).flatMap
 const save = async section => {
   settings = await api("/api/settings", section);
   savedSection(section);
-  await loadSettings();
+  applySettings(new Set(Object.keys(section)));
 };
 
 // Every setting saves itself when you change it (text fields when you leave them), with "Saved" next to its heading.
@@ -94,7 +117,7 @@ const SECTIONS = [
     build: () => ({ sendspin: { name: $("ssName").value.trim() || "Flipdot board",
                                 unpaired: $("ssUnpaired").checked, server_url: $("ssServer").value.trim() } }) },
   { note: "mqSaved", ids: ["mqEnabled", "mqHost", "mqPort", "mqUser", "mqPass", "mqPrefix", "mqDiscovery", "mqDiscPrefix"],
-    after: () => setTimeout(() => loadSettings().catch(() => {}), 2500),  // show the connection result
+    after: () => setTimeout(() => loadSettings(new Set(["mqtt"])).catch(() => {}), 2500),  // show the connection result
     build: () => ({ mqtt: {
       enabled: $("mqEnabled").checked, host: $("mqHost").value.trim(), port: +$("mqPort").value || 1883,
       username: $("mqUser").value, password: $("mqPass").value, prefix: $("mqPrefix").value.trim() || "flipdot",
@@ -264,8 +287,9 @@ function renderFontSettings() {
   updateFontPreview().catch(() => {});
 }
 bus.addEventListener("fonts", renderFontSettings);
-$("fontPreviewText").addEventListener("input", safe(updateFontPreview));
-$("fontPreviewSize").addEventListener("input", safe(updateFontPreview));
+const previewSoon = debounce(safe(updateFontPreview));  // one render per pause in typing, not one per keystroke
+$("fontPreviewText").addEventListener("input", previewSoon);
+$("fontPreviewSize").addEventListener("input", previewSoon);
 $("fontUploadBtn").onclick = () => $("fontFile").click();
 $("fontFile").onchange = safe(async e => {
   const file = e.target.files[0];
