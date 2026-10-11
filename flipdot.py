@@ -261,6 +261,11 @@ class Board:
         holds each picture at least this long, so the discs show it whole before the next one comes."""
         return COALESCE + self.steady_interval() + (self.sweep or 0.08)  # 0.08: a typical panel, when not measured
 
+    def cross_time(self):
+        """How long the sweep wave takes to cross the board (the data, then each column's sweep after the last): the
+        pace an app gives a change it sweeps across the picture itself (the slideshow's Invert sweep effect)."""
+        return max(0.15, self._lead + self._cols * (self.sweep or 0.08))
+
     def timing(self):
         return {"sweep_ms": round(self.sweep * 1000, 1), "sweep_mode": self.sweep_mode, "sync_refresh": self.sync_refresh,
                 "baud": self.baud}

@@ -213,7 +213,11 @@ invert) changes every dot, and a beat pulse is past half for only ~100 ms, so th
 inverted picture, two more (the GIF and the other effects moving on) and the plain one before the first had
 landed, a patchwork of panels in different states. Now a switch holds the picture, exactly as sent, for the
 settle time, so the board shows the inverted picture whole, then the plain one, then the GIF carries on;
-Flash never toggles faster than that either.
+Flash never toggles faster than that either. The **Invert sweep** effect is the alternative for fast
+content: nothing is held, an inverted band (its width = the amount) crosses the picture left to right over
+`Board.cross_time()` (the data plus every column's sweep, the time the driver's own wave would take, ~290 ms
+here) while the GIF and the other effects carry on under it; it starts as the beat rises past half and runs
+to the end whatever the pulse does after.
 
 ## Live views
 

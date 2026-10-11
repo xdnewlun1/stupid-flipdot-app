@@ -356,3 +356,47 @@ def test_old_saved_rows_still_load():
         out = rx.apply(frame, k / 25, slidefx.react_plan(slidefx.clean_react_map(old), reading), reading)
     assert (out.w, out.h) == (84, 42) and rx.fx["wave"].cycles > 0
     slidefx.Reactive().apply(frame, 1.0, slidefx.react_strengths(slidefx.clean_react_map(old), reading))
+
+
+def _band(out, src, w=84, h=42):
+    """Which columns of `out` are `src` inverted (and the rest unchanged): (first, last + 1), or None for none."""
+    flipped = [all(out.px[y * w + x] != src.px[y * w + x] for y in range(h)) for x in range(w)]
+    same = [all(out.px[y * w + x] == src.px[y * w + x] for y in range(h)) for x in range(w)]
+    assert all(f or s for f, s in zip(flipped, same))
+    xs = [x for x in range(w) if flipped[x]]
+    return (xs[0], xs[-1] + 1) if xs else None
+
+
+def test_sweep_crosses_the_picture_while_it_keeps_moving():
+    row = {"signal": "beat", "effect": "sweep", "amount": 100, "threshold": 0}
+    r = slidefx.Reactive(cross=0.3)
+    a, b = _picture(5), _picture(11)
+    plan = lambda pulse: {"sweep": (pulse, row, pulse)}
+    assert _band(r.apply(a, 0.0, plan(1.0)), a) is None  # the beat: the band's front is at the left edge
+    assert _band(r.apply(b, 0.1, plan(0.3)), b) == (0, 28)  # a third of the way, over the next GIF frame
+    assert _band(r.apply(a, 0.3, plan(0.1)), a) == (0, 84)  # the front reaches the right: all inverted
+    assert _band(r.apply(b, 0.45, plan(0.0)), b) == (42, 84)  # the back follows
+    assert _band(r.apply(a, 0.6, plan(0.0)), a) is None  # done
+    assert _band(r.apply(a, 0.7, plan(1.0)), a) is None and _band(r.apply(b, 0.85, plan(0.5)), b) == (0, 42)  # the next beat
+
+
+def test_sweep_width_is_the_amount_and_it_does_not_retrigger_until_the_pulse_drops():
+    row = {"signal": "beat", "effect": "sweep", "amount": 50, "threshold": 0}
+    r = slidefx.Reactive(cross=0.2)
+    a = _picture(7)
+    plan = lambda pulse: {"sweep": (pulse / 2, row, pulse)}
+    r.apply(a, 0.0, plan(1.0))
+    assert _band(r.apply(a, 0.2, plan(1.0)), a) == (42, 84)  # a half-board band, front at the right edge
+    assert _band(r.apply(a, 0.3, plan(1.0)), a) is None  # over (0.2 x 1.5); the pulse never dropped: no new sweep
+    assert _band(r.apply(a, 0.4, plan(1.0)), a) is None
+    r.apply(a, 0.5, plan(0.2))
+    r.apply(a, 0.6, plan(1.0))  # a rise: a new sweep
+    assert _band(r.apply(a, 0.7, plan(1.0)), a) == (0, 42)
+
+
+def test_sweep_as_a_random_effect_crosses_again_after_a_pause():
+    a = _picture(3)
+    e = slidefx.Effect("sweep", 0.0, None, 1.0, None, cross=0.2)
+    assert _band(e.apply(a, 0.1), a) == (0, 42)
+    assert _band(e.apply(a, 0.4), a) is None  # 0.4 = the sweep (0.4) done, pausing
+    assert _band(e.apply(a, 0.6), a) == (0, 42)  # 0.5: round again

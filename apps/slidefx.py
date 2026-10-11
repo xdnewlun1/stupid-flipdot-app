@@ -31,6 +31,7 @@ def _edges(w, h):
 
 EFFECTS = {
     "invert": "Invert",
+    "sweep": "Invert sweep",
     "flash": "Flash",
     "glitch": "Glitch",
     "mirror": "Mirror",
@@ -43,10 +44,10 @@ EFFECTS = {
     "life": "Game of Life",
     "melt": "Melt",
 }
-ANIMATED = {"flash", "glitch", "wave", "scanlines", "static", "life", "melt"}
+ANIMATED = {"flash", "sweep", "glitch", "wave", "scanlines", "static", "life", "melt"}
 
 
-def roll(settings, rng, now, item_seconds, hold=0.0):
+def roll(settings, rng, now, item_seconds, hold=0.0, cross=0.25):
     """Maybe pick an effect for an item that's starting. Returns an Effect or None."""
     chance = float(settings.get("fx_chance") or 0) / 100
     allowed = [e for e in (settings.get("fx_effects") or list(EFFECTS)) if e in EFFECTS]
@@ -60,15 +61,16 @@ def roll(settings, rng, now, item_seconds, hold=0.0):
         lead = max(0.0, item_seconds - length) if item_seconds else 0.0
         start = now + rng.uniform(0, lead) if lead else now
         end = start + length
-    return Effect(kind, start, end, float(settings.get("fx_strength") or 50) / 100, rng, hold)
+    return Effect(kind, start, end, float(settings.get("fx_strength") or 50) / 100, rng, hold, cross)
 
 
 class Effect:
-    def __init__(self, kind, start, end, strength, rng, hold=0.0):
+    def __init__(self, kind, start, end, strength, rng, hold=0.0, cross=0.25):
         self.kind, self.start, self.end = kind, start, end
         self.strength = max(0.05, min(1.0, strength))
         self.rng = rng or random.Random()
         self.hold = hold  # how long the discs take to show a whole new picture (Board.settle_time()): Flash's floor
+        self.cross = cross  # how long the panels' own flip wave takes to cross the board (Board.cross_time()): Sweep's pace
         self.state = {}
         self.cycles = None  # reacting to music: the effect's own motion clock in cycles (see Reactive), else wall time
         self.sway = 1.0     # reacting to music: the wave sways further in groovy (syncopated, off-beat) music
@@ -104,6 +106,26 @@ class Effect:
             rate = min(rate, 1 / self.hold)  # ...but each picture stays until the discs have shown it
         if int(t * rate) % 2 == 0:
             c.invert()
+
+    def sweep_length(self):
+        """How long one sweep takes: the band's front crosses the board at the panels' wave speed and its back follows
+        (the band is `strength` of the board wide: 1 = the whole picture inverted at the peak, 0.5 = a half-board bar)."""
+        return self.cross * (1 + max(0.1, self.strength))
+
+    def _sweep(self, c, t):
+        """An inverted band crossing the picture left to right, the way a change sweeps the panels; the picture keeps
+        moving under it. On its own (a random effect) it crosses again after a pause."""
+        w, h, px = c.w, c.h, c.px
+        length = self.sweep_length()
+        t %= length + self.cross / 2
+        front = w * t / self.cross
+        back = front - w * max(0.1, self.strength)
+        x0, x1 = max(0, round(back)), min(w, round(front))
+        if x1 <= x0:
+            return
+        for y in range(h):
+            s = y * w
+            px[s + x0:s + x1] = px[s + x0:s + x1].translate(_FLIP)
 
     def _held(self, make):
         """A random pattern: new every frame, or with a motion clock, new each whole cycle and held between."""
@@ -219,8 +241,9 @@ class Effect:
 # every frame breaks them.
 
 SIGNALS = ["bass", "lowmid", "mid", "high", "beat", "level"]
-REACT_ORDER = ["pixelate", "mirror", "kaleidoscope", "wave", "glitch", "outline", "scanlines", "static", "flash", "invert"]
+REACT_ORDER = ["pixelate", "mirror", "kaleidoscope", "wave", "glitch", "outline", "scanlines", "static", "flash", "sweep", "invert"]
 SWITCHED = {"invert", "mirror", "kaleidoscope", "outline"}  # no strength: on while the strength is past half
+TRIGGERED = {"sweep"}  # starts as its signal rises past half and runs to the end (the amount sets the band's width)
 BAND_SIGNALS = ("bass", "lowmid", "mid", "high")
 REACT_TO = ["level", "hits", "both"]  # what a band row follows
 BOTH_MIX = (0.65, 0.6)  # "both": this much of the level plus this much of the hits (capped at 1)
@@ -351,21 +374,29 @@ class Reactive:
     the board was sent the inverted picture, two more inverted pictures and the plain one before the first had
     landed: a patchwork of panels in different states instead of a flash. So after a switch the picture is held,
     exactly as sent, for `hold` seconds (Board.settle_time()): the board gets the inverted picture, shows it whole,
-    gets the plain one, shows that, and only then the GIF carries on."""
+    gets the plain one, shows that, and only then the GIF carries on.
 
-    def __init__(self, rng=None, hold=0.0):
+    The sweep is the other way to invert on a beat with fast content: nothing is held, the inverted band just
+    crosses the picture at the speed the panels' own wave would (`cross`, Board.cross_time()) while the GIF and
+    the other effects carry on under it. It starts as the beat rises past half and runs to the end whatever the
+    pulse does after, then waits for the next beat."""
+
+    def __init__(self, rng=None, hold=0.0, cross=0.25):
         self.rng = rng or random.Random()
         self.hold = hold
+        self.cross = cross
         self.fx = {k: Effect(k, 0.0, None, 0.5, self.rng) for k in REACT_ORDER}
         self.level = dict.fromkeys(MOTION, 0.0)
         self.last = None
-        self.on = {k: False for k in SWITCHED}
+        self.on = {k: False for k in SWITCHED | TRIGGERED}  # triggered: whether its signal was past half last frame
+        self.running = {k: False for k in TRIGGERED}
         self.held = None  # (until, picture) while a switch settles on the discs
 
     def reset(self):
         """Reacting stopped: the motion clocks pause rather than catch up, and the next picture isn't a switch."""
         self.last = None
-        self.on = {k: False for k in SWITCHED}
+        self.on = {k: False for k in SWITCHED | TRIGGERED}
+        self.running = {k: False for k in TRIGGERED}
         self.held = None
 
     def advance(self, now, plan, reading):
@@ -392,8 +423,21 @@ class Reactive:
         switched = False
         for kind in REACT_ORDER:
             s = strengths.get(kind, 0.0)
+            sig = s[2] if isinstance(s, tuple) else s  # the raw signal (the beat pulse), before amount and threshold
             if isinstance(s, tuple):
                 s = s[0]
+            if kind in TRIGGERED:
+                e = self.fx[kind]
+                e.cross = self.cross
+                past, self.on[kind] = self.on[kind], sig >= 0.5
+                if self.running[kind] and now - e.start >= e.sweep_length() - 1e-9:
+                    self.running[kind] = False
+                if not self.running[kind] and self.on[kind] and not past and s > 0:
+                    e.start, e.strength = now, min(1.0, s)
+                    self.running[kind] = True
+                if self.running[kind]:
+                    frame = e.apply(frame, now)
+                continue
             if kind in SWITCHED:
                 on = s >= 0.5
                 if on != self.on[kind]:
